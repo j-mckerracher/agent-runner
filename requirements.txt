@@ -1,0 +1,63 @@
+# Agent Workflow Runner — Python dependencies
+#
+# Core operation remains standard-library only.
+# Python version: >= 3.9
+#
+# Optional Python package — richer observability:
+#
+#   langfuse
+#     pip install langfuse
+#     Enable with:
+#       AGENT_RUNNER_OBSERVABILITY=langfuse
+#       LANGFUSE_PUBLIC_KEY=...
+#       LANGFUSE_SECRET_KEY=...
+#       LANGFUSE_HOST=...   (optional)
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# External CLI tools (install separately — not managed by pip):
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Required — at least one AI backend:
+#
+#   GitHub Copilot CLI
+#     gh extension install github/gh-copilot
+#     https://github.com/github/gh-copilot
+#
+#   Claude Code CLI
+#     https://claude.ai/code
+#
+# Required:
+#
+#   git >= 2.0
+#     https://git-scm.com
+#     (used to locate the repository root via `git rev-parse --show-toplevel`)
+#
+# Optional — needed only for Azure DevOps work item fetch:
+#
+#   Azure CLI
+#     macOS:  brew install azure-cli
+#     Other:  https://learn.microsoft.com/cli/azure/install-azure-cli
+#
+#   azure-devops extension
+#     az extension add --name azure-devops
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# Discord Escalation Bridge (optional — .claude/scripts/discord_escalation_bridge.py)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Uses the Discord REST API via stdlib urllib — no discord.py required.
+#
+# To enable, set the following environment variables before running:
+#
+#   DISCORD_BOT_TOKEN        Your Discord bot token (required to enable)
+#   DISCORD_GUILD_NAME       Server name (default: Agent-Escalations)
+#   DISCORD_CHANNEL_NAME     Channel name (default: general)
+#   DISCORD_ALLOWED_USER_IDS Comma-separated Discord user IDs allowed to resume
+#   DISCORD_POLL_SECONDS     Poll interval in seconds (default: 5)
+#
+# For developer testing without a real Discord server, set:
+#   DISCORD_DRY_RUN=1
+# and create status/discord_simulated_message.txt with e.g.:
+#   RESUME: Q1=my answer
+#
+# See docs/Discord_Escalation_Bridge.md for full setup instructions.
