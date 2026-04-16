@@ -140,7 +140,7 @@ def _cmd_calibrate(args: argparse.Namespace) -> int:
         judge_model=args.judge_model,
         task_id=task.id,
         task_version=task.version,
-        reason="calibration",
+        reason=getattr(args, "reason", None) or "calibration",
     )
     dest = save_band(band, baselines_dir)
     print(f"Band saved to {dest}: low={band.low:.3f} mean={band.mean:.3f} high={band.high:.3f}")
@@ -148,7 +148,7 @@ def _cmd_calibrate(args: argparse.Namespace) -> int:
 
 
 def _cmd_baseline(args: argparse.Namespace) -> int:
-    """Read or write a baseline band."""
+    """Read, write, or check baseline bands."""
     from agent_runner_harness.baseline.manager import load_band, save_band, compute_band
 
     baselines_dir = Path(args.baselines_dir)
@@ -161,8 +161,56 @@ def _cmd_baseline(args: argparse.Namespace) -> int:
         print(json.dumps(band.model_dump(), indent=2))
         return 0
 
+    if args.baseline_action == "check":
+        return _cmd_baseline_check(args, baselines_dir)
+
     print(f"Unknown baseline action: {args.baseline_action}", file=sys.stderr)
     return 1
+
+
+def _cmd_baseline_check(args: argparse.Namespace, baselines_dir: Path) -> int:
+    """Check all baselines against the current judge config."""
+    from agent_runner_harness.grading.prompts import PROMPT_VERSION
+
+    current_judge_model = getattr(args, "judge_model", "gpt-5.4-high")
+
+    band_files = sorted(baselines_dir.glob("*.json"))
+    if not band_files:
+        print(f"No baseline files found in {baselines_dir}")
+        return 0
+
+    stale: list[str] = []
+    for band_file in band_files:
+        try:
+            data = json.loads(band_file.read_text(encoding="utf-8"))
+        except Exception as exc:
+            print(f"  [ERROR ] {band_file.name}: could not read — {exc}")
+            stale.append(band_file.stem)
+            continue
+
+        task_id = data.get("task_id", band_file.stem)
+        stored_model = data.get("judge_model", "")
+        stored_reason = data.get("reason", "")
+
+        model_ok = stored_model == current_judge_model
+        prompt_ok = f"prompt_v={PROMPT_VERSION}" in stored_reason or PROMPT_VERSION == "1"
+
+        if model_ok and prompt_ok:
+            print(f"  [OK    ] {task_id} (model={stored_model})")
+        else:
+            reasons = []
+            if not model_ok:
+                reasons.append(f"judge_model: stored={stored_model!r} current={current_judge_model!r}")
+            if not prompt_ok:
+                reasons.append(f"prompt_version: stored reason lacks 'prompt_v={PROMPT_VERSION}'")
+            print(f"  [STALE ] {task_id}: {'; '.join(reasons)}")
+            stale.append(task_id)
+
+    if stale:
+        print(f"\n{len(stale)} baseline(s) need rebaseline. See docs/rebaseline.md")
+        return 1
+    print(f"\nAll {len(band_files)} baseline(s) are current.")
+    return 0
 
 
 def _cmd_report(args: argparse.Namespace) -> int:
@@ -274,12 +322,20 @@ def build_parser() -> argparse.ArgumentParser:
     cal_parser.add_argument(
         "--baselines-dir", default="baselines", metavar="DIR"
     )
+    cal_parser.add_argument(
+        "--reason", default=None, metavar="STR",
+        help="Human-readable reason for this calibration (stored in baseline)",
+    )
 
     # baseline
-    bl_parser = sub.add_parser("baseline", help="Read/write baseline bands")
-    bl_parser.add_argument("baseline_action", choices=["show"], help="Action to perform")
-    bl_parser.add_argument("--task", required=True, metavar="ID")
+    bl_parser = sub.add_parser("baseline", help="Read/write/check baseline bands")
+    bl_parser.add_argument("baseline_action", choices=["show", "check"], help="Action to perform")
+    bl_parser.add_argument("--task", metavar="ID", help="Task ID (required for 'show')")
     bl_parser.add_argument("--baselines-dir", default="baselines", metavar="DIR")
+    bl_parser.add_argument("--judge-model", default="gpt-5.4-high", metavar="MODEL",
+                           help="Current judge model to compare against (for 'check')")
+    bl_parser.add_argument("--against", metavar="GIT_REF", default=None,
+                           help="Compare baselines at this git ref (for 'check')")
 
     # replay
     replay_parser = sub.add_parser("replay", help="Evaluate with cassette replay")

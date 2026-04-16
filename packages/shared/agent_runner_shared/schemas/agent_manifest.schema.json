@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-runner/schemas/agent_manifest.schema.json",
+  "title": "Agent Bundle Manifest",
+  "description": "Metadata describing a single versioned agent bundle.",
+  "type": "object",
+  "required": ["name", "version"],
+  "properties": {
+    "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+    "version": {"type": "string"},
+    "description": {"type": "string"},
+    "source": {"type": "string", "description": "Origin of this bundle (git sha, filename, or URL)."},
+    "model_recommendations": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "claude_code_agent_file": {
+      "type": "string",
+      "description": "Filename to emit inside .claude/agents/ when materialized. Defaults to <name>.agent.md."
+    },
+    "tools": {
+      "type": "array",
+      "description": "Optional list of tool identifiers this agent is expected to have available.",
+      "items": {"type": "string"}
+    },
+    "requires_tools": {"type": "boolean", "default": false}
+  }
+}

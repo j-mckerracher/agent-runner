@@ -1,0 +1,5 @@
+name: implementation-evaluator
+version: v1
+description: "implementation-evaluator agent, v1, seeded from .claude/agents/08-implementation-evaluator.agent.md"
+source: "agent-development/.claude/agents/08-implementation-evaluator.agent.md"
+claude_code_agent_file: "08-implementation-evaluator.agent.md"

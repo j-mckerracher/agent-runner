@@ -1,0 +1,4 @@
+judge:
+  model: gpt-5.4-high
+  api: openai
+  endpoint_env: OPENAI_BASE_URL

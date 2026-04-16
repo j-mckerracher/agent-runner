@@ -455,7 +455,7 @@ class ExecutionLoopRetryTests(unittest.TestCase):
                 )
 
             with mock.patch(
-                "agent_runner.workflow.engine.invoke_agent",
+                "agent_runner-pkg.workflow.engine.invoke_agent",
                 side_effect=fake_invoke_agent,
             ):
                 result = run_execution_loop(config, agents)

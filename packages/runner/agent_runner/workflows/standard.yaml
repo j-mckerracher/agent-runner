@@ -1,0 +1,67 @@
+id: standard
+version: 1
+description: "Default WI -> PR workflow: intake, task gen+eval, assignment+eval, SWE, QA+eval, lessons."
+
+defaults:
+  retry:
+    max_attempts: 3
+    backoff: immediate
+  timeout_seconds: 3600
+
+stages:
+  - id: intake
+    kind: single
+    agent: intake@v1
+    artifacts_in: []
+    artifacts_out: [story, constraints, config]
+    retry: { max_attempts: 1 }
+    on_failure: halt
+  - id: task_gen
+    kind: producer_evaluator_loop
+    producer: task-generator@v1
+    evaluator: task-plan-evaluator@v1
+    artifacts_in: [story, constraints]
+    artifacts_out: [tasks]
+    retry: { max_attempts: 3 }
+    on_evaluator_reject: retry
+  - id: assignment
+    kind: producer_evaluator_loop
+    producer: task-assigner@v1
+    evaluator: assignment-evaluator@v1
+    artifacts_in: [tasks, story, constraints]
+    artifacts_out: [assignments]
+    retry: { max_attempts: 2 }
+  - id: software_engineer
+    kind: single
+    agent: software-engineer-hyperagent@v1
+    artifacts_in: [assignments, tasks, story]
+    artifacts_out: [impl_report]
+    retry: { max_attempts: 3 }
+  - id: qa
+    kind: producer_evaluator_loop
+    producer: qa@v1
+    evaluator: qa-evaluator@v1
+    artifacts_in: [story, tasks, assignments, impl_report]
+    artifacts_out: [qa_report]
+    retry: { max_attempts: 3 }
+  - id: lessons
+    kind: single
+    agent: lessons-optimizer-hyperagent@v1
+    artifacts_in: [story, qa_report]
+    artifacts_out: [lessons_report]
+    retry: { max_attempts: 1 }
+    on_failure: continue
+
+escalation:
+  channel: discord
+  pause_on: [task_gen, assignment, qa]
+
+artifacts:
+  story:          { schema: story.schema.json, format: yaml }
+  constraints:    { schema: constraints.schema.json, format: md }
+  config:         { schema: config.schema.json, format: yaml }
+  tasks:          { schema: tasks.schema.json, format: yaml }
+  assignments:    { schema: assignments.schema.json, format: json }
+  impl_report:    { schema: impl_report.schema.json, format: yaml }
+  qa_report:      { schema: qa_report.schema.json, format: yaml }
+  lessons_report: { schema: lessons_report.schema.json, format: yaml }

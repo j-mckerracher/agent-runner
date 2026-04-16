@@ -1,0 +1,30 @@
+id: simple-readme-update
+version: 1
+title: "Update README with a one-liner change"
+difficulty: easy
+tags:
+  - readme
+  - documentation
+  - simple
+substrate:
+  ref: baseline-2026-04-16
+workflow:
+  id: standard
+  version: 1
+agents:
+  - intake@1.0.0
+inputs:
+  target_file: "README.md"
+  expected_line: "<!-- agent-runner: evaluated -->"
+models:
+  worker: claude-sonnet-4-5
+acceptance_criteria:
+  deterministic:
+    - id: impl-report-exists
+      description: "impl_report.yaml must be present in the artifact directory"
+      kind: file_exists
+      path: impl_report.yaml
+    - id: diff-contains-expected-line
+      description: "The diff must contain the expected one-liner change"
+      kind: script
+      script: criteria/deterministic/check_diff.py

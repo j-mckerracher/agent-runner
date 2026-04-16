@@ -1,0 +1,38 @@
+id: refactor-util-module
+version: 1
+title: "Refactor utility module for improved maintainability"
+difficulty: hard
+tags:
+  - refactoring
+  - code-quality
+  - calibration-pending
+substrate:
+  ref: baseline-2026-04-16
+workflow:
+  id: standard
+  version: 1
+agents:
+  - intake@1.0.0
+inputs: {}
+models:
+  worker: claude-sonnet-4-5
+  judge: gpt-5.4-high
+acceptance_criteria:
+  rubric:
+    - id: r-refactor-quality
+      description: "Refactored code demonstrates improved structure, separation of concerns, and maintainability"
+      kind: rubric
+      scale: "0-3"
+      threshold: 2
+      judge_prompt: |
+        Evaluate the quality of the refactored utility module.
+
+        Score 0-3:
+        0 = No meaningful refactoring or code is worse
+        1 = Minor improvements only, major issues remain
+        2 = Substantial improvements with good separation of concerns
+        3 = Excellent refactoring with clear structure and full test coverage
+calibration:
+  model: claude-sonnet-4-5
+  runs: 5
+  target_pass_rate: 0.6

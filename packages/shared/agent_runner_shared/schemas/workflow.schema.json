@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-runner/schemas/workflow.schema.json",
+  "title": "Workflow Definition",
+  "description": "A workflow-as-data definition: stages, agents, evaluator loops, retry and escalation policies.",
+  "type": "object",
+  "required": ["id", "version", "stages", "artifacts"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+    "version": {"type": "integer", "minimum": 1},
+    "description": {"type": "string"},
+    "defaults": {
+      "type": "object",
+      "properties": {
+        "retry": {"$ref": "#/$defs/retry"},
+        "timeout_seconds": {"type": "integer", "minimum": 1}
+      }
+    },
+    "stages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/stage"}
+    },
+    "escalation": {
+      "type": "object",
+      "properties": {
+        "channel": {"type": "string", "enum": ["discord", "none"]},
+        "pause_on": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["schema", "format"],
+        "properties": {
+          "schema": {"type": "string"},
+          "format": {"type": "string", "enum": ["yaml", "json", "md"]}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "retry": {
+      "type": "object",
+      "properties": {
+        "max_attempts": {"type": "integer", "minimum": 1},
+        "backoff": {"type": "string", "enum": ["immediate", "linear", "exponential"]}
+      }
+    },
+    "agent_ref": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*@[A-Za-z0-9._-]+$"
+    },
+    "stage": {
+      "type": "object",
+      "required": ["id", "kind"],
+      "properties": {
+        "id": {"type": "string"},
+        "kind": {"type": "string", "enum": ["single", "producer_evaluator_loop"]},
+        "agent": {"$ref": "#/$defs/agent_ref"},
+        "producer": {"$ref": "#/$defs/agent_ref"},
+        "evaluator": {"$ref": "#/$defs/agent_ref"},
+        "artifacts_in": {"type": "array", "items": {"type": "string"}},
+        "artifacts_out": {"type": "array", "items": {"type": "string"}},
+        "retry": {"$ref": "#/$defs/retry"},
+        "on_failure": {"type": "string", "enum": ["halt", "continue", "escalate"]},
+        "on_evaluator_reject": {"type": "string", "enum": ["retry", "escalate", "halt"]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"const": "single"}}},
+          "then": {"required": ["agent"]}
+        },
+        {
+          "if": {"properties": {"kind": {"const": "producer_evaluator_loop"}}},
+          "then": {"required": ["producer", "evaluator"]}
+        }
+      ]
+    }
+  }
+}

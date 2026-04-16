@@ -1,0 +1,5 @@
+name: assignment-evaluator
+version: v1
+description: "assignment-evaluator agent, v1, seeded from .claude/agents/07-assignment-evaluator.agent.md"
+source: "agent-development/.claude/agents/07-assignment-evaluator.agent.md"
+claude_code_agent_file: "07-assignment-evaluator.agent.md"
