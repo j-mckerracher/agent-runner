@@ -17,4 +17,3 @@ for _pkg in ("shared", "runner", "registry", "harness"):
     _pkg_path = str(_REPO_ROOT / "packages" / _pkg)
     if _pkg_path not in sys.path:
         sys.path.insert(0, _pkg_path)
-˚
