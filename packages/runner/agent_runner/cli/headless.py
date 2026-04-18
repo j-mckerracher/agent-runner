@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -30,6 +31,7 @@ def build_headless_config(
     change_id: str,
     repo_root: Path,
     backend_key: str | None = None,
+    model: str | None = None,
 ) -> WorkflowConfig:
     """Build a WorkflowConfig without interactive prompts."""
 
@@ -55,7 +57,7 @@ def build_headless_config(
         "artifact_root": resolved_artifact_root,
         "cli_backend": backend.key,
         "cli_bin": backend.command,
-        "model": backend.default_model,
+        "model": model if model is not None else backend.default_model,
         "observability_sink": build_observability_sink_from_env(),
     }
 
@@ -165,6 +167,11 @@ def main(argv: list[str] | None = None) -> int:
         metavar="PATH",
         help="Explicit agents directory (harness-managed; skips auto-materialize)",
     )
+    parser.add_argument(
+        "--model",
+        metavar="MODEL",
+        help="Override the AI model for all agent invocations (e.g. gpt-5-mini)",
+    )
     args = parser.parse_args(argv)
 
     main_repo_root = Path(args.repo).resolve() if args.repo else resolve_repo_root()
@@ -188,12 +195,25 @@ def main(argv: list[str] | None = None) -> int:
 
     effective_repo_root = worktree_info.path if worktree_info else main_repo_root
 
+    # When an explicit agents dir is provided, copy agents into the worktree's
+    # .claude/agents/ so the AI CLI (copilot/claude) can discover them.
+    if explicit_agents_dir is not None and explicit_agents_dir.is_dir():
+        dest = effective_repo_root / ".claude" / "agents"
+        dest.mkdir(parents=True, exist_ok=True)
+        count = sum(
+            1
+            for src in explicit_agents_dir.glob("*.agent.md")
+            if shutil.copy2(src, dest / src.name) or True
+        )
+        log("INFO", f"Materialized {count} agent(s) from {explicit_agents_dir} → {dest}")
+
     try:
         try:
             config = build_headless_config(
                 args.change_id,
                 effective_repo_root,
                 backend_key=args.backend,
+                model=getattr(args, "model", None),
             )
         except WorkflowError as exc:
             log("ERROR", f"Config error: {exc}")

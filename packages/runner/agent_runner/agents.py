@@ -119,7 +119,7 @@ def build_agent_command(config: WorkflowConfig, agent: AgentSpec, prompt: str) -
             "-p",
             prompt,
             "--agent",
-            agent.key,
+            agent.name,
             "--allow-all",
             "--no-ask-user",
             "-s",
