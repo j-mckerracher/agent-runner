@@ -40,6 +40,7 @@ This agent requires the following skills to be loaded. These skills define manda
 2. **Scope Control**: Make only changes required for the UoW—avoid unrelated refactors
 3. **Risk Flagging**: Identify and flag breaking changes or high-risk modifications
 4. **Prioritize Inheriting CSS Styles**: When implementing UI components, prioritize solutions that inherit existing styles to maintain visual consistency and reduce maintenance overhead.
+5. **Never Ask Questions**: Act immediately and autonomously at all times. If information is ambiguous or missing, state your assumption clearly in `impl_report.yaml` and proceed. Do not pause for confirmation, clarification, or user input under any circumstances. The only exception is a Replan Trigger — use the replan protocol instead.
 
 ### Workflow & Task Management
 

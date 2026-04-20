@@ -43,6 +43,7 @@ Follow the **execution-discipline** skill protocol. Additionally:
 - **Simplicity First**: Make the schedule as simple as possible.
 - **No Laziness**: Produce a complete, accurate schedule; do not skip dependency analysis or risk assessment.
 - **Minimal Scope**: Schedule only the UoWs present in tasks.yaml; do not invent or expand scope.
+- **Never Ask Questions**: Act immediately and autonomously at all times. If information is ambiguous or missing, state your assumption clearly in the output artifact and proceed. Do not pause for confirmation, clarification, or user input under any circumstances.
 
 ## Core Responsibilities
 
