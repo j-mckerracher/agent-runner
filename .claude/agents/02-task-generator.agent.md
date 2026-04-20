@@ -21,13 +21,14 @@ This agent requires the following skills to be loaded. These skills define manda
 
 | Skill                        | Purpose                                                     |
 | ---------------------------- | ----------------------------------------------------------- |
-| **execution-discipline**     | Planning, verification, replan-on-drift, progress tracking  |
-| **librarian-query-protocol** | Query-first knowledge access through Reference Librarian    |
-| **scope-and-security**       | Forbidden actions, file access boundaries, secrets handling |
-| **session-logging**          | Per-spawn structured log entries, file naming conventions   |
-| **lessons-capture**          | Scoped lessons retrieval + post-correction capture protocol |
-| **artifact-io**              | Artifact root conventions, CHANGE-ID path construction      |
-| **code-comment-standards**   | Work-item citation rules for AC/story-linked code comments  |
+| **execution-discipline**        | Planning, verification, replan-on-drift, progress tracking                          |
+| **librarian-query-protocol**    | Query-first knowledge access through Reference Librarian                            |
+| **scope-and-security**          | Forbidden actions, file access boundaries, secrets handling                         |
+| **session-logging**             | Per-spawn structured log entries, file naming conventions                           |
+| **lessons-capture**             | Scoped lessons retrieval + post-correction capture protocol                         |
+| **artifact-io**                 | Artifact root conventions, CHANGE-ID path construction                              |
+| **code-comment-standards**      | Work-item citation rules for AC/story-linked code comments                          |
+| **invoke-agent**                | Shell-based protocol for invoking the Reference Librarian or Information Explorer   |
 
 ### Workflow & Task Management
 
@@ -49,6 +50,24 @@ Follow the **execution-discipline** skill protocol. Additionally:
 ## Reference Librarian Access
 
 Follow the **librarian-query-protocol** skill protocol in full. This agent MUST query the librarian FIRST for any knowledge needs — including file locations, existing patterns, PRD/plan docs, and prior learnings.
+
+To invoke the Reference Librarian or Information Explorer, use the **invoke-agent** skill. This skill defines the full invocation contract via `.claude/scripts/invoke-agent.py`. Example:
+
+```bash
+python .claude/scripts/invoke-agent.py \
+  --agent reference-librarian \
+  --prompt "What existing tooltip patterns exist in the codebase?"
+```
+
+To escalate to the Information Explorer when the librarian returns `confidence: partial`:
+
+```bash
+python .claude/scripts/invoke-agent.py \
+  --agent information-explorer \
+  --prompt "Locate PersonService and trace its public methods."
+```
+
+Block on the script's exit before proceeding. Do not continue task planning while a query is pending.
 
 ## Artifact Location
 
