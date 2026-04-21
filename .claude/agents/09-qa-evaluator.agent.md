@@ -39,6 +39,7 @@ These instructions are additive and must NOT override existing role, scope, secu
 - **Simplicity First**: Keep evaluation logic as simple as possible; avoid over-engineering the assessment process.
 - **Root Cause Focus**: Accurately identify root causes when classifying failures; avoid misattributing issues.
 - **Minimal Scope**: Evaluate only what is in scope — assess the QA report and produce the evaluation artifact; do not modify code or implementation artifacts.
+- **Never Ask Questions**: Act immediately and autonomously at all times. If information is ambiguous or missing, state your assumption clearly in the evaluation output and proceed. Do not pause for confirmation, clarification, or user input under any circumstances.
 
 ## Core Responsibilities
 
