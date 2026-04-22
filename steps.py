@@ -1,5 +1,7 @@
+import opik
 from prefect import task, tags
 from run_cmds import run_claude_cmd, run_agent_cmd
+from opik_integration import call_evaluator_sdk
 
 
 def build_intake_prompt(intake_source: str, repo: str, change_id: str, intake_mode: str) -> str:
@@ -44,28 +46,52 @@ def step_intake(intake_source: str, repo: str, change_id: str, intake_mode: str 
             change_id=change_id,
             intake_mode=intake_mode,
         )
-        return run_agent_cmd(runner=runner, prompt=prompt, agent="intake-agent")
+        with opik.start_as_current_trace("intake", project_name="agent-runner") as trace:
+            trace.input = {"intake_source": intake_source, "change_id": change_id, "intake_mode": intake_mode}
+            result = run_agent_cmd(runner=runner, prompt=prompt, agent="intake-agent")
+            trace.output = {"stdout_preview": result[:2000]}
+        return result
+
 
 # 2
 @task(log_prints=True, name="task-gen-producer")
 def step_task_gen_producer(context: str, runner: str = "claude") -> str:
-    return run_agent_cmd(runner=runner, prompt=context, agent="task-generator")
+    with opik.start_as_current_trace("task-gen-producer", project_name="agent-runner") as trace:
+        trace.input = {"context": context}
+        result = run_agent_cmd(runner=runner, prompt=context, agent="task-generator")
+        trace.output = {"stdout_preview": result[:2000]}
+    return result
 
 
 # 3
 @task(log_prints=True, name="task-gen-evaluator")
 def step_task_gen_evaluator(context: str, runner: str = "claude") -> str:
-    return run_agent_cmd(runner=runner, prompt=context, agent="task-plan-evaluator")
+    with opik.start_as_current_trace("task-gen-evaluator", project_name="agent-runner") as trace:
+        trace.input = {"context": context}
+        result = call_evaluator_sdk(context, "task-plan-evaluator")
+        trace.output = {"result": result}
+    return result
+
 
 # 4
 @task(log_prints=True, name="task-assigner")
 def step_task_assigner(context: str, runner: str = "claude") -> str:
-    return run_agent_cmd(runner=runner, prompt=context, agent="task-assigner")
+    with opik.start_as_current_trace("task-assigner", project_name="agent-runner") as trace:
+        trace.input = {"context": context}
+        result = run_agent_cmd(runner=runner, prompt=context, agent="task-assigner")
+        trace.output = {"stdout_preview": result[:2000]}
+    return result
+
 
 # 4b
 @task(log_prints=True, name="assignment-evaluator")
 def step_assignment_evaluator(context: str, runner: str = "claude") -> str:
-    return run_agent_cmd(runner=runner, prompt=context, agent="assignment-evaluator")
+    with opik.start_as_current_trace("assignment-evaluator", project_name="agent-runner") as trace:
+        trace.input = {"context": context}
+        result = call_evaluator_sdk(context, "assignment-evaluator")
+        trace.output = {"result": result}
+    return result
+
 
 # 5
 @task(log_prints=True, name="software-engineer")
@@ -80,28 +106,48 @@ def step_software_engineer(uow_id: str, change_id: str, repo: str, evaluator_fee
             f"\n\n## Evaluator Issues to Fix:\n{evaluator_feedback}\n\n"
             f"Address every issue listed above. Do not ask questions — act immediately."
         )
-    return run_agent_cmd(runner=runner, prompt=prompt, agent="software-engineer-hyperagent")
+    with opik.start_as_current_trace("software-engineer", project_name="agent-runner") as trace:
+        trace.input = {"uow_id": uow_id, "change_id": change_id, "has_feedback": bool(evaluator_feedback)}
+        result = run_agent_cmd(runner=runner, prompt=prompt, agent="software-engineer-hyperagent")
+        trace.output = {"stdout_preview": result[:2000]}
+    return result
+
 
 # 6
 @task(log_prints=True, name="software-engineer-evaluator")
 def step_software_engineer_evaluator(uow_id: str, change_id: str, repo: str, runner: str = "claude") -> str:
-    prompt = (
+    context = (
         f"Evaluate the implementation of UoW {uow_id} for change {change_id}.\n"
         f"Read the implementation report from agent-context/{change_id}/execution/{uow_id}/impl_report.yaml.\n"
         f"Read the UoW spec from agent-context/{change_id}/execution/{uow_id}/uow_spec.yaml.\n"
-        f"Target repo: {repo}\n"
+        f"Target repo: {repo}"
     )
-    return run_agent_cmd(runner=runner, prompt=prompt, agent="implementation-evaluator")
+    with opik.start_as_current_trace("implementation-evaluator", project_name="agent-runner") as trace:
+        trace.input = {"uow_id": uow_id, "change_id": change_id}
+        result = call_evaluator_sdk(context, "implementation-evaluator")
+        trace.output = {"result": result}
+    return result
+
 
 # 7
 @task(log_prints=True, name="qa-engineer")
 def step_qa_engineer(context: str, runner: str = "claude") -> str:
-    return run_agent_cmd(runner=runner, prompt=context, agent="qa-engineer")
+    with opik.start_as_current_trace("qa-engineer", project_name="agent-runner") as trace:
+        trace.input = {"context": context}
+        result = run_agent_cmd(runner=runner, prompt=context, agent="qa-engineer")
+        trace.output = {"stdout_preview": result[:2000]}
+    return result
+
 
 # 8
 @task(log_prints=True, name="qa-evaluator")
 def step_qa_evaluator(context: str, runner: str = "claude") -> str:
-    return run_agent_cmd(runner=runner, prompt=context, agent="qa-evaluator")
+    with opik.start_as_current_trace("qa-evaluator", project_name="agent-runner") as trace:
+        trace.input = {"context": context}
+        result = call_evaluator_sdk(context, "qa-evaluator")
+        trace.output = {"result": result}
+    return result
+
 
 # 9
 @task(log_prints=True, name="lessons-optimizer")
@@ -114,4 +160,8 @@ def step_lessons_optimizer(change_id: str, repo: str, runner: str = "claude") ->
         f"Write your report to agent-context/{change_id}/summary/lessons_optimizer_report.yaml.\n"
         f"Act immediately. Do not ask questions."
     )
-    return run_agent_cmd(runner=runner, prompt=prompt, agent="lessons-optimizer-hyperagent")
+    with opik.start_as_current_trace("lessons-optimizer", project_name="agent-runner") as trace:
+        trace.input = {"change_id": change_id, "repo": repo}
+        result = run_agent_cmd(runner=runner, prompt=prompt, agent="lessons-optimizer-hyperagent")
+        trace.output = {"stdout_preview": result[:2000]}
+    return result

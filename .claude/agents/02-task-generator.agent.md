@@ -21,14 +21,13 @@ This agent requires the following skills to be loaded. These skills define manda
 
 | Skill                        | Purpose                                                     |
 | ---------------------------- | ----------------------------------------------------------- |
-| **execution-discipline**        | Planning, verification, replan-on-drift, progress tracking                          |
-| **librarian-query-protocol**    | Query-first knowledge access through Reference Librarian                            |
-| **scope-and-security**          | Forbidden actions, file access boundaries, secrets handling                         |
-| **session-logging**             | Per-spawn structured log entries, file naming conventions                           |
-| **lessons-capture**             | Scoped lessons retrieval + post-correction capture protocol                         |
-| **artifact-io**                 | Artifact root conventions, CHANGE-ID path construction                              |
-| **code-comment-standards**      | Work-item citation rules for AC/story-linked code comments                          |
-| **invoke-agent**                | Shell-based protocol for invoking the Reference Librarian or Information Explorer   |
+| **execution-discipline**     | Planning, verification, replan-on-drift, progress tracking  |
+| **librarian-query-protocol** | Query-first knowledge access through Reference Librarian    |
+| **scope-and-security**       | Forbidden actions, file access boundaries, secrets handling |
+| **session-logging**          | Per-spawn structured log entries, file naming conventions   |
+| **lessons-capture**          | Scoped lessons retrieval + post-correction capture protocol |
+| **artifact-io**              | Artifact root conventions, CHANGE-ID path construction      |
+| **code-comment-standards**   | Work-item citation rules for AC/story-linked code comments  |
 
 ### Workflow & Task Management
 
@@ -38,23 +37,6 @@ Follow the **execution-discipline** skill protocol. Additionally:
 - **Apply Lessons**: Before starting work, request scoped applicable lessons from the Reference Librarian (agent + stage + task context) and apply only returned prevention rules as mandatory constraints. Do NOT read `agent-context/lessons.md` directly.
 - Follow the **lessons-capture** skill protocol after any user correction.
 - ALWAYS look for examples of something similar already implement in the codebase via the librarian. If examples exist, use them as a pattern that must be followed unless there is a compelling reason not to - escalate to the user if this is the case.
-
-## Startup: Resolve Paths Before Acting
-
-Before doing anything else, resolve your artifact paths. Do NOT ask clarifying questions — act immediately.
-
-1. Extract the CHANGE-ID from your prompt (pattern: `WI-\d+`, e.g., `WI-5035632`)
-2. Find the config.yaml by searching:
-   ```bash
-   find ~/Code -path "*/agent-context/${CHANGE_ID}/intake/config.yaml" -maxdepth 6 2>/dev/null | head -1
-   ```
-3. Read the config.yaml to get `code_repo`
-4. Set `artifacts_root = {code_repo}/agent-context/{CHANGE-ID}` — all subsequent paths use this absolute root
-5. Confirm `{artifacts_root}/intake/story.yaml` exists before proceeding
-
-If config.yaml is not found, check for any `story.yaml` path referenced in your prompt and derive `artifacts_root` from it.
-
-**You have full write permissions to `{artifacts_root}`. Create subdirectories (e.g., `planning/`) as needed.**
 
 ## Core Responsibilities
 
@@ -67,24 +49,6 @@ If config.yaml is not found, check for any `story.yaml` path referenced in your 
 ## Reference Librarian Access
 
 Follow the **librarian-query-protocol** skill protocol in full. This agent MUST query the librarian FIRST for any knowledge needs — including file locations, existing patterns, PRD/plan docs, and prior learnings.
-
-To invoke the Reference Librarian or Information Explorer, use the **invoke-agent** skill. This skill defines the full invocation contract via `.claude/scripts/invoke-agent.py`. Example:
-
-```bash
-python .claude/scripts/invoke-agent.py \
-  --agent reference-librarian \
-  --prompt "What existing tooltip patterns exist in the codebase?"
-```
-
-To escalate to the Information Explorer when the librarian returns `confidence: partial`:
-
-```bash
-python .claude/scripts/invoke-agent.py \
-  --agent information-explorer \
-  --prompt "Locate PersonService and trace its public methods."
-```
-
-Block on the script's exit before proceeding. Do not continue task planning while a query is pending.
 
 ## Artifact Location
 
@@ -203,13 +167,12 @@ If a task covers service or pure function logic only (no Angular template involv
 
 ## Revision Guidelines
 
-If you receive evaluator feedback in your prompt:
+If you receive evaluator feedback:
 
-1. Read the **current** `{artifacts_root}/planning/tasks.yaml` (do not reconstruct from memory)
-2. Address each listed issue specifically
-3. Preserve working elements
-4. Re-validate AC coverage after changes
-5. Overwrite `tasks.yaml` with the revised plan — do not ask for permission
+1. Address each issue specifically
+2. Preserve working elements
+3. Re-validate AC coverage after changes
+4. Explain significant changes in the `notes` field
 
 ---
 

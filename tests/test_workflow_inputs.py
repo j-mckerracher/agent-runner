@@ -143,6 +143,222 @@ class WorkflowInputsTests(unittest.TestCase):
         self.assertEqual(workflow_input.change_id, "WI-555")
         self.assertIn("_workitems/edit/555", workflow_input.intake_source)
 
+    def test_load_story_fixture_rejects_empty_acceptance_criteria_list(self):
+        """Edge case: acceptance_criteria is an empty list"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "story.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "change_id": "TEST-AC-004",
+                        "title": "Fixture with empty list",
+                        "description": "Synthetic story",
+                        "acceptance_criteria": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "acceptance_criteria"):
+                load_story_fixture(str(path))
+
+    def test_load_story_fixture_rejects_empty_acceptance_criteria_dict(self):
+        """Edge case: acceptance_criteria is an empty dict"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "story.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "change_id": "TEST-AC-005",
+                        "title": "Fixture with empty dict",
+                        "description": "Synthetic story",
+                        "acceptance_criteria": {},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "acceptance_criteria"):
+                load_story_fixture(str(path))
+
+    def test_load_story_fixture_rejects_whitespace_only_strings_in_list(self):
+        """Edge case: acceptance_criteria list contains whitespace-only strings"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "story.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "change_id": "TEST-AC-006",
+                        "title": "Fixture with whitespace",
+                        "description": "Synthetic story",
+                        "acceptance_criteria": ["valid", "   ", "\t", "\n"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "acceptance_criteria"):
+                load_story_fixture(str(path))
+
+    def test_load_story_fixture_rejects_none_values_in_list(self):
+        """Edge case: acceptance_criteria list contains None values"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "story.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "change_id": "TEST-AC-007",
+                        "title": "Fixture with None",
+                        "description": "Synthetic story",
+                        "acceptance_criteria": ["valid", None],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "acceptance_criteria"):
+                load_story_fixture(str(path))
+
+    def test_load_story_fixture_rejects_non_string_values_in_list(self):
+        """Edge case: acceptance_criteria list contains non-string values"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "story.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "change_id": "TEST-AC-008",
+                        "title": "Fixture with int",
+                        "description": "Synthetic story",
+                        "acceptance_criteria": ["valid", 42],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "acceptance_criteria"):
+                load_story_fixture(str(path))
+
+    def test_load_story_fixture_rejects_whitespace_only_dict_keys(self):
+        """Edge case: acceptance_criteria dict contains whitespace-only keys"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "story.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "change_id": "TEST-AC-009",
+                        "title": "Fixture with whitespace key",
+                        "description": "Synthetic story",
+                        "acceptance_criteria": {"   ": "value", "AC1": "valid"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "acceptance_criteria"):
+                load_story_fixture(str(path))
+
+    def test_load_story_fixture_rejects_whitespace_only_dict_values(self):
+        """Edge case: acceptance_criteria dict contains whitespace-only values"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "story.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "change_id": "TEST-AC-010",
+                        "title": "Fixture with whitespace value",
+                        "description": "Synthetic story",
+                        "acceptance_criteria": {"AC1": "   ", "AC2": "valid"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "acceptance_criteria"):
+                load_story_fixture(str(path))
+
+    def test_load_story_fixture_rejects_non_string_dict_values(self):
+        """Edge case: acceptance_criteria dict contains non-string values"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "story.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "change_id": "TEST-AC-011",
+                        "title": "Fixture with int value",
+                        "description": "Synthetic story",
+                        "acceptance_criteria": {"AC1": 42, "AC2": "valid"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "acceptance_criteria"):
+                load_story_fixture(str(path))
+
+    def test_load_story_fixture_rejects_invalid_json_structure(self):
+        """Edge case: fixture is valid JSON but not a dict"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "story.json"
+            path.write_text('["not", "a", "dict"]', encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "must be a JSON object"):
+                load_story_fixture(str(path))
+
+    def test_load_story_fixture_rejects_missing_title_field(self):
+        """Edge case: acceptance_criteria is valid but title is missing"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "story.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "change_id": "TEST-AC-012",
+                        "description": "Synthetic story",
+                        "acceptance_criteria": ["criterion"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "missing required field"):
+                load_story_fixture(str(path))
+
+    def test_load_story_fixture_rejects_missing_description_field(self):
+        """Edge case: acceptance_criteria is valid but description is missing"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "story.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "change_id": "TEST-AC-013",
+                        "title": "Story title",
+                        "acceptance_criteria": ["criterion"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "missing required field"):
+                load_story_fixture(str(path))
+
+    def test_load_story_fixture_rejects_empty_title_field(self):
+        """Edge case: title is present but empty string"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "story.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "change_id": "TEST-AC-014",
+                        "title": "",
+                        "description": "Synthetic story",
+                        "acceptance_criteria": ["criterion"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "missing required field"):
+                load_story_fixture(str(path))
+
 
 if __name__ == "__main__":
     unittest.main()

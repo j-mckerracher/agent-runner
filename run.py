@@ -5,8 +5,10 @@ from datetime import datetime
 from pathlib import Path
 from prefect import flow, tags
 
+import opik_integration  # noqa: F401 — configures Opik project context before the flow runs
 import steps
 from evaluator_optimizer_loops import run_uow_eval_loop, run_eval_optimizer_loop
+from materialize import run_materialization
 from workflow_inputs import DEFAULT_TEST_STORY_FILE, resolve_workflow_input
 
 # ====================== HELPERS ====================== #
@@ -76,6 +78,11 @@ def parse_args() -> argparse.Namespace:
         choices=["claude", "copilot"],
         help="Agent runner to use: 'claude' (Claude Code CLI) or 'copilot' (GitHub Copilot CLI). Defaults to 'claude'.",
     )
+    parser.add_argument(
+        "--skip-materialize",
+        action="store_true",
+        help="Skip the agent materialization step (useful when agents are known to be up-to-date).",
+    )
     return parser.parse_args()
 
 # ====================== MAIN ====================== #
@@ -87,6 +94,7 @@ def main(
     ado_url: str | None = None,
     story_file: str | None = None,
     runner: str = "claude",
+    skip_materialize: bool = False,
 ):
     workflow_input = resolve_workflow_input(
         repo=repo,
@@ -106,7 +114,14 @@ def main(
     print(f"Intake source: {intake_source}")
     print(f"Runner: {runner}")
 
-    # ── Stage 1: Intake ──────────────────────────────────────────────────────
+    # ── Stage 0: Materialize agents ───────────────────────────────────────────
+    if not skip_materialize:
+        print("Materializing agents from agent-sources/...")
+        run_materialization()
+    else:
+        print("Skipping materialization (--skip-materialize).")
+
+    # ── Stage 1: Intake ───────────────────────────────────────────────────────
     result_intake = steps.step_intake(
         intake_source=intake_source,
         repo=resolved_repo,
@@ -116,13 +131,18 @@ def main(
     )
 
     # ── Stage 2: Task Generation (eval-optimizer loop) ───────────────────────
+    task_gen_input = (
+        f"Generate a task plan for change {resolved_change_id} in {resolved_repo}.\n"
+        f"Read the intake artifacts from agent-context/{resolved_change_id}/intake/.\n"
+        f"Act immediately. Do not ask questions."
+    )
     task_gen_evaluator_prompt = (
         f"Evaluate the task plan for {resolved_change_id} in {resolved_repo}. "
         f"Read agent-context/{resolved_change_id}/planning/tasks.yaml."
     )
     run_eval_optimizer_loop(
         producer_func=steps.step_task_gen_producer,
-        producer_input=result_intake,
+        producer_input=task_gen_input,
         evaluator_func=steps.step_task_gen_evaluator,
         evaluator_prompt=task_gen_evaluator_prompt,
         runner=runner,
@@ -210,4 +230,5 @@ if __name__ == "__main__":
             ado_url=args.ado_url,
             story_file=args.story_file,
             runner=args.runner,
+            skip_materialize=args.skip_materialize,
         )

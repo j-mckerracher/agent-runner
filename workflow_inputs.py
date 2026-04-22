@@ -35,6 +35,20 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def _validate_acceptance_criteria(acceptance_criteria: Any, path: Path) -> None:
+    """
+    Validate acceptance_criteria field in synthetic story fixture.
+
+    Acceptance criteria must be either:
+    - A non-empty list of non-empty strings
+    - A non-empty dict with non-empty string keys and non-empty string values
+
+    Args:
+        acceptance_criteria: The value to validate from fixture["acceptance_criteria"]
+        path: Path to the fixture file (for error messages)
+
+    Raises:
+        ValueError: If acceptance_criteria fails any validation rule
+    """
     if isinstance(acceptance_criteria, list):
         if not acceptance_criteria or not all(isinstance(item, str) and item.strip() for item in acceptance_criteria):
             raise ValueError(
@@ -63,6 +77,31 @@ def _validate_acceptance_criteria(acceptance_criteria: Any, path: Path) -> None:
 
 
 def load_story_fixture(path: str) -> dict[str, Any]:
+    """
+    Load and validate a synthetic story fixture from a JSON file.
+
+    This function performs comprehensive validation to ensure the fixture is well-formed
+    and can be used by downstream stages. It enforces the synthetic story contract:
+    1. File must exist
+    2. File must be valid JSON (dict)
+    3. Must contain required fields: title, description, acceptance_criteria
+    4. All required fields must be non-empty
+    5. acceptance_criteria must be either:
+       - A non-empty list of non-empty strings, or
+       - A non-empty dict with non-empty string keys and values
+    6. Rejects: empty lists/dicts, None values, whitespace-only strings, non-string types
+
+    Args:
+        path: Path to the JSON fixture file (may use ~ for home directory)
+
+    Returns:
+        The parsed fixture as a dict, validated to pass all checks above
+
+    Raises:
+        FileNotFoundError: If the fixture file does not exist
+        ValueError: If JSON is invalid, not a dict, missing required fields, or
+                    acceptance_criteria fails validation
+    """
     fixture_path = Path(path).expanduser().resolve()
     if not fixture_path.is_file():
         raise FileNotFoundError(f"Synthetic story fixture not found: {fixture_path}")

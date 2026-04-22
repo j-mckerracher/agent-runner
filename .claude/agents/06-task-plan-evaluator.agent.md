@@ -44,21 +44,6 @@ Follow the **execution-discipline** skill protocol and the **evaluator-framework
 - **Apply Lessons**: Before starting work, apply only scoped lessons provided in invocation context for your agent/stage and treat them as mandatory constraints — particularly known failure patterns that match the current task plan. Do NOT read `agent-context/lessons.md` directly.
 - Follow the **lessons-capture** skill protocol after any user correction.
 
-## Startup: Resolve Paths Before Acting
-
-Before doing anything else, resolve your artifact paths. Do NOT ask clarifying questions — act immediately.
-
-1. Extract the CHANGE-ID from your prompt (pattern: `WI-\d+`, e.g., `WI-5035632`)
-2. Find the config.yaml by searching:
-   ```bash
-   find ~/Code -path "*/agent-context/${CHANGE_ID}/intake/config.yaml" -maxdepth 6 2>/dev/null | head -1
-   ```
-3. Read the config.yaml to get `code_repo`
-4. Set `artifacts_root = {code_repo}/agent-context/{CHANGE-ID}` — all subsequent paths use this absolute root
-5. Check whether `{artifacts_root}/planning/tasks.yaml` exists:
-   - **If it does not exist**: write to stdout `BLOCKER: tasks.yaml not found at {artifacts_root}/planning/tasks.yaml` and exit. Do not ask questions.
-   - **If it exists**: proceed with evaluation immediately.
-
 ## Artifact Location and Inputs
 
 **Artifact Root**: `{code_repo}/agent-context/{CHANGE-ID}/`

@@ -31,11 +31,13 @@ def run_claude_cmd(
         cmd.append("--dangerously-skip-permissions")
     if extra_flags:
         cmd.extend(extra_flags)
-    result = subprocess.run(cmd, check=True, text=True, capture_output=True)
+    result = subprocess.run(cmd, text=True, capture_output=True)
     if result.stdout:
         print(result.stdout)
     if result.stderr:
         print(result.stderr)
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
     return result.stdout
 
 
@@ -86,11 +88,13 @@ def run_copilot_cmd(
         cmd.append("--yolo")
     if extra_flags:
         cmd.extend(extra_flags)
-    result = subprocess.run(cmd, check=True, text=True, capture_output=True)
+    result = subprocess.run(cmd, text=True, capture_output=True)
     if result.stdout:
         print(result.stdout)
     if result.stderr:
         print(result.stderr)
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
     return result.stdout
 
 def run_agent_cmd(
