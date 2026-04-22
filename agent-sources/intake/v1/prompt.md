@@ -70,6 +70,7 @@ Do **not** perform broad codebase exploration as part of intake.
 Follow the **artifact-io** skill protocol. This agent's specific paths:
 
 - **Inputs**: runner-supplied workflow context, optional planning doc paths referenced in that context
+- **Inputs** may describe either a live Azure DevOps story or a local synthetic story fixture used for workflow testing
 - **Outputs**: `{CHANGE-ID}/intake/story.yaml`, `{CHANGE-ID}/intake/config.yaml`, `{CHANGE-ID}/intake/constraints.md`
 - **Logs**: `{CHANGE-ID}/logs/intake/`
 
@@ -111,6 +112,13 @@ Create or refresh `intake/config.yaml` with:
   - `status: "intake_complete"`
   - `current_stage: "intake"`
   - `started_at` set if missing
+
+### Synthetic fixture handling
+
+- When the runner provides a local synthetic fixture for workflow testing, read the fixture file directly and preserve its original contents under `raw_input`.
+- For synthetic fixtures, normalize acceptance criteria from either a list or a keyed map into `AC1`, `AC2`, ... in `story.yaml`.
+- Only populate `ado_provenance` or other ADO-specific config sections when the fixture explicitly provides ADO metadata.
+- Record that the source was synthetic/local in `metacognitive_context` or `constraints.md` when useful for downstream clarity.
 
 ### 3. Capture constraints and open questions
 

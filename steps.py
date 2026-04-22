@@ -1,44 +1,75 @@
 from prefect import task, tags
-from run_cmds import run_claude_cmd
+from run_cmds import run_claude_cmd, run_agent_cmd
+
+
+def build_intake_prompt(intake_source: str, repo: str, change_id: str, intake_mode: str) -> str:
+    if not intake_source:
+        raise ValueError("intake_source cannot be empty.")
+    if intake_mode not in {"ado", "synthetic"}:
+        raise ValueError(f"Unsupported intake_mode: {intake_mode}")
+
+    if intake_mode == "ado":
+        prompt = f"Intake the following Azure DevOps story link: {intake_source}\n"
+        prompt += f"Change ID: {change_id}\n"
+        prompt += f"Target repo: {repo}\n"
+        prompt += "If intake artifacts already exist for this story, you must delete them and create new ones.\n"
+        prompt += "You MUST use the azure-devops-cli skill to interact with ADO.\n"
+        prompt += (
+            f"Normalize the result into canonical intake artifacts under agent-context/{change_id}/intake/."
+        )
+        return prompt
+
+    prompt = f"Create intake artifacts for a synthetic test story from the local fixture: {intake_source}\n"
+    prompt += f"Change ID: {change_id}\n"
+    prompt += f"Target repo: {repo}\n"
+    prompt += "This is a local workflow test scenario, not a live Azure DevOps work item.\n"
+    prompt += "Read the fixture file directly and normalize it into canonical intake artifacts.\n"
+    prompt += "If intake artifacts already exist for this story, you must delete them and create new ones.\n"
+    prompt += "Preserve the fixture contents under raw_input.\n"
+    prompt += "Do NOT require or use the azure-devops-cli skill unless the fixture explicitly includes ADO metadata.\n"
+    prompt += (
+        f"Normalize the result into canonical intake artifacts under agent-context/{change_id}/intake/."
+    )
+    return prompt
+
 
 # 1
 @task(log_prints=True, name="intake")
-def step_intake(ado_story_link: str, repo: str):
+def step_intake(intake_source: str, repo: str, change_id: str, intake_mode: str = "ado", runner: str = "claude"):
     with tags('intake-agent'):
-        if not ado_story_link:
-            raise ValueError("ADO story link cannot be empty.")
-        print(f"Received ADO story link: {ado_story_link}")
-
-        prompt = f"Intake the following story link: {ado_story_link}\n"
-        prompt += f"Target repo: {repo}\n"
-        prompt += "If intake artifacts already exist for this story, you must delete them and create new ones.\n"
-        prompt += "You MUST use the azure-devops-cli skill to interact with ADO"
-        return run_claude_cmd(prompt=prompt, agent="intake-agent")
+        print(f"Received intake source ({intake_mode}): {intake_source}")
+        prompt = build_intake_prompt(
+            intake_source=intake_source,
+            repo=repo,
+            change_id=change_id,
+            intake_mode=intake_mode,
+        )
+        return run_agent_cmd(runner=runner, prompt=prompt, agent="intake-agent")
 
 # 2
 @task(log_prints=True, name="task-gen-producer")
-def step_task_gen_producer(context: str) -> str:
-    return run_claude_cmd(prompt=context, agent="task-generator")
+def step_task_gen_producer(context: str, runner: str = "claude") -> str:
+    return run_agent_cmd(runner=runner, prompt=context, agent="task-generator")
 
 
 # 3
 @task(log_prints=True, name="task-gen-evaluator")
-def step_task_gen_evaluator(context: str) -> str:
-    return run_claude_cmd(prompt=context, agent="task-plan-evaluator")
+def step_task_gen_evaluator(context: str, runner: str = "claude") -> str:
+    return run_agent_cmd(runner=runner, prompt=context, agent="task-plan-evaluator")
 
 # 4
 @task(log_prints=True, name="task-assigner")
-def step_task_assigner(context: str) -> str:
-    return run_claude_cmd(prompt=context, agent="task-assigner")
+def step_task_assigner(context: str, runner: str = "claude") -> str:
+    return run_agent_cmd(runner=runner, prompt=context, agent="task-assigner")
 
 # 4b
 @task(log_prints=True, name="assignment-evaluator")
-def step_assignment_evaluator(context: str) -> str:
-    return run_claude_cmd(prompt=context, agent="assignment-evaluator")
+def step_assignment_evaluator(context: str, runner: str = "claude") -> str:
+    return run_agent_cmd(runner=runner, prompt=context, agent="assignment-evaluator")
 
 # 5
 @task(log_prints=True, name="software-engineer")
-def step_software_engineer(uow_id: str, change_id: str, repo: str, evaluator_feedback: str = "") -> str:
+def step_software_engineer(uow_id: str, change_id: str, repo: str, evaluator_feedback: str = "", runner: str = "claude") -> str:
     prompt = (
         f"Implement UoW {uow_id} for change {change_id}.\n"
         f"Read the UoW spec from agent-context/{change_id}/execution/{uow_id}/uow_spec.yaml.\n"
@@ -49,32 +80,32 @@ def step_software_engineer(uow_id: str, change_id: str, repo: str, evaluator_fee
             f"\n\n## Evaluator Issues to Fix:\n{evaluator_feedback}\n\n"
             f"Address every issue listed above. Do not ask questions — act immediately."
         )
-    return run_claude_cmd(prompt=prompt, agent="software-engineer-hyperagent")
+    return run_agent_cmd(runner=runner, prompt=prompt, agent="software-engineer-hyperagent")
 
 # 6
 @task(log_prints=True, name="software-engineer-evaluator")
-def step_software_engineer_evaluator(uow_id: str, change_id: str, repo: str) -> str:
+def step_software_engineer_evaluator(uow_id: str, change_id: str, repo: str, runner: str = "claude") -> str:
     prompt = (
         f"Evaluate the implementation of UoW {uow_id} for change {change_id}.\n"
         f"Read the implementation report from agent-context/{change_id}/execution/{uow_id}/impl_report.yaml.\n"
         f"Read the UoW spec from agent-context/{change_id}/execution/{uow_id}/uow_spec.yaml.\n"
         f"Target repo: {repo}\n"
     )
-    return run_claude_cmd(prompt=prompt, agent="implementation-evaluator")
+    return run_agent_cmd(runner=runner, prompt=prompt, agent="implementation-evaluator")
 
 # 7
 @task(log_prints=True, name="qa-engineer")
-def step_qa_engineer(context: str) -> str:
-    return run_claude_cmd(prompt=context, agent="qa-engineer")
+def step_qa_engineer(context: str, runner: str = "claude") -> str:
+    return run_agent_cmd(runner=runner, prompt=context, agent="qa-engineer")
 
 # 8
 @task(log_prints=True, name="qa-evaluator")
-def step_qa_evaluator(context: str) -> str:
-    return run_claude_cmd(prompt=context, agent="qa-evaluator")
+def step_qa_evaluator(context: str, runner: str = "claude") -> str:
+    return run_agent_cmd(runner=runner, prompt=context, agent="qa-evaluator")
 
 # 9
 @task(log_prints=True, name="lessons-optimizer")
-def step_lessons_optimizer(change_id: str, repo: str) -> str:
+def step_lessons_optimizer(change_id: str, repo: str, runner: str = "claude") -> str:
     prompt = (
         f"Run the end-of-workflow lessons optimization for change {change_id}.\n"
         f"Read agent-context/lessons.md for recorded lessons.\n"
@@ -83,4 +114,4 @@ def step_lessons_optimizer(change_id: str, repo: str) -> str:
         f"Write your report to agent-context/{change_id}/summary/lessons_optimizer_report.yaml.\n"
         f"Act immediately. Do not ask questions."
     )
-    return run_claude_cmd(prompt=prompt, agent="lessons-optimizer-hyperagent")
+    return run_agent_cmd(runner=runner, prompt=prompt, agent="lessons-optimizer-hyperagent")

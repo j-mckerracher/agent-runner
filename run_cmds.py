@@ -93,6 +93,21 @@ def run_copilot_cmd(
         print(result.stderr)
     return result.stdout
 
+def run_agent_cmd(
+    runner: str,
+    prompt: str,
+    agent: str,
+    **kwargs,
+) -> str:
+    """Dispatch to run_claude_cmd or run_copilot_cmd based on runner."""
+    if runner == "copilot":
+        return run_copilot_cmd(prompt=prompt, agent=agent, **kwargs)
+    elif runner == "claude":
+        return run_claude_cmd(prompt=prompt, agent=agent, **kwargs)
+    else:
+        raise ValueError(f"Unknown runner: {runner!r}. Must be 'claude' or 'copilot'.")
+
+
 @task(log_prints=True, name="run-copilot")
 def run_copilot(
     prompt: str,

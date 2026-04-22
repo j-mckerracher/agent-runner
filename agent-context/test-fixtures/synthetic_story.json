@@ -1,0 +1,28 @@
+{
+  "change_id": "TEST-AC-001",
+  "title": "Synthetic workflow smoke test story",
+  "description": "Use this local story fixture to validate the agent workflow without connecting to Azure DevOps. The scenario is intentionally small and deterministic so intake, planning, assignment, implementation, and QA can operate against a stable input.",
+  "acceptance_criteria": [
+    "The workflow can start from a local synthetic story fixture instead of a live Azure DevOps work item link.",
+    "The intake stage preserves the raw synthetic story input and normalizes acceptance criteria into the canonical intake artifacts consumed by downstream stages.",
+    "ADO-specific actions are skipped when the synthetic story does not provide Azure DevOps metadata."
+  ],
+  "examples": [
+    "Run the workflow locally with --story-file agent-context/test-fixtures/synthetic_story.json.",
+    "Use the generated intake artifacts to verify task generation and assignment work without Azure connectivity."
+  ],
+  "constraints": [
+    "This story exists only for workflow testing.",
+    "Keep any code changes minimal and easy to verify.",
+    "Do not require Azure CLI or Azure DevOps access for this scenario."
+  ],
+  "non_functional_requirements": [
+    "The synthetic workflow path should fail fast on malformed fixture input.",
+    "The synthetic workflow path should remain compatible with existing downstream intake artifacts."
+  ],
+  "raw_input_notes": {
+    "purpose": "Local end-to-end workflow testing",
+    "owner": "agent-runner"
+  }
+}
+

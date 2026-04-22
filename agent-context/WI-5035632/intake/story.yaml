@@ -1,0 +1,75 @@
+change_id: "WI-5035632"
+title: "Navigating away from page through menu"
+description: |
+  As a user, I need the unsaved items dialog box to show if I navigate away using the menu.
+
+  When the page state is altered with unsaved changes, navigating away via menu should trigger
+  the unsaved changes dialog to prevent accidental data loss.
+
+acceptance_criteria:
+  AC1: "When the page is altered and has unsaved changes, navigating away from the page using the menu displays an unsaved changes dialog"
+  AC2: "The dialog prompts the user to either save changes, discard changes, or cancel navigation"
+  AC3: "Dialog appears for all menu-based navigation (not just specific routes)"
+
+examples:
+  - "User fills in a form field, then clicks a menu link to navigate away - dialog appears"
+  - "User makes multiple edits across fields, clicks menu navigation - dialog appears"
+  - "User navigates away from menu without changes - dialog does not appear"
+
+constraints:
+  - scope: "Specimen Accessioning application"
+  - area_path: "Mayo Collaborative Services\\PEaRLS\\Specimen Accessioning"
+  - iteration: "Mayo Collaborative Services\\2026 Q2\\Sprint 2"
+  - story_points: 3
+  - priority: 4
+  - work_item_type: "User Story"
+  - state: "Active"
+  - created_date: "2026-04-15"
+  - assigned_to: "McKerracher, Josh S."
+  - parent_work_item: 5002349
+
+non_functional_requirements:
+  - "Dialog should appear within 100ms of menu click"
+  - "No impact on existing unsaved changes functionality"
+  - "Consistent UX with current dialog styling"
+
+raw_input:
+  ado_work_item_id: 5035632
+  ado_url: "https://dev.azure.com/mclm/Mayo%20Collaborative%20Services/_workitems/edit/5035632"
+  project: "Mayo Collaborative Services"
+  organization: "mclm"
+
+ado_provenance:
+  work_item_id: 5035632
+  work_item_type: "User Story"
+  state: "Active"
+  board_column: "Active"
+  created_date: "2026-04-15T18:31:06.28Z"
+  created_by: "Kosiorek, Derek J."
+  assigned_to: "McKerracher, Josh S."
+  area_path: "Mayo Collaborative Services\\PEaRLS\\Specimen Accessioning"
+  iteration_path: "Mayo Collaborative Services\\2026 Q2\\Sprint 2"
+  business_priority: 4
+  story_points: 3
+  value_area: "Business"
+  revision: 16
+  relations:
+    parent_id: 5002349
+    child_ids:
+      - 5039213
+      - 5039219
+      - 5039216
+      - 5039217
+      - 5039218
+      - 5039212
+      - 5039215
+      - 5039214
+      - 5039220
+    pull_request_id: 466118
+
+planning_docs: []
+
+metacognitive_context:
+  rationale: "This is a user-facing feature for the Specimen Accessioning application within the PEaRLS system"
+  known_gaps: []
+  source: "Direct Azure DevOps work item integration via azure-devops-cli"

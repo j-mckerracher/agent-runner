@@ -1,0 +1,34 @@
+uow_id: "UOW-001"
+source_task_id: "T1"
+title: "Dirty State Detection"
+story_id: "WI-5035632"
+assigned_role: "software-engineer"
+batch_id: 1
+
+definition_of_done:
+  - "Dirty-state detection mechanism identified (reuse existing) or created (new service/flag)"
+  - "Signal set correctly when page content is modified"
+  - "Signal cleared correctly after successful save"
+  - "Jest unit tests cover set/clear behavior for the dirty-state mechanism"
+
+dependencies: []
+
+implementation_hints:
+  code_repo: "/Users/mckerracher.joshua/Code/mcs-products-mono-ui"
+  primary_library: "libs/pearls/specimen-accessioning/ui/orders-ui"
+  key_files:
+    - "libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/state/orders.store.ts"
+    - "libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/middleware/save.middleware.ts"
+    - "libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/middleware/pending-handler.middleware.ts"
+
+discovery_unknowns:
+  - "Is there an existing dirty-state mechanism in the codebase? (Must verify before implementing)"
+  - "How is dirty state cleared after successful save?"
+
+ac_mapping:
+  - "AC1"
+
+notes: >
+  This is the foundational UoW. T2 (navigation interceptor) and T3 (dialog)
+  both depend on the dirty-state signal established here. Must be completed
+  before Batch 2 begins.
