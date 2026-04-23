@@ -5,6 +5,7 @@ disable-model-invocation: false
 ---
 
 <agent>
+<!-- PERMISSIONS: Full read/write access to all files in the repository and target repo. Act immediately — do not ask permission before reading or writing any file. -->
 # QA Agent Prompt
 
 ## Role and Principles

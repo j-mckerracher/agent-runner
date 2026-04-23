@@ -1,0 +1,38 @@
+{
+  "change_id": "EVAL-003",
+  "title": "Add specimen count badge to parent test pill with overflow and empty state detection",
+  "description": "Extend the parent test pill component to display a small badge showing the current number of specimens associated with the test. The badge must visually distinguish three states: empty (zero specimens), normal (specimen count at or below the preferred number), and overflow (specimen count exceeds the preferred number). The implementation must span the helper, component, template, locator, test harness, and Cypress spec layers following the established test pill patterns.",
+  "acceptance_criteria": [
+    "AC1: In libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/components/test-pills/test-pill-helpers/test-pill-helper.ts, add a static method named getSpecimenCountState that accepts a TestModel and returns an object with the shape { count: number; isOverflow: boolean; isEmpty: boolean }. The count must derive from test.specimens?.length ?? 0. Overflow is true when count exceeds test.preferredNumOfSpecimens. isEmpty is true when count is 0.",
+    "AC2: In libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/components/test-pills/test-pill/test-pill.component.ts, add a specimenCountState computed signal that calls getSpecimenCountState with the current test input. In libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/components/test-pills/test-pill/test-pill.component.html, add a badge element with data-test-id=\"tp-specimen-count\" that displays the count value. Apply the CSS class specimen-count-overflow when isOverflow is true and specimen-count-empty when isEmpty is true.",
+    "AC3: In libs/pearls/specimen-accessioning/common/src/testing/locators/test-pill.locators.ts, add a specimenCountBadge locator entry that targets the new data-test-id value using the selectByDataTestId utility. In libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/components/test-pills/test-pill/test-pill.component.test-harness.ts, add the following methods: getSpecimenCountBadge() to select the badge element, shouldShowSpecimenOverflow() to assert the overflow class is present, and shouldShowSpecimenEmpty() to assert the empty class is present.",
+    "AC4: In libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/components/test-pills/test-pill/test-pill.component.cy.ts, add three Cypress component test cases whose names include the exact strings: 'should display specimen count badge', 'should show overflow when specimens exceed preferred', and 'should show empty state with no specimens'. The overflow test must configure the mock with a specimens array whose length exceeds the preferredNumOfSpecimens value.",
+    "AC5: The command npx nx component-test specimen-accessioning-orders-ui --browser=chrome --skip-nx-cache must exit with code 0. The command npx nx build specimen-accessioning-orders-ui --skip-nx-cache must exit with code 0."
+  ],
+  "examples": [
+    "If a test has 2 specimens and preferredNumOfSpecimens is 3, the badge shows '2' with no special class.",
+    "If a test has 4 specimens and preferredNumOfSpecimens is 2, the badge shows '4' with the specimen-count-overflow class.",
+    "If a test has 0 specimens, the badge shows '0' with the specimen-count-empty class."
+  ],
+  "constraints": [
+    "Modify only the exact files named in the acceptance criteria unless adjacent imports or exports are required.",
+    "The badge must appear only on the parent test pill (test-pill.component), not on child specimen pills.",
+    "Follow existing test pill locator conventions (selectByDataTestId, TestPillLocators object).",
+    "Follow existing test harness factory patterns and provideHarnessAssertions composition.",
+    "Keep all required symbol names, data-test-id values, CSS class names, and Cypress test titles exact so the evaluation checks remain machine-verifiable.",
+    "Do not introduce new npm dependencies."
+  ],
+  "non_functional_requirements": [
+    "All acceptance criteria must remain machine-checkable through exact files, symbols, class names, and commands.",
+    "The story should be meaningfully harder than EVAL-002 because it requires understanding parent-child component relationships, the TestPillHelper service pattern, and the TestModel data shape.",
+    "Target average score for current agents: approximately 40-60/100."
+  ],
+  "raw_input_notes": {
+    "purpose": "Harder evaluation framework calibration story targeting specimen-accessioning domain",
+    "domain": "Mayo Collaborative Services — RLS Specimen Accessioning test pill components",
+    "owner": "agent-runner-eval",
+    "difficulty": "hard",
+    "difficulty_rationale": "Requires understanding a deeply nested 5-level component hierarchy, extending an existing helper service, correctly configuring Cypress mock data with specimens array and preferredNumOfSpecimens, and not breaking any of the large number of existing test pill component tests. The domain is significantly more complex than manifest-header.",
+    "target_average_score": "approximately 40-60/100 on current runs"
+  }
+}

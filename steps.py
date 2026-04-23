@@ -1,7 +1,15 @@
+import re
+
 import opik
 from prefect import task, tags
 from run_cmds import run_claude_cmd, run_agent_cmd
 from opik_integration import call_evaluator_sdk
+
+
+def _extract_change_id(context: str) -> str:
+    """Parse change_id from a context string that references agent-context paths."""
+    match = re.search(r"agent-context/([\w\-]+)/", context)
+    return match.group(1) if match else ""
 
 
 def build_intake_prompt(intake_source: str, repo: str, change_id: str, intake_mode: str) -> str:
@@ -48,6 +56,7 @@ def step_intake(intake_source: str, repo: str, change_id: str, intake_mode: str 
         )
         with opik.start_as_current_trace("intake", project_name="agent-runner") as trace:
             trace.input = {"intake_source": intake_source, "change_id": change_id, "intake_mode": intake_mode}
+            trace.thread_id = change_id
             result = run_agent_cmd(runner=runner, prompt=prompt, agent="intake-agent")
             trace.output = {"stdout_preview": result[:2000]}
         return result
@@ -58,6 +67,7 @@ def step_intake(intake_source: str, repo: str, change_id: str, intake_mode: str 
 def step_task_gen_producer(context: str, runner: str = "claude") -> str:
     with opik.start_as_current_trace("task-gen-producer", project_name="agent-runner") as trace:
         trace.input = {"context": context}
+        trace.thread_id = _extract_change_id(context)
         result = run_agent_cmd(runner=runner, prompt=context, agent="task-generator")
         trace.output = {"stdout_preview": result[:2000]}
     return result
@@ -68,7 +78,13 @@ def step_task_gen_producer(context: str, runner: str = "claude") -> str:
 def step_task_gen_evaluator(context: str, runner: str = "claude") -> str:
     with opik.start_as_current_trace("task-gen-evaluator", project_name="agent-runner") as trace:
         trace.input = {"context": context}
+        trace.thread_id = _extract_change_id(context)
         result = call_evaluator_sdk(context, "task-plan-evaluator")
+        passed = "PASS" in result
+        opik.opik_context.update_current_trace(
+            feedback_scores=[{"name": "evaluator_pass", "value": 1.0 if passed else 0.0}],
+            metadata={"evaluator": "task-plan-evaluator", "passed": passed},
+        )
         trace.output = {"result": result}
     return result
 
@@ -78,6 +94,7 @@ def step_task_gen_evaluator(context: str, runner: str = "claude") -> str:
 def step_task_assigner(context: str, runner: str = "claude") -> str:
     with opik.start_as_current_trace("task-assigner", project_name="agent-runner") as trace:
         trace.input = {"context": context}
+        trace.thread_id = _extract_change_id(context)
         result = run_agent_cmd(runner=runner, prompt=context, agent="task-assigner")
         trace.output = {"stdout_preview": result[:2000]}
     return result
@@ -88,7 +105,13 @@ def step_task_assigner(context: str, runner: str = "claude") -> str:
 def step_assignment_evaluator(context: str, runner: str = "claude") -> str:
     with opik.start_as_current_trace("assignment-evaluator", project_name="agent-runner") as trace:
         trace.input = {"context": context}
+        trace.thread_id = _extract_change_id(context)
         result = call_evaluator_sdk(context, "assignment-evaluator")
+        passed = "PASS" in result
+        opik.opik_context.update_current_trace(
+            feedback_scores=[{"name": "evaluator_pass", "value": 1.0 if passed else 0.0}],
+            metadata={"evaluator": "assignment-evaluator", "passed": passed},
+        )
         trace.output = {"result": result}
     return result
 
@@ -108,6 +131,7 @@ def step_software_engineer(uow_id: str, change_id: str, repo: str, evaluator_fee
         )
     with opik.start_as_current_trace("software-engineer", project_name="agent-runner") as trace:
         trace.input = {"uow_id": uow_id, "change_id": change_id, "has_feedback": bool(evaluator_feedback)}
+        trace.thread_id = change_id
         result = run_agent_cmd(runner=runner, prompt=prompt, agent="software-engineer-hyperagent")
         trace.output = {"stdout_preview": result[:2000]}
     return result
@@ -124,7 +148,13 @@ def step_software_engineer_evaluator(uow_id: str, change_id: str, repo: str, run
     )
     with opik.start_as_current_trace("implementation-evaluator", project_name="agent-runner") as trace:
         trace.input = {"uow_id": uow_id, "change_id": change_id}
+        trace.thread_id = change_id
         result = call_evaluator_sdk(context, "implementation-evaluator")
+        passed = "PASS" in result
+        opik.opik_context.update_current_trace(
+            feedback_scores=[{"name": "evaluator_pass", "value": 1.0 if passed else 0.0}],
+            metadata={"evaluator": "implementation-evaluator", "uow_id": uow_id, "passed": passed},
+        )
         trace.output = {"result": result}
     return result
 
@@ -134,6 +164,7 @@ def step_software_engineer_evaluator(uow_id: str, change_id: str, repo: str, run
 def step_qa_engineer(context: str, runner: str = "claude") -> str:
     with opik.start_as_current_trace("qa-engineer", project_name="agent-runner") as trace:
         trace.input = {"context": context}
+        trace.thread_id = _extract_change_id(context)
         result = run_agent_cmd(runner=runner, prompt=context, agent="qa-engineer")
         trace.output = {"stdout_preview": result[:2000]}
     return result
@@ -144,7 +175,13 @@ def step_qa_engineer(context: str, runner: str = "claude") -> str:
 def step_qa_evaluator(context: str, runner: str = "claude") -> str:
     with opik.start_as_current_trace("qa-evaluator", project_name="agent-runner") as trace:
         trace.input = {"context": context}
+        trace.thread_id = _extract_change_id(context)
         result = call_evaluator_sdk(context, "qa-evaluator")
+        passed = "PASS" in result
+        opik.opik_context.update_current_trace(
+            feedback_scores=[{"name": "evaluator_pass", "value": 1.0 if passed else 0.0}],
+            metadata={"evaluator": "qa-evaluator", "passed": passed},
+        )
         trace.output = {"result": result}
     return result
 
@@ -162,6 +199,7 @@ def step_lessons_optimizer(change_id: str, repo: str, runner: str = "claude") ->
     )
     with opik.start_as_current_trace("lessons-optimizer", project_name="agent-runner") as trace:
         trace.input = {"change_id": change_id, "repo": repo}
+        trace.thread_id = change_id
         result = run_agent_cmd(runner=runner, prompt=prompt, agent="lessons-optimizer-hyperagent")
         trace.output = {"stdout_preview": result[:2000]}
     return result

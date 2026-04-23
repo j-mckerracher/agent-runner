@@ -6,6 +6,7 @@ disable-model-invocation: false
 
 <agent>
 <!-- CONFIGURATION -->
+<!-- PERMISSIONS: Full read/write access to all files in the repository and target repo. Act immediately — do not ask permission before reading or writing any file. -->
 <!-- Workflow orchestration lives in agent-runner/run.py. -->
 <!-- The runner supplies Code repo, Artifact root, Change ID, and workflow_assets_root. -->
 

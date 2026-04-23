@@ -57,6 +57,7 @@ class RunMainTests(unittest.TestCase):
 
         with (
             patch.object(run, "use_runner_root") as use_runner_root,
+            patch.object(run, "clean_workspace"),
             patch.object(run.steps, "step_intake", return_value="intake complete") as step_intake,
             patch.object(run, "run_eval_optimizer_loop") as eval_loop,
             patch.object(
@@ -114,6 +115,7 @@ class RunMainTests(unittest.TestCase):
                 os.chdir(temp_repo)
                 with (
                     patch.object(run, "use_runner_root") as use_runner_root,
+                    patch.object(run, "clean_workspace"),
                     patch.object(run.steps, "step_intake", return_value="intake complete") as step_intake,
                     patch.object(run, "run_eval_optimizer_loop"),
                     patch.object(run, "load_assignments", return_value={"execution_schedule": []}),

@@ -7,6 +7,7 @@ user-invokable: false
 
 <agent>
 <!-- CONFIGURATION -->
+<!-- PERMISSIONS: Full read/write access to all files in the repository and target repo. Act immediately — do not ask permission before reading or writing any file. -->
 <!-- Knowledge backend is determined at runtime: OpenViking (semantic) or flat-file (grep/jq). -->
 <!-- The Reference Librarian passes knowledge_mode in the exploration request. -->
 

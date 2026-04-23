@@ -1,6 +1,8 @@
 import argparse
 import json
 import os
+import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 from prefect import flow, tags
@@ -23,6 +25,35 @@ def get_time():
 
 def use_runner_root() -> None:
     os.chdir(RUNNER_ROOT)
+
+
+def clean_workspace(change_id: str) -> None:
+    """Remove stale agent-context directories for this change_id before the pipeline starts.
+
+    Removes:
+      - agent-context/{change_id}/ (ensures a fresh start)
+      - agent-context/{base}-RUN-*/ (stale multi-run artifacts from previous runs)
+        Only when change_id is a bare ID (not already a -RUN-NN variant), to avoid
+        interfering with concurrent isolated multi-run evaluations.
+    """
+    if not AGENT_CONTEXT_ROOT.is_dir():
+        return
+
+    base = re.sub(r"-RUN-\d+$", "", change_id)
+    is_isolated_run = base != change_id
+
+    target = AGENT_CONTEXT_ROOT / change_id
+    if target.is_dir():
+        print(f"[cleanup] Removing stale workspace: {target.name}")
+        shutil.rmtree(target)
+
+    if not is_isolated_run:
+        pattern = re.compile(rf"^{re.escape(base)}-RUN-\d+$")
+        for entry in AGENT_CONTEXT_ROOT.iterdir():
+            if entry.is_dir() and pattern.match(entry.name):
+                print(f"[cleanup] Removing stale multi-run workspace: {entry.name}")
+                shutil.rmtree(entry)
+
 
 def load_assignments(change_id: str) -> dict:
     """Read assignments.json produced by the task-assigner."""
@@ -107,6 +138,8 @@ def main(
     resolved_change_id = workflow_input.change_id
     intake_mode = workflow_input.intake_mode
     intake_source = workflow_input.intake_source
+
+    clean_workspace(resolved_change_id)
 
     print(f"Running workflow for {resolved_change_id}")
     print(f"Target repo: {resolved_repo}")
