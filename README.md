@@ -448,7 +448,8 @@ python run.py --help
 Output:
 ```
 usage: run.py [-h] [--repo REPO] [--change-id CHANGE_ID] [--ado-url ADO_URL]
-              [--story-file STORY_FILE] [--runner {claude,copilot}]
+              [--story-file STORY_FILE] [--runner {claude,copilot,gemini}]
+              [--gemini-model {gemini-3-pro-preview,gemini-3-flash-preview,gemini-2.5-pro,gemini-2.5-flash}]
 
 Run the agent workflow against either a live ADO story or a local synthetic story fixture.
 
@@ -461,8 +462,10 @@ optional arguments:
   --story-file STORY_FILE
                         Path to a synthetic story fixture JSON file for local testing. Defaults to agent-context/test-fixtures/synthetic_story.json
                         when neither --ado-url nor --story-file is provided.
-  --runner {claude,copilot}
-                        Agent runner to use: 'claude' (Claude Code CLI) or 'copilot' (GitHub Copilot CLI). Defaults to 'claude'.
+  --runner {claude,copilot,gemini}
+                        Agent runner to use: 'claude' (Claude Code CLI), 'copilot' (GitHub Copilot CLI), or 'gemini' (Gemini CLI). Defaults to 'claude'.
+  --gemini-model {gemini-3-pro-preview,gemini-3-flash-preview,gemini-2.5-pro,gemini-2.5-flash}
+                        Gemini model to use when --runner gemini. Defaults to 'gemini-2.5-flash'.
 ```
 
 ---

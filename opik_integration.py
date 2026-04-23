@@ -26,36 +26,12 @@ truststore.inject_into_ssl()
 import anthropic
 import httpx
 import opik
+from agent_prompts import load_agent_system_prompt
 
 RUNNER_ROOT = Path(__file__).resolve().parent
-AGENTS_DIR = RUNNER_ROOT / ".claude" / "agents"
 
 # Set project name default before any Opik decorator fires.
 os.environ.setdefault("OPIK_PROJECT_NAME", "agent-runner")
-
-
-# ---------------------------------------------------------------------------
-# Agent system-prompt loader
-# ---------------------------------------------------------------------------
-
-def load_agent_system_prompt(agent_name: str) -> str:
-    """
-    Find .claude/agents/*{agent_name}*.agent.md and return its body as a
-    plain-text system prompt, with frontmatter, <agent> wrapper tags, and
-    HTML comments stripped.
-
-    Raises FileNotFoundError if no matching agent file is found.
-    """
-    matches = sorted(AGENTS_DIR.glob(f"*{agent_name}*.agent.md"))
-    if not matches:
-        raise FileNotFoundError(
-            f"No agent file found for '{agent_name}' in {AGENTS_DIR}"
-        )
-    content = matches[0].read_text(encoding="utf-8")
-    content = re.sub(r"^---.*?---\s*", "", content, flags=re.DOTALL)   # strip YAML frontmatter
-    content = re.sub(r"</?agent>", "", content)                         # strip <agent> tags
-    content = re.sub(r"<!--.*?-->", "", content, flags=re.DOTALL)       # strip HTML comments
-    return content.strip()
 
 
 # ---------------------------------------------------------------------------

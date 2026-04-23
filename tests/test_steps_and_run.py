@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import tempfile
 import unittest
 import yaml
@@ -47,6 +48,31 @@ class IntakePromptTests(unittest.TestCase):
 
 
 class RunMainTests(unittest.TestCase):
+    def test_parse_args_accepts_gemini_runner(self):
+        with patch.object(sys, "argv", ["run.py", "--repo", "/tmp/target-repo", "--runner", "gemini"]):
+            args = run.parse_args()
+
+        self.assertEqual(args.runner, "gemini")
+        self.assertEqual(args.gemini_model, "gemini-2.5-flash")
+
+    def test_parse_args_accepts_explicit_gemini_model(self):
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "run.py",
+                "--repo",
+                "/tmp/target-repo",
+                "--runner",
+                "gemini",
+                "--gemini-model",
+                "gemini-3-pro-preview",
+            ],
+        ):
+            args = run.parse_args()
+
+        self.assertEqual(args.gemini_model, "gemini-3-pro-preview")
+
     def test_main_defaults_to_bundled_synthetic_fixture(self):
         fake_parallel_future_1 = Mock()
         fake_parallel_future_2 = Mock()
@@ -132,6 +158,37 @@ class RunMainTests(unittest.TestCase):
         self.assertEqual(os.path.realpath(step_kwargs["repo"]), os.path.realpath(temp_repo))
         self.assertEqual(step_kwargs["change_id"], "TEST-AC-001")
         self.assertEqual(step_kwargs["intake_mode"], "synthetic")
+
+    def test_main_passes_gemini_runner_through_all_stages(self):
+        with (
+            patch.object(run, "use_runner_root"),
+            patch.object(run, "clean_workspace"),
+            patch.object(run.steps, "step_intake", return_value="intake complete") as step_intake,
+            patch.object(run, "run_eval_optimizer_loop") as eval_loop,
+            patch.object(run, "load_assignments", return_value={"execution_schedule": []}),
+            patch.object(run, "run_uow_eval_loop"),
+            patch.object(run.steps, "step_lessons_optimizer") as lessons_optimizer,
+        ):
+            run.main.fn(repo="/tmp/target-repo", runner="gemini", gemini_model="gemini-3-pro-preview")
+
+        step_intake.assert_called_once_with(
+            intake_source=str(DEFAULT_TEST_STORY_FILE),
+            repo="/tmp/target-repo",
+            change_id="TEST-AC-001",
+            intake_mode="synthetic",
+            runner="gemini",
+            runner_model="gemini-3-pro-preview",
+        )
+        self.assertEqual(eval_loop.call_count, 3)
+        for call in eval_loop.call_args_list:
+            self.assertEqual(call.kwargs["runner"], "gemini")
+            self.assertEqual(call.kwargs["runner_model"], "gemini-3-pro-preview")
+        lessons_optimizer.assert_called_once_with(
+            change_id="TEST-AC-001",
+            repo="/tmp/target-repo",
+            runner="gemini",
+            runner_model="gemini-3-pro-preview",
+        )
 
 
 class FullSyntheticWorkflowIntegrationTests(unittest.TestCase):
@@ -796,6 +853,4 @@ class FullSyntheticWorkflowIntegrationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
 

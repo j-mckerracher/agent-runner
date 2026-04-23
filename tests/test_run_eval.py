@@ -39,6 +39,7 @@ class RunEvalTests(unittest.TestCase):
             "change_id": "EVAL-001",
             "mono_root": "/tmp/mono",
             "runner": "claude",
+            "gemini_model": "gemini-2.5-flash",
             "runs": 1,
             "max_concurrent": 1,
             "testing_branch": run_eval.DEFAULT_TESTING_BRANCH,
@@ -128,7 +129,41 @@ class RunEvalTests(unittest.TestCase):
         with self.assertRaises(argparse.ArgumentTypeError):
             run_eval._positive_int("0")
 
+    def test_run_pipeline_passes_gemini_runner_to_run_py(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            story_path = Path(temp_dir) / "story.json"
+            story_path.write_text(
+                json.dumps(
+                    {
+                        "change_id": "EVAL-001",
+                        "title": "Example",
+                        "description": "Example story",
+                        "acceptance_criteria": ["AC1"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(run_eval.subprocess, "run", return_value=argparse.Namespace(returncode=0)) as run_subprocess:
+                exit_code = run_eval._run_pipeline(
+                    change_id="EVAL-001",
+                    mono_root="/tmp/mono",
+                    runner="gemini",
+                    skip_materialize=False,
+                    gemini_model="gemini-3-pro-preview",
+                    story_path=story_path,
+                )
+
+        self.assertEqual(exit_code, 0)
+        called_cmd = run_subprocess.call_args.args[0]
+        self.assertEqual(called_cmd[0], run_eval.sys.executable)
+        self.assertIn("--runner", called_cmd)
+        runner_index = called_cmd.index("--runner")
+        self.assertEqual(called_cmd[runner_index + 1], "gemini")
+        self.assertIn("--gemini-model", called_cmd)
+        model_index = called_cmd.index("--gemini-model")
+        self.assertEqual(called_cmd[model_index + 1], "gemini-3-pro-preview")
+
 
 if __name__ == "__main__":
     unittest.main()
-

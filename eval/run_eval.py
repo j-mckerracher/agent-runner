@@ -54,6 +54,7 @@ from opik.evaluation import evaluate  # noqa: E402
 
 from eval.metrics import VerificationCheckMetric  # noqa: E402
 from eval.story_checks import run_story_checks  # noqa: E402
+from runner_models import DEFAULT_GEMINI_MODEL, GEMINI_MODEL_CHOICES  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +198,7 @@ def _run_pipeline(
     mono_root: str,
     runner: str,
     skip_materialize: bool,
+    gemini_model: str,
     story_path: Path | None = None,
 ) -> int:
     """Invoke run.py as a subprocess and return its exit code."""
@@ -210,6 +212,8 @@ def _run_pipeline(
         "--repo", mono_root,
         "--runner", runner,
     ]
+    if runner == "gemini":
+        cmd.extend(["--gemini-model", gemini_model])
     if skip_materialize:
         cmd.append("--skip-materialize")
 
@@ -387,6 +391,7 @@ def _execute_evaluation(
     story: dict,
     mono_root: str,
     runner: str,
+    gemini_model: str,
     testing_branch: str,
     experiment_name: str,
     skip_pipeline: bool,
@@ -406,6 +411,7 @@ def _execute_evaluation(
             mono_root=mono_root,
             runner=runner,
             skip_materialize=skip_materialize,
+            gemini_model=gemini_model,
             story_path=story_path,
         )
 
@@ -466,6 +472,7 @@ def _run_single_evaluation(args: argparse.Namespace, story: dict, story_path: Pa
             story=story,
             mono_root=mono_root,
             runner=args.runner,
+            gemini_model=args.gemini_model,
             testing_branch=args.testing_branch,
             experiment_name=_experiment_name_for_run(args.experiment_name, args.change_id, 1, 1),
             skip_pipeline=args.skip_pipeline,
@@ -499,6 +506,7 @@ def _run_isolated_evaluation(args: argparse.Namespace, story: dict, story_path: 
             story=story,
             mono_root=str(worktree_path),
             runner=args.runner,
+            gemini_model=args.gemini_model,
             testing_branch=args.testing_branch,
             experiment_name=_experiment_name_for_run(args.experiment_name, args.change_id, run_index, args.runs),
             skip_pipeline=args.skip_pipeline,
@@ -569,8 +577,17 @@ def main() -> None:
     parser.add_argument(
         "--runner",
         default="claude",
-        choices=["claude", "copilot"],
-        help="Agent runner passed to run.py (default: claude).",
+        choices=["claude", "copilot", "gemini"],
+        help="Agent runner passed to run.py: claude, copilot, or gemini (default: claude).",
+    )
+    parser.add_argument(
+        "--gemini-model",
+        default=DEFAULT_GEMINI_MODEL,
+        choices=GEMINI_MODEL_CHOICES,
+        help=(
+            "Gemini model passed to run.py when --runner gemini. "
+            f"Defaults to '{DEFAULT_GEMINI_MODEL}'."
+        ),
     )
     parser.add_argument(
         "--runs",

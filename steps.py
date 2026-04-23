@@ -4,6 +4,11 @@ import opik
 from prefect import task, tags
 from run_cmds import run_claude_cmd, run_agent_cmd
 from opik_integration import call_evaluator_sdk
+from runner_models import DEFAULT_GEMINI_MODEL
+
+
+def _agent_runner_kwargs(runner_model: str | None) -> dict[str, str]:
+    return {"runner_model": runner_model} if runner_model is not None else {}
 
 
 def _extract_change_id(context: str) -> str:
@@ -45,7 +50,14 @@ def build_intake_prompt(intake_source: str, repo: str, change_id: str, intake_mo
 
 # 1
 @task(log_prints=True, name="intake")
-def step_intake(intake_source: str, repo: str, change_id: str, intake_mode: str = "ado", runner: str = "claude"):
+def step_intake(
+    intake_source: str,
+    repo: str,
+    change_id: str,
+    intake_mode: str = "ado",
+    runner: str = "claude",
+    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+):
     with tags('intake-agent'):
         print(f"Received intake source ({intake_mode}): {intake_source}")
         prompt = build_intake_prompt(
@@ -57,25 +69,43 @@ def step_intake(intake_source: str, repo: str, change_id: str, intake_mode: str 
         with opik.start_as_current_trace("intake", project_name="agent-runner") as trace:
             trace.input = {"intake_source": intake_source, "change_id": change_id, "intake_mode": intake_mode}
             trace.thread_id = change_id
-            result = run_agent_cmd(runner=runner, prompt=prompt, agent="intake-agent")
+            result = run_agent_cmd(
+                runner=runner,
+                prompt=prompt,
+                agent="intake-agent",
+                **_agent_runner_kwargs(runner_model),
+            )
             trace.output = {"stdout_preview": result[:2000]}
         return result
 
 
 # 2
 @task(log_prints=True, name="task-gen-producer")
-def step_task_gen_producer(context: str, runner: str = "claude") -> str:
+def step_task_gen_producer(
+    context: str,
+    runner: str = "claude",
+    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+) -> str:
     with opik.start_as_current_trace("task-gen-producer", project_name="agent-runner") as trace:
         trace.input = {"context": context}
         trace.thread_id = _extract_change_id(context)
-        result = run_agent_cmd(runner=runner, prompt=context, agent="task-generator")
+        result = run_agent_cmd(
+            runner=runner,
+            prompt=context,
+            agent="task-generator",
+            **_agent_runner_kwargs(runner_model),
+        )
         trace.output = {"stdout_preview": result[:2000]}
     return result
 
 
 # 3
 @task(log_prints=True, name="task-gen-evaluator")
-def step_task_gen_evaluator(context: str, runner: str = "claude") -> str:
+def step_task_gen_evaluator(
+    context: str,
+    runner: str = "claude",
+    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+) -> str:
     with opik.start_as_current_trace("task-gen-evaluator", project_name="agent-runner") as trace:
         trace.input = {"context": context}
         trace.thread_id = _extract_change_id(context)
@@ -91,18 +121,31 @@ def step_task_gen_evaluator(context: str, runner: str = "claude") -> str:
 
 # 4
 @task(log_prints=True, name="task-assigner")
-def step_task_assigner(context: str, runner: str = "claude") -> str:
+def step_task_assigner(
+    context: str,
+    runner: str = "claude",
+    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+) -> str:
     with opik.start_as_current_trace("task-assigner", project_name="agent-runner") as trace:
         trace.input = {"context": context}
         trace.thread_id = _extract_change_id(context)
-        result = run_agent_cmd(runner=runner, prompt=context, agent="task-assigner")
+        result = run_agent_cmd(
+            runner=runner,
+            prompt=context,
+            agent="task-assigner",
+            **_agent_runner_kwargs(runner_model),
+        )
         trace.output = {"stdout_preview": result[:2000]}
     return result
 
 
 # 4b
 @task(log_prints=True, name="assignment-evaluator")
-def step_assignment_evaluator(context: str, runner: str = "claude") -> str:
+def step_assignment_evaluator(
+    context: str,
+    runner: str = "claude",
+    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+) -> str:
     with opik.start_as_current_trace("assignment-evaluator", project_name="agent-runner") as trace:
         trace.input = {"context": context}
         trace.thread_id = _extract_change_id(context)
@@ -118,7 +161,14 @@ def step_assignment_evaluator(context: str, runner: str = "claude") -> str:
 
 # 5
 @task(log_prints=True, name="software-engineer")
-def step_software_engineer(uow_id: str, change_id: str, repo: str, evaluator_feedback: str = "", runner: str = "claude") -> str:
+def step_software_engineer(
+    uow_id: str,
+    change_id: str,
+    repo: str,
+    evaluator_feedback: str = "",
+    runner: str = "claude",
+    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+) -> str:
     prompt = (
         f"Implement UoW {uow_id} for change {change_id}.\n"
         f"Read the UoW spec from agent-context/{change_id}/execution/{uow_id}/uow_spec.yaml.\n"
@@ -132,14 +182,25 @@ def step_software_engineer(uow_id: str, change_id: str, repo: str, evaluator_fee
     with opik.start_as_current_trace("software-engineer", project_name="agent-runner") as trace:
         trace.input = {"uow_id": uow_id, "change_id": change_id, "has_feedback": bool(evaluator_feedback)}
         trace.thread_id = change_id
-        result = run_agent_cmd(runner=runner, prompt=prompt, agent="software-engineer-hyperagent")
+        result = run_agent_cmd(
+            runner=runner,
+            prompt=prompt,
+            agent="software-engineer-hyperagent",
+            **_agent_runner_kwargs(runner_model),
+        )
         trace.output = {"stdout_preview": result[:2000]}
     return result
 
 
 # 6
 @task(log_prints=True, name="software-engineer-evaluator")
-def step_software_engineer_evaluator(uow_id: str, change_id: str, repo: str, runner: str = "claude") -> str:
+def step_software_engineer_evaluator(
+    uow_id: str,
+    change_id: str,
+    repo: str,
+    runner: str = "claude",
+    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+) -> str:
     context = (
         f"Evaluate the implementation of UoW {uow_id} for change {change_id}.\n"
         f"Read the implementation report from agent-context/{change_id}/execution/{uow_id}/impl_report.yaml.\n"
@@ -161,18 +222,31 @@ def step_software_engineer_evaluator(uow_id: str, change_id: str, repo: str, run
 
 # 7
 @task(log_prints=True, name="qa-engineer")
-def step_qa_engineer(context: str, runner: str = "claude") -> str:
+def step_qa_engineer(
+    context: str,
+    runner: str = "claude",
+    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+) -> str:
     with opik.start_as_current_trace("qa-engineer", project_name="agent-runner") as trace:
         trace.input = {"context": context}
         trace.thread_id = _extract_change_id(context)
-        result = run_agent_cmd(runner=runner, prompt=context, agent="qa-engineer")
+        result = run_agent_cmd(
+            runner=runner,
+            prompt=context,
+            agent="qa-engineer",
+            **_agent_runner_kwargs(runner_model),
+        )
         trace.output = {"stdout_preview": result[:2000]}
     return result
 
 
 # 8
 @task(log_prints=True, name="qa-evaluator")
-def step_qa_evaluator(context: str, runner: str = "claude") -> str:
+def step_qa_evaluator(
+    context: str,
+    runner: str = "claude",
+    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+) -> str:
     with opik.start_as_current_trace("qa-evaluator", project_name="agent-runner") as trace:
         trace.input = {"context": context}
         trace.thread_id = _extract_change_id(context)
@@ -188,7 +262,12 @@ def step_qa_evaluator(context: str, runner: str = "claude") -> str:
 
 # 9
 @task(log_prints=True, name="lessons-optimizer")
-def step_lessons_optimizer(change_id: str, repo: str, runner: str = "claude") -> str:
+def step_lessons_optimizer(
+    change_id: str,
+    repo: str,
+    runner: str = "claude",
+    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+) -> str:
     prompt = (
         f"Run the end-of-workflow lessons optimization for change {change_id}.\n"
         f"Read agent-context/lessons.md for recorded lessons.\n"
@@ -200,6 +279,11 @@ def step_lessons_optimizer(change_id: str, repo: str, runner: str = "claude") ->
     with opik.start_as_current_trace("lessons-optimizer", project_name="agent-runner") as trace:
         trace.input = {"change_id": change_id, "repo": repo}
         trace.thread_id = change_id
-        result = run_agent_cmd(runner=runner, prompt=prompt, agent="lessons-optimizer-hyperagent")
+        result = run_agent_cmd(
+            runner=runner,
+            prompt=prompt,
+            agent="lessons-optimizer-hyperagent",
+            **_agent_runner_kwargs(runner_model),
+        )
         trace.output = {"stdout_preview": result[:2000]}
     return result

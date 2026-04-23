@@ -11,12 +11,18 @@ import opik_integration  # noqa: F401 — configures Opik project context before
 import steps
 from evaluator_optimizer_loops import run_uow_eval_loop, run_eval_optimizer_loop
 from materialize import run_materialization
+from runner_models import DEFAULT_GEMINI_MODEL, GEMINI_MODEL_CHOICES
 from workflow_inputs import DEFAULT_TEST_STORY_FILE, resolve_workflow_input
 
 # ====================== HELPERS ====================== #
 
 RUNNER_ROOT = Path(__file__).resolve().parent
 AGENT_CONTEXT_ROOT = RUNNER_ROOT / "agent-context"
+RUNNER_LABELS = {
+    "claude": "Claude Code",
+    "copilot": "GitHub Copilot",
+    "gemini": "Gemini CLI",
+}
 
 def get_time():
     now = datetime.now()
@@ -25,6 +31,10 @@ def get_time():
 
 def use_runner_root() -> None:
     os.chdir(RUNNER_ROOT)
+
+
+def runner_label(runner: str) -> str:
+    return RUNNER_LABELS.get(runner, runner)
 
 
 def clean_workspace(change_id: str) -> None:
@@ -106,13 +116,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--runner",
         default="claude",
-        choices=["claude", "copilot"],
-        help="Agent runner to use: 'claude' (Claude Code CLI) or 'copilot' (GitHub Copilot CLI). Defaults to 'claude'.",
+        choices=["claude", "copilot", "gemini"],
+        help=(
+            "Agent runner to use: 'claude' (Claude Code CLI), "
+            "'copilot' (GitHub Copilot CLI), or 'gemini' (Gemini CLI). Defaults to 'claude'."
+        ),
     )
     parser.add_argument(
         "--skip-materialize",
         action="store_true",
         help="Skip the agent materialization step (useful when agents are known to be up-to-date).",
+    )
+    parser.add_argument(
+        "--gemini-model",
+        default=DEFAULT_GEMINI_MODEL,
+        choices=GEMINI_MODEL_CHOICES,
+        help=(
+            "Gemini model to use when --runner gemini. "
+            f"Defaults to '{DEFAULT_GEMINI_MODEL}'."
+        ),
     )
     return parser.parse_args()
 
@@ -126,6 +148,7 @@ def main(
     story_file: str | None = None,
     runner: str = "claude",
     skip_materialize: bool = False,
+    gemini_model: str = DEFAULT_GEMINI_MODEL,
 ):
     workflow_input = resolve_workflow_input(
         repo=repo,
@@ -146,6 +169,10 @@ def main(
     print(f"Intake mode: {intake_mode}")
     print(f"Intake source: {intake_source}")
     print(f"Runner: {runner}")
+    selected_runner_model = gemini_model if runner == "gemini" else None
+    runner_model_kwargs = {"runner_model": selected_runner_model} if selected_runner_model is not None else {}
+    if selected_runner_model is not None:
+        print(f"Gemini model: {gemini_model}")
 
     # ── Stage 0: Materialize agents ───────────────────────────────────────────
     if not skip_materialize:
@@ -161,6 +188,7 @@ def main(
         change_id=resolved_change_id,
         intake_mode=intake_mode,
         runner=runner,
+        **runner_model_kwargs,
     )
 
     # ── Stage 2: Task Generation (eval-optimizer loop) ───────────────────────
@@ -179,6 +207,7 @@ def main(
         evaluator_func=steps.step_task_gen_evaluator,
         evaluator_prompt=task_gen_evaluator_prompt,
         runner=runner,
+        **runner_model_kwargs,
     )
 
     # ── Stage 3: Task Assignment (eval-optimizer loop) ────────────────────────
@@ -201,6 +230,7 @@ def main(
         evaluator_func=steps.step_assignment_evaluator,
         evaluator_prompt=assignment_evaluator_prompt,
         runner=runner,
+        **runner_model_kwargs,
     )
 
     # ── Stage 4: Execution — per-batch, parallel where safe ──────────────────
@@ -215,7 +245,13 @@ def main(
         if is_parallel and len(uow_ids) > 1:
             # Fan-out: submit all UoWs in the batch concurrently
             futures = [
-                run_uow_eval_loop.submit(uow_id=uid, change_id=resolved_change_id, repo=resolved_repo, runner=runner)
+                run_uow_eval_loop.submit(
+                    uow_id=uid,
+                    change_id=resolved_change_id,
+                    repo=resolved_repo,
+                    runner=runner,
+                    **runner_model_kwargs,
+                )
                 for uid in uow_ids
             ]
             # Wait for all UoWs in this batch to complete before advancing
@@ -223,7 +259,13 @@ def main(
                 future.result()
         else:
             for uid in uow_ids:
-                run_uow_eval_loop(uow_id=uid, change_id=resolved_change_id, repo=resolved_repo, runner=runner)
+                run_uow_eval_loop(
+                    uow_id=uid,
+                    change_id=resolved_change_id,
+                    repo=resolved_repo,
+                    runner=runner,
+                    **runner_model_kwargs,
+                )
 
     # ── Stage 5: QA Validation (eval-optimizer loop) ─────────────────────────
     qa_producer_input = (
@@ -247,16 +289,22 @@ def main(
         evaluator_func=steps.step_qa_evaluator,
         evaluator_prompt=qa_evaluator_prompt,
         runner=runner,
+        **runner_model_kwargs,
     )
 
     # ── Stage 6: Lessons Optimization (one-shot) ─────────────────────────────
-    steps.step_lessons_optimizer(change_id=resolved_change_id, repo=resolved_repo, runner=runner)
+    steps.step_lessons_optimizer(
+        change_id=resolved_change_id,
+        repo=resolved_repo,
+        runner=runner,
+        **runner_model_kwargs,
+    )
 
     return intake_source
 
 if __name__ == "__main__":
     args = parse_args()
-    with tags(f"Running Claude Code {get_time()}"):
+    with tags(f"Running {runner_label(args.runner)} {get_time()}"):
         main(
             repo=args.repo,
             change_id=args.change_id,
@@ -264,4 +312,5 @@ if __name__ == "__main__":
             story_file=args.story_file,
             runner=args.runner,
             skip_materialize=args.skip_materialize,
+            gemini_model=args.gemini_model,
         )
