@@ -1,5 +1,5 @@
 name: intake
 version: v1
-description: "intake agent, v1, seeded from .claude/agents/01-intake.agent.md"
-source: "agent-development/.claude/agents/01-intake.agent.md"
-claude_code_agent_file: "01-intake.agent.md"
+description: "intake agent, v1, seeded from .claude/agents/intake.agent.md"
+source: "agent-development/.claude/agents/intake.agent.md"
+claude_code_agent_file: "intake.agent.md"

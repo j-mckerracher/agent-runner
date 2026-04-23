@@ -1,3 +1,4 @@
+import os
 import subprocess
 import unittest
 from unittest.mock import patch
@@ -6,6 +7,25 @@ import run_cmds
 
 
 class RunCmdsTests(unittest.TestCase):
+    def test_run_copilot_cmd_excludes_claude_auth_env(self):
+        completed = subprocess.CompletedProcess(
+            args=["copilot"],
+            returncode=0,
+            stdout="ok",
+            stderr="",
+        )
+
+        with (
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "anthropic-key", "CLAUDE_CODE_API_KEY": "claude-code-key"}, clear=False),
+            patch.object(run_cmds.subprocess, "run", return_value=completed) as run_subprocess,
+        ):
+            result = run_cmds.run_copilot_cmd(prompt="Do the work", agent="intake-agent")
+
+        self.assertEqual(result, "ok")
+        called_env = run_subprocess.call_args.kwargs["env"]
+        self.assertNotIn("ANTHROPIC_API_KEY", called_env)
+        self.assertNotIn("CLAUDE_CODE_API_KEY", called_env)
+
     def test_run_gemini_cmd_injects_agent_prompt_and_uses_headless_flags(self):
         completed = subprocess.CompletedProcess(
             args=["gemini"],
@@ -15,6 +35,7 @@ class RunCmdsTests(unittest.TestCase):
         )
 
         with (
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "anthropic-key", "CLAUDE_CODE_API_KEY": "claude-code-key"}, clear=False),
             patch.object(run_cmds, "load_agent_system_prompt", return_value="Agent rules") as load_prompt,
             patch.object(run_cmds.subprocess, "run", return_value=completed) as run_subprocess,
         ):
@@ -32,6 +53,23 @@ class RunCmdsTests(unittest.TestCase):
         self.assertIn("--output-format", called_cmd)
         self.assertIn("text", called_cmd)
         self.assertIn("--yolo", called_cmd)
+        called_env = run_subprocess.call_args.kwargs["env"]
+        self.assertNotIn("ANTHROPIC_API_KEY", called_env)
+        self.assertNotIn("CLAUDE_CODE_API_KEY", called_env)
+
+    def test_run_claude_cmd_uses_default_environment(self):
+        completed = subprocess.CompletedProcess(
+            args=["claude"],
+            returncode=0,
+            stdout="ok",
+            stderr="",
+        )
+
+        with patch.object(run_cmds.subprocess, "run", return_value=completed) as run_subprocess:
+            result = run_cmds.run_claude_cmd(prompt="Do the work", agent="intake-agent")
+
+        self.assertEqual(result, "ok")
+        self.assertNotIn("env", run_subprocess.call_args.kwargs)
 
     def test_run_agent_cmd_maps_runner_model_to_gemini_model(self):
         with patch.object(run_cmds, "run_gemini_cmd", return_value="gemini output") as run_gemini:

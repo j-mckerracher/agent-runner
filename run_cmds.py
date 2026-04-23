@@ -1,8 +1,21 @@
-from prefect import task
+import os
 import subprocess
+from prefect import task
 
 from agent_prompts import load_agent_system_prompt
 from runner_models import DEFAULT_GEMINI_MODEL
+
+CLAUDE_AUTH_ENV_VARS = frozenset({
+    "ANTHROPIC_API_KEY",
+    "CLAUDE_CODE_API_KEY",
+})
+
+
+def _without_claude_auth_env() -> dict[str, str]:
+    env = dict(os.environ)
+    for key in CLAUDE_AUTH_ENV_VARS:
+        env.pop(key, None)
+    return env
 
 
 def _build_gemini_prompt(prompt: str, agent: str) -> str:
@@ -101,7 +114,7 @@ def run_copilot_cmd(
         cmd.append("--yolo")
     if extra_flags:
         cmd.extend(extra_flags)
-    result = subprocess.run(cmd, text=True, capture_output=True)
+    result = subprocess.run(cmd, text=True, capture_output=True, env=_without_claude_auth_env())
     if result.stdout:
         print(result.stdout)
     if result.stderr:
@@ -136,7 +149,7 @@ def run_gemini_cmd(
         cmd.append("--yolo")
     if extra_flags:
         cmd.extend(extra_flags)
-    result = subprocess.run(cmd, text=True, capture_output=True)
+    result = subprocess.run(cmd, text=True, capture_output=True, env=_without_claude_auth_env())
     if result.stdout:
         print(result.stdout)
     if result.stderr:
