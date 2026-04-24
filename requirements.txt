@@ -67,3 +67,5 @@ numpy
 opik
 anthropic
 truststore
+python-dotenv
+google-genai

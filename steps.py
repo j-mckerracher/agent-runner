@@ -1,4 +1,6 @@
 import re
+import json
+import subprocess
 
 import opik
 from prefect import task, tags
@@ -17,7 +19,86 @@ def _extract_change_id(context: str) -> str:
     return match.group(1) if match else ""
 
 
-def build_intake_prompt(intake_source: str, repo: str, change_id: str, intake_mode: str) -> str:
+_INTAKE_FIELDS = {
+    "System.Id",
+    "System.Title",
+    "System.Description",
+    "System.WorkItemType",
+    "System.State",
+    "System.AreaPath",
+    "System.IterationPath",
+    "System.Tags",
+    "Microsoft.VSTS.Common.AcceptanceCriteria",
+    "Microsoft.VSTS.Scheduling.StoryPoints",
+    "Microsoft.VSTS.Scheduling.Size",
+    "System.AssignedTo",
+    "System.Parent",
+}
+
+
+def _trim_ado_work_item(raw: dict) -> dict:
+    """Keep only intake-relevant fields to reduce prompt size."""
+    fields = raw.get("fields", {})
+    trimmed_fields: dict = {}
+    for key in _INTAKE_FIELDS:
+        if key in fields:
+            value = fields[key]
+            # Flatten identity objects to display name only
+            if isinstance(value, dict) and "displayName" in value:
+                value = value["displayName"]
+            trimmed_fields[key] = value
+    return {
+        "id": raw.get("id"),
+        "url": raw.get("url"),
+        "fields": trimmed_fields,
+    }
+
+
+def _fetch_ado_work_item(ado_url: str) -> str | None:
+    """
+    Pre-fetch an Azure DevOps work item using the az CLI.
+
+    Parses the org, project, and item ID from the URL and runs
+    `az boards work-item show`. Returns a trimmed JSON string with
+    only intake-relevant fields, or None on failure.
+    """
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(ado_url)
+        parts = parsed.path.strip("/").split("/")
+        # URL format: /<org>/<project>/_workitems/edit/<id>
+        if len(parts) < 5:
+            return None
+        org_name = parts[0]
+        item_id = parts[-1]
+        org_url = f"https://dev.azure.com/{org_name}"
+        result = subprocess.run(
+            [
+                "az", "boards", "work-item", "show",
+                "--id", item_id,
+                "--org", org_url,
+                "--output", "json",
+            ],
+            text=True,
+            capture_output=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            raw = json.loads(result.stdout.strip())
+            trimmed = _trim_ado_work_item(raw)
+            return json.dumps(trimmed, indent=2)
+        return None
+    except Exception:
+        return None
+
+
+def build_intake_prompt(
+    intake_source: str,
+    repo: str,
+    change_id: str,
+    intake_mode: str,
+    runner: str = "claude",
+    ado_work_item_json: str | None = None,
+) -> str:
     if not intake_source:
         raise ValueError("intake_source cannot be empty.")
     if intake_mode not in {"ado", "synthetic"}:
@@ -28,7 +109,15 @@ def build_intake_prompt(intake_source: str, repo: str, change_id: str, intake_mo
         prompt += f"Change ID: {change_id}\n"
         prompt += f"Target repo: {repo}\n"
         prompt += "If intake artifacts already exist for this story, you must delete them and create new ones.\n"
-        prompt += "You MUST use the azure-devops-cli skill to interact with ADO.\n"
+        if runner == "gemini" and ado_work_item_json:
+            # Pre-fetched work item data embedded directly — no shell execution needed.
+            prompt += (
+                "The work item data has already been fetched for you. "
+                "Use the JSON below as the raw input; do NOT run any shell commands to re-fetch it.\n\n"
+                f"```json\n{ado_work_item_json}\n```\n\n"
+            )
+        elif runner != "gemini":
+            prompt += "Use the azure-devops-cli skill (already loaded) to interact with ADO.\n"
         prompt += (
             f"Normalize the result into canonical intake artifacts under agent-context/{change_id}/intake/."
         )
@@ -65,14 +154,23 @@ def step_intake(
             repo=repo,
             change_id=change_id,
             intake_mode=intake_mode,
+            runner=runner,
+            ado_work_item_json=(
+                _fetch_ado_work_item(intake_source)
+                if runner == "gemini" and intake_mode == "ado"
+                else None
+            ),
         )
+        # For Gemini, no extra skills needed — work item data is embedded in the prompt
+        extra_skills = None
         with opik.start_as_current_trace("intake", project_name="agent-runner") as trace:
             trace.input = {"intake_source": intake_source, "change_id": change_id, "intake_mode": intake_mode}
             trace.thread_id = change_id
             result = run_agent_cmd(
                 runner=runner,
                 prompt=prompt,
-                agent="intake-agent",
+                agent="intake",
+                extra_skills=extra_skills,
                 **_agent_runner_kwargs(runner_model),
             )
             trace.output = {"stdout_preview": result[:2000]}
@@ -109,7 +207,7 @@ def step_task_gen_evaluator(
     with opik.start_as_current_trace("task-gen-evaluator", project_name="agent-runner") as trace:
         trace.input = {"context": context}
         trace.thread_id = _extract_change_id(context)
-        result = call_evaluator_sdk(context, "task-plan-evaluator")
+        result = call_evaluator_sdk(context, "task-plan-evaluator", runner=runner, runner_model=runner_model)
         passed = "PASS" in result
         opik.opik_context.update_current_trace(
             feedback_scores=[{"name": "evaluator_pass", "value": 1.0 if passed else 0.0}],
@@ -149,7 +247,7 @@ def step_assignment_evaluator(
     with opik.start_as_current_trace("assignment-evaluator", project_name="agent-runner") as trace:
         trace.input = {"context": context}
         trace.thread_id = _extract_change_id(context)
-        result = call_evaluator_sdk(context, "assignment-evaluator")
+        result = call_evaluator_sdk(context, "assignment-evaluator", runner=runner, runner_model=runner_model)
         passed = "PASS" in result
         opik.opik_context.update_current_trace(
             feedback_scores=[{"name": "evaluator_pass", "value": 1.0 if passed else 0.0}],
@@ -210,7 +308,7 @@ def step_software_engineer_evaluator(
     with opik.start_as_current_trace("implementation-evaluator", project_name="agent-runner") as trace:
         trace.input = {"uow_id": uow_id, "change_id": change_id}
         trace.thread_id = change_id
-        result = call_evaluator_sdk(context, "implementation-evaluator")
+        result = call_evaluator_sdk(context, "implementation-evaluator", runner=runner, runner_model=runner_model)
         passed = "PASS" in result
         opik.opik_context.update_current_trace(
             feedback_scores=[{"name": "evaluator_pass", "value": 1.0 if passed else 0.0}],
@@ -233,7 +331,7 @@ def step_qa_engineer(
         result = run_agent_cmd(
             runner=runner,
             prompt=context,
-            agent="qa-engineer",
+            agent="qa",
             **_agent_runner_kwargs(runner_model),
         )
         trace.output = {"stdout_preview": result[:2000]}
@@ -250,7 +348,7 @@ def step_qa_evaluator(
     with opik.start_as_current_trace("qa-evaluator", project_name="agent-runner") as trace:
         trace.input = {"context": context}
         trace.thread_id = _extract_change_id(context)
-        result = call_evaluator_sdk(context, "qa-evaluator")
+        result = call_evaluator_sdk(context, "qa-evaluator", runner=runner, runner_model=runner_model)
         passed = "PASS" in result
         opik.opik_context.update_current_trace(
             feedback_scores=[{"name": "evaluator_pass", "value": 1.0 if passed else 0.0}],

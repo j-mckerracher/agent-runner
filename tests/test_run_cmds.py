@@ -84,6 +84,7 @@ class RunCmdsTests(unittest.TestCase):
         run_gemini.assert_called_once_with(
             prompt="Implement the task",
             agent="software-engineer-hyperagent",
+            extra_skills=None,
             model="gemini-3-pro-preview",
         )
 
@@ -99,6 +100,7 @@ class RunCmdsTests(unittest.TestCase):
         run_gemini.assert_called_once_with(
             prompt="Implement the task",
             agent="software-engineer-hyperagent",
+            extra_skills=None,
         )
 
     def test_run_agent_cmd_rejects_unknown_runner(self):

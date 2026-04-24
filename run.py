@@ -5,6 +5,12 @@ import re
 import shutil
 from datetime import datetime
 from pathlib import Path
+
+import yaml
+
+from dotenv import load_dotenv
+load_dotenv()
+
 from prefect import flow, tags
 
 import opik_integration  # noqa: F401 — configures Opik project context before the flow runs
@@ -65,23 +71,67 @@ def clean_workspace(change_id: str) -> None:
                 shutil.rmtree(entry)
 
 
+def _extract_batches_from_duplicate_yaml(raw: str) -> list[dict]:
+    """Extract batch blocks from YAML where execution_schedule has duplicate 'batch:' keys.
+
+    Standard YAML parsers only keep the last value for duplicate keys, losing earlier
+    batches. This function splits the raw text into per-batch segments and parses each.
+    """
+    import re as _re
+    import textwrap as _textwrap
+
+    # Locate execution_schedule block (indented content after the key)
+    m = _re.search(r"^execution_schedule:\s*\n((?:[ \t]+.*\n?)*)", raw, _re.MULTILINE)
+    if not m:
+        return []
+    es_block = m.group(1)
+
+    # Split on lines that start a new batch (leading whitespace + "batch:")
+    segments = _re.split(r"(?=^[ \t]+batch:\s*\d)", es_block, flags=_re.MULTILINE)
+    batches: list[dict] = []
+    for seg in segments:
+        if not seg.strip():
+            continue
+        try:
+            parsed = yaml.safe_load(_textwrap.dedent(seg))
+            if isinstance(parsed, dict) and "batch" in parsed:
+                batches.append(parsed)
+        except Exception:
+            pass
+    return batches
+
+
 def load_assignments(change_id: str) -> dict:
-    """Read assignments.json produced by the task-assigner."""
+    """Read assignments.json produced by the task-assigner.
+
+    The agent sometimes writes YAML instead of JSON despite the .json extension.
+    Fall back to YAML parsing when JSON fails. The YAML may also use duplicate
+    'batch:' keys under execution_schedule; handle that with a custom splitter.
+    """
     path = AGENT_CONTEXT_ROOT / change_id / "planning" / "assignments.json"
-    with path.open("r", encoding="utf-8") as f:
-        data = json.load(f)
+    raw = path.read_text(encoding="utf-8")
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        data = yaml.safe_load(raw)
 
     # Normalize execution_schedule to always be a list of batch dicts.
     # The agent sometimes emits batch 1 as a bare dict under "execution_schedule"
     # and subsequent batches as top-level keys "batch_2", "batch_3", etc.
     sched = data.get("execution_schedule", [])
     if isinstance(sched, dict):
-        batches = [sched]
-        i = 2
-        while f"batch_{i}" in data:
-            batches.append(data[f"batch_{i}"])
-            i += 1
-        data["execution_schedule"] = batches
+        # First try the duplicate-key YAML extraction (most common YAML failure mode)
+        extracted = _extract_batches_from_duplicate_yaml(raw)
+        if extracted:
+            data["execution_schedule"] = extracted
+        else:
+            # Fallback: legacy pattern where batch_2, batch_3 are top-level keys
+            batches = [sched]
+            i = 2
+            while f"batch_{i}" in data:
+                batches.append(data[f"batch_{i}"])
+                i += 1
+            data["execution_schedule"] = batches
 
     return data
 
