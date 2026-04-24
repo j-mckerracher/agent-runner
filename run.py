@@ -1,5 +1,4 @@
 import argparse
-import json
 import os
 import re
 import shutil
@@ -12,6 +11,13 @@ import steps
 from evaluator_optimizer_loops import run_uow_eval_loop, run_eval_optimizer_loop
 from materialize import run_materialization
 from runner_models import DEFAULT_GEMINI_MODEL, GEMINI_MODEL_CHOICES
+from workflow_api import (
+    WorkflowContext,
+    load_execution_plan,
+    make_agent_step,
+    make_sdk_evaluator_step,
+    render_prompt_template,
+)
 from workflow_inputs import DEFAULT_TEST_STORY_FILE, resolve_workflow_input
 
 # ====================== HELPERS ====================== #
@@ -23,6 +29,74 @@ RUNNER_LABELS = {
     "copilot": "GitHub Copilot",
     "gemini": "Gemini CLI",
 }
+TASK_GEN_INPUT_TEMPLATE = (
+    "Generate a task plan for change {change_id} in {repo}.\n"
+    "Read the intake artifacts from {artifact_root}/intake/.\n"
+    "Act immediately. Do not ask questions."
+)
+TASK_GEN_EVALUATOR_TEMPLATE = (
+    "Evaluate the task plan for {change_id} in {repo}. "
+    "Read {artifact_root}/planning/tasks.yaml."
+)
+ASSIGNER_INPUT_TEMPLATE = (
+    "Create an execution schedule for change {change_id}.\n"
+    "Read tasks from {artifact_root}/planning/tasks.yaml.\n"
+    "Read story context from {artifact_root}/intake/story.yaml.\n"
+    "Read constraints from {artifact_root}/intake/constraints.md.\n"
+    "Target repo: {repo}\n"
+    "Act immediately. Do not ask questions."
+)
+ASSIGNMENT_EVALUATOR_TEMPLATE = (
+    "Evaluate the execution schedule for {change_id}. "
+    "Read {artifact_root}/planning/assignments.json and "
+    "{artifact_root}/planning/tasks.yaml."
+)
+QA_PRODUCER_TEMPLATE = (
+    "Perform QA validation for change {change_id}.\n"
+    "Read story ACs from {artifact_root}/intake/story.yaml.\n"
+    "Read task plan from {artifact_root}/planning/tasks.yaml.\n"
+    "Read assignments from {artifact_root}/planning/assignments.json.\n"
+    "Read all implementation reports from {artifact_root}/execution/*/impl_report.yaml.\n"
+    "Target repo: {repo}\n"
+    "Write your report to {artifact_root}/qa/qa_report.yaml.\n"
+    "Act immediately. Do not ask questions."
+)
+QA_EVALUATOR_TEMPLATE = (
+    "Evaluate the QA report for {change_id}. "
+    "Read {artifact_root}/qa/qa_report.yaml and "
+    "{artifact_root}/intake/story.yaml."
+)
+
+TASK_GEN_PRODUCER_STEP = make_agent_step(
+    agent_name="task-generator",
+    trace_name="task-gen-producer",
+    task_name="task-gen-producer",
+)
+TASK_GEN_EVALUATOR_STEP = make_sdk_evaluator_step(
+    agent_name="task-plan-evaluator",
+    trace_name="task-gen-evaluator",
+    task_name="task-gen-evaluator",
+)
+TASK_ASSIGNER_STEP = make_agent_step(
+    agent_name="task-assigner",
+    trace_name="task-assigner",
+    task_name="task-assigner",
+)
+ASSIGNMENT_EVALUATOR_STEP = make_sdk_evaluator_step(
+    agent_name="assignment-evaluator",
+    trace_name="assignment-evaluator",
+    task_name="assignment-evaluator",
+)
+QA_ENGINEER_STEP = make_agent_step(
+    agent_name="qa-engineer",
+    trace_name="qa-engineer",
+    task_name="qa-engineer",
+)
+QA_EVALUATOR_STEP = make_sdk_evaluator_step(
+    agent_name="qa-evaluator",
+    trace_name="qa-evaluator",
+    task_name="qa-evaluator",
+)
 
 def get_time():
     now = datetime.now()
@@ -67,23 +141,13 @@ def clean_workspace(change_id: str) -> None:
 
 def load_assignments(change_id: str) -> dict:
     """Read assignments.json produced by the task-assigner."""
-    path = AGENT_CONTEXT_ROOT / change_id / "planning" / "assignments.json"
-    with path.open("r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    # Normalize execution_schedule to always be a list of batch dicts.
-    # The agent sometimes emits batch 1 as a bare dict under "execution_schedule"
-    # and subsequent batches as top-level keys "batch_2", "batch_3", etc.
-    sched = data.get("execution_schedule", [])
-    if isinstance(sched, dict):
-        batches = [sched]
-        i = 2
-        while f"batch_{i}" in data:
-            batches.append(data[f"batch_{i}"])
-            i += 1
-        data["execution_schedule"] = batches
-
-    return data
+    workflow_context = WorkflowContext(
+        run_id=change_id,
+        repo="",
+        artifact_root=AGENT_CONTEXT_ROOT / change_id,
+        runner_model=None,
+    )
+    return load_execution_plan(workflow_context)
 
 
 def parse_args() -> argparse.Namespace:
@@ -171,6 +235,13 @@ def main(
     print(f"Runner: {runner}")
     selected_runner_model = gemini_model if runner == "gemini" else None
     runner_model_kwargs = {"runner_model": selected_runner_model} if selected_runner_model is not None else {}
+    workflow_context = WorkflowContext(
+        run_id=resolved_change_id,
+        repo=resolved_repo,
+        runner=runner,
+        runner_model=selected_runner_model,
+        artifact_root=AGENT_CONTEXT_ROOT / resolved_change_id,
+    )
     if selected_runner_model is not None:
         print(f"Gemini model: {gemini_model}")
 
@@ -193,18 +264,21 @@ def main(
 
     # ── Stage 2: Task Generation (eval-optimizer loop) ───────────────────────
     task_gen_input = (
-        f"Generate a task plan for change {resolved_change_id} in {resolved_repo}.\n"
-        f"Read the intake artifacts from agent-context/{resolved_change_id}/intake/.\n"
-        f"Act immediately. Do not ask questions."
+        render_prompt_template(
+            TASK_GEN_INPUT_TEMPLATE,
+            workflow_context,
+        )
     )
     task_gen_evaluator_prompt = (
-        f"Evaluate the task plan for {resolved_change_id} in {resolved_repo}. "
-        f"Read agent-context/{resolved_change_id}/planning/tasks.yaml."
+        render_prompt_template(
+            TASK_GEN_EVALUATOR_TEMPLATE,
+            workflow_context,
+        )
     )
     run_eval_optimizer_loop(
-        producer_func=steps.step_task_gen_producer,
+        producer_func=TASK_GEN_PRODUCER_STEP,
         producer_input=task_gen_input,
-        evaluator_func=steps.step_task_gen_evaluator,
+        evaluator_func=TASK_GEN_EVALUATOR_STEP,
         evaluator_prompt=task_gen_evaluator_prompt,
         runner=runner,
         **runner_model_kwargs,
@@ -212,22 +286,21 @@ def main(
 
     # ── Stage 3: Task Assignment (eval-optimizer loop) ────────────────────────
     assigner_input = (
-        f"Create an execution schedule for change {resolved_change_id}.\n"
-        f"Read tasks from agent-context/{resolved_change_id}/planning/tasks.yaml.\n"
-        f"Read story context from agent-context/{resolved_change_id}/intake/story.yaml.\n"
-        f"Read constraints from agent-context/{resolved_change_id}/intake/constraints.md.\n"
-        f"Target repo: {resolved_repo}\n"
-        f"Act immediately. Do not ask questions."
+        render_prompt_template(
+            ASSIGNER_INPUT_TEMPLATE,
+            workflow_context,
+        )
     )
     assignment_evaluator_prompt = (
-        f"Evaluate the execution schedule for {resolved_change_id}. "
-        f"Read agent-context/{resolved_change_id}/planning/assignments.json and "
-        f"agent-context/{resolved_change_id}/planning/tasks.yaml."
+        render_prompt_template(
+            ASSIGNMENT_EVALUATOR_TEMPLATE,
+            workflow_context,
+        )
     )
     run_eval_optimizer_loop(
-        producer_func=steps.step_task_assigner,
+        producer_func=TASK_ASSIGNER_STEP,
         producer_input=assigner_input,
-        evaluator_func=steps.step_assignment_evaluator,
+        evaluator_func=ASSIGNMENT_EVALUATOR_STEP,
         evaluator_prompt=assignment_evaluator_prompt,
         runner=runner,
         **runner_model_kwargs,
@@ -269,24 +342,21 @@ def main(
 
     # ── Stage 5: QA Validation (eval-optimizer loop) ─────────────────────────
     qa_producer_input = (
-        f"Perform QA validation for change {resolved_change_id}.\n"
-        f"Read story ACs from agent-context/{resolved_change_id}/intake/story.yaml.\n"
-        f"Read task plan from agent-context/{resolved_change_id}/planning/tasks.yaml.\n"
-        f"Read assignments from agent-context/{resolved_change_id}/planning/assignments.json.\n"
-        f"Read all implementation reports from agent-context/{resolved_change_id}/execution/*/impl_report.yaml.\n"
-        f"Target repo: {resolved_repo}\n"
-        f"Write your report to agent-context/{resolved_change_id}/qa/qa_report.yaml.\n"
-        f"Act immediately. Do not ask questions."
+        render_prompt_template(
+            QA_PRODUCER_TEMPLATE,
+            workflow_context,
+        )
     )
     qa_evaluator_prompt = (
-        f"Evaluate the QA report for {resolved_change_id}. "
-        f"Read agent-context/{resolved_change_id}/qa/qa_report.yaml and "
-        f"agent-context/{resolved_change_id}/intake/story.yaml."
+        render_prompt_template(
+            QA_EVALUATOR_TEMPLATE,
+            workflow_context,
+        )
     )
     run_eval_optimizer_loop(
-        producer_func=steps.step_qa_engineer,
+        producer_func=QA_ENGINEER_STEP,
         producer_input=qa_producer_input,
-        evaluator_func=steps.step_qa_evaluator,
+        evaluator_func=QA_EVALUATOR_STEP,
         evaluator_prompt=qa_evaluator_prompt,
         runner=runner,
         **runner_model_kwargs,

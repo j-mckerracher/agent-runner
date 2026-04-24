@@ -44,6 +44,67 @@ Run `python run.py --help` for all options.
 
 ---
 
+## Build a Custom Workflow
+
+The default `run.py` flow is now built on reusable primitives in `workflow_api.py`.
+
+Use that module when you want to keep Prefect and Opik instrumentation but swap in your own agents, prompts, and evaluation loops:
+
+```python
+from prefect import flow
+
+from workflow_api import (
+    WorkflowContext,
+    make_agent_step,
+    make_sdk_evaluator_step,
+    render_prompt_template,
+    run_eval_optimizer_loop,
+)
+
+intake_step = make_agent_step(
+    agent_name="research-intake-agent",
+    trace_name="research-intake",
+    prompt_template="Intake this assignment for {change_id}: {assignment}",
+)
+chunk_step = make_agent_step(
+    agent_name="research-chunker",
+    trace_name="research-chunker",
+    prompt_template="Break the assignment in {artifact_root}/intake/ into chunks.",
+)
+chunk_eval_step = make_sdk_evaluator_step(
+    agent_name="research-plan-evaluator",
+    trace_name="research-plan-evaluator",
+    prompt_template="Evaluate the chunk plan in {artifact_root}/planning/chunks.yaml.",
+)
+
+@flow
+def run_research_workflow(assignment: str, repo: str, change_id: str) -> None:
+    context = WorkflowContext(run_id=change_id, repo=repo, runner="gemini", runner_model="gemini-2.5-pro")
+    intake_step(workflow_context=context, assignment=assignment)
+    run_eval_optimizer_loop(
+        producer_func=chunk_step,
+        producer_input=render_prompt_template(
+            "Create a chunk plan for {change_id} using {artifact_root}/intake/.",
+            context,
+        ),
+        evaluator_func=chunk_eval_step,
+        evaluator_prompt=render_prompt_template(
+            "Review {artifact_root}/planning/chunks.yaml for {change_id}.",
+            context,
+        ),
+        runner=context.runner,
+        runner_model=context.runner_model,
+    )
+```
+
+The reusable API gives you:
+- `WorkflowContext` for standard repo/run metadata
+- `make_agent_step()` for Prefect + Opik wrapped agent tasks
+- `make_sdk_evaluator_step()` for SDK-based evaluator tasks
+- `run_eval_optimizer_loop()` and `run_uow_eval_loop()` for iterative producer/evaluator flows
+
+---
+
 ## Synthetic Mode vs. ADO Mode
 
 | | Synthetic | ADO |

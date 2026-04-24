@@ -57,10 +57,11 @@ def step_intake(
     intake_mode: str = "ado",
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    prompt: str | None = None,
 ):
     with tags('intake-agent'):
         print(f"Received intake source ({intake_mode}): {intake_source}")
-        prompt = build_intake_prompt(
+        prompt = prompt or build_intake_prompt(
             intake_source=intake_source,
             repo=repo,
             change_id=change_id,
@@ -168,13 +169,14 @@ def step_software_engineer(
     evaluator_feedback: str = "",
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    prompt: str | None = None,
 ) -> str:
-    prompt = (
+    prompt = prompt or (
         f"Implement UoW {uow_id} for change {change_id}.\n"
         f"Read the UoW spec from agent-context/{change_id}/execution/{uow_id}/uow_spec.yaml.\n"
         f"Target repo: {repo}\n"
     )
-    if evaluator_feedback:
+    if evaluator_feedback and "## Evaluator Issues to Fix:" not in prompt:
         prompt += (
             f"\n\n## Evaluator Issues to Fix:\n{evaluator_feedback}\n\n"
             f"Address every issue listed above. Do not ask questions — act immediately."
@@ -200,8 +202,9 @@ def step_software_engineer_evaluator(
     repo: str,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    context: str | None = None,
 ) -> str:
-    context = (
+    context = context or (
         f"Evaluate the implementation of UoW {uow_id} for change {change_id}.\n"
         f"Read the implementation report from agent-context/{change_id}/execution/{uow_id}/impl_report.yaml.\n"
         f"Read the UoW spec from agent-context/{change_id}/execution/{uow_id}/uow_spec.yaml.\n"
@@ -267,8 +270,9 @@ def step_lessons_optimizer(
     repo: str,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    prompt: str | None = None,
 ) -> str:
-    prompt = (
+    prompt = prompt or (
         f"Run the end-of-workflow lessons optimization for change {change_id}.\n"
         f"Read agent-context/lessons.md for recorded lessons.\n"
         f"Read all execution artifacts under agent-context/{change_id}/.\n"
