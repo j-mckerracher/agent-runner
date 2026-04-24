@@ -67,12 +67,12 @@ QA_EVALUATOR_TEMPLATE = (
     "{artifact_root}/intake/story.yaml."
 )
 
-TASK_GEN_PRODUCER_STEP = make_agent_step(
+TASK_GENERATOR_STEP = make_agent_step(
     agent_name="task-generator",
     trace_name="task-gen-producer",
     task_name="task-gen-producer",
 )
-TASK_GEN_EVALUATOR_STEP = make_sdk_evaluator_step(
+TASK_PLAN_EVALUATOR_STEP = make_sdk_evaluator_step(
     agent_name="task-plan-evaluator",
     trace_name="task-gen-evaluator",
     task_name="task-gen-evaluator",
@@ -87,8 +87,8 @@ ASSIGNMENT_EVALUATOR_STEP = make_sdk_evaluator_step(
     trace_name="assignment-evaluator",
     task_name="assignment-evaluator",
 )
-QA_ENGINEER_STEP = make_agent_step(
-    agent_name="qa-engineer",
+QA_STEP = make_agent_step(
+    agent_name="qa",
     trace_name="qa-engineer",
     task_name="qa-engineer",
 )
@@ -276,9 +276,9 @@ def main(
         )
     )
     run_eval_optimizer_loop(
-        producer_func=TASK_GEN_PRODUCER_STEP,
+        producer_func=TASK_GENERATOR_STEP,
         producer_input=task_gen_input,
-        evaluator_func=TASK_GEN_EVALUATOR_STEP,
+        evaluator_func=TASK_PLAN_EVALUATOR_STEP,
         evaluator_prompt=task_gen_evaluator_prompt,
         runner=runner,
         **runner_model_kwargs,
@@ -354,7 +354,7 @@ def main(
         )
     )
     run_eval_optimizer_loop(
-        producer_func=QA_ENGINEER_STEP,
+        producer_func=QA_STEP,
         producer_input=qa_producer_input,
         evaluator_func=QA_EVALUATOR_STEP,
         evaluator_prompt=qa_evaluator_prompt,

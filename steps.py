@@ -6,9 +6,26 @@ from run_cmds import run_claude_cmd, run_agent_cmd
 from opik_integration import call_evaluator_sdk
 from runner_models import DEFAULT_GEMINI_MODEL
 
+EVALUATOR_ISSUES_HEADER = "## Evaluator Issues to Fix:"
+EVALUATOR_REMEDIATION_INSTRUCTION = "Address every issue listed above. Do not ask questions — act immediately."
+
 
 def _agent_runner_kwargs(runner_model: str | None) -> dict[str, str]:
     return {"runner_model": runner_model} if runner_model is not None else {}
+
+
+def _append_evaluator_feedback(prompt: str, evaluator_feedback: str) -> str:
+    if not evaluator_feedback:
+        return prompt
+
+    feedback_block = f"{EVALUATOR_ISSUES_HEADER}\n{evaluator_feedback}"
+    if feedback_block in prompt:
+        return prompt
+
+    return (
+        f"{prompt}\n\n{feedback_block}\n\n"
+        f"{EVALUATOR_REMEDIATION_INSTRUCTION}"
+    )
 
 
 def _extract_change_id(context: str) -> str:
@@ -73,7 +90,7 @@ def step_intake(
             result = run_agent_cmd(
                 runner=runner,
                 prompt=prompt,
-                agent="intake-agent",
+                agent="intake",
                 **_agent_runner_kwargs(runner_model),
             )
             trace.output = {"stdout_preview": result[:2000]}
@@ -176,11 +193,7 @@ def step_software_engineer(
         f"Read the UoW spec from agent-context/{change_id}/execution/{uow_id}/uow_spec.yaml.\n"
         f"Target repo: {repo}\n"
     )
-    if evaluator_feedback and "## Evaluator Issues to Fix:" not in prompt:
-        prompt += (
-            f"\n\n## Evaluator Issues to Fix:\n{evaluator_feedback}\n\n"
-            f"Address every issue listed above. Do not ask questions — act immediately."
-        )
+    prompt = _append_evaluator_feedback(prompt, evaluator_feedback)
     with opik.start_as_current_trace("software-engineer", project_name="agent-runner") as trace:
         trace.input = {"uow_id": uow_id, "change_id": change_id, "has_feedback": bool(evaluator_feedback)}
         trace.thread_id = change_id
@@ -236,7 +249,7 @@ def step_qa_engineer(
         result = run_agent_cmd(
             runner=runner,
             prompt=context,
-            agent="qa-engineer",
+            agent="qa",
             **_agent_runner_kwargs(runner_model),
         )
         trace.output = {"stdout_preview": result[:2000]}

@@ -97,6 +97,8 @@ def run_research_workflow(assignment: str, repo: str, change_id: str) -> None:
     )
 ```
 
+When you rely on a `prompt_template`, pass a `WorkflowContext` when invoking the generated step so the template variables can be rendered.
+
 The reusable API gives you:
 - `WorkflowContext` for standard repo/run metadata
 - `make_agent_step()` for Prefect + Opik wrapped agent tasks

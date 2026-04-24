@@ -12,7 +12,6 @@ from prefect import task
 from evaluator_optimizer_loops import run_eval_optimizer_loop, run_uow_eval_loop
 from opik_integration import call_evaluator_sdk
 from run_cmds import run_agent_cmd
-from runner_models import DEFAULT_GEMINI_MODEL
 
 RUNNER_ROOT = Path(__file__).resolve().parent
 DEFAULT_ARTIFACTS_ROOT = RUNNER_ROOT / "agent-context"
@@ -27,7 +26,7 @@ class WorkflowContext:
     run_id: str
     repo: str
     runner: str = "claude"
-    runner_model: str | None = DEFAULT_GEMINI_MODEL
+    runner_model: str | None = None
     artifact_root: Path | None = None
     opik_project_name: str = os.environ.get("OPIK_PROJECT_NAME", "agent-runner")
 
@@ -103,7 +102,7 @@ def make_agent_step(
 
         resolved_runner = runner or (workflow_context.runner if workflow_context else "claude")
         resolved_runner_model = runner_model if runner_model is not None else (
-            workflow_context.runner_model if workflow_context else DEFAULT_GEMINI_MODEL
+            workflow_context.runner_model if workflow_context else None
         )
         thread_id, metadata = _resolve_trace_metadata(workflow_context, prompt, prompt_vars)
 
@@ -178,9 +177,25 @@ def load_workflow_artifact_json(
     relative_path: str,
     normalizer: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    """
+    Load a JSON artifact beneath the workflow's artifact root.
+
+    The optional *normalizer* can reshape runner-produced artifact payloads into
+    the stable structure that downstream code expects. Use it for light
+    canonicalization, not for side effects.
+    """
     artifact_path = workflow_context.artifact_root / relative_path
-    with artifact_path.open("r", encoding="utf-8") as artifact_file:
-        data = json.load(artifact_file)
+    try:
+        with artifact_path.open("r", encoding="utf-8") as artifact_file:
+            data = json.load(artifact_file)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(
+            f"Workflow artifact not found for {workflow_context.run_id}: {artifact_path}"
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Workflow artifact is not valid JSON for {workflow_context.run_id}: {artifact_path}"
+        ) from exc
     return normalizer(data) if normalizer else data
 
 
