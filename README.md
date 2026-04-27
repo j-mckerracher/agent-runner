@@ -1,85 +1,139 @@
-# Agent Runner Monorepo
+# agent-runner
 
-Agent Runner is an experimental-apparatus for measuring the impact of
-changes to agents, prompts, tools, and workflows driving staged
-agentic software delivery. It is organized as a **monorepo** of three
-cooperating subsystems plus a shared core.
+A workflow runner that executes multi-stage AI agent pipelines against either:
+- **Local synthetic story fixtures** — for offline testing without Azure DevOps
+- **Live Azure DevOps work items** — for integration with ADO projects
 
-## Repository layout
+The workflow executes 6 stages: intake → planning (task-gen) → assignment → implementation → QA → lessons-optimization.
 
-```
-agent-runner/
-├── bin/                         thin CLI shims
-├── packages/
-│   ├── shared/                  agent_runner_shared — types, schemas, event contract
-│   ├── runner/                  agent_runner        — orchestrator (Runner CLI)
-│   ├── registry/                agent_runner_registry — versioned agent bundles
-│   └── harness/                 agent_runner_harness  — evaluation harness
-├── agent-sources/               source of truth for agent bundles (name/version)
-├── task-corpus/                 versioned evaluable tasks (dual-format ACs)
-├── substrates/                  pinned "test repositories" manifest
-├── cassettes/                   recorded LLM/HTTP traffic for replay
-├── baselines/                   per-task pass-rate bands
-├── runs/                        run archives (tiered retention)
-├── docker/                      Dockerfile + container assets
-├── tools/                       dev tooling (ac-migrator, etc.)
-├── tests/                       cross-package tests
-└── docs/                        architecture + usage documentation
+> **Testing & evaluation:** see [`eval/README.md`](eval/README.md)
+
+---
+
+## Quick Start
+
+### Run with the bundled TEST-AC-001 synthetic story (default)
+
+```bash
+python run.py --repo /absolute/path/to/target/repo
 ```
 
-## Backward-compatible entrypoints
+This uses `agent-context/test-fixtures/synthetic_story.json` by default—no additional arguments needed.
 
-The three original scripts still work from the repo root:
+### Run with a custom synthetic story fixture
 
-- `python3 run.py` — interactive workflow launcher
-- `python3 run_headless.py --change-id WI-XXXX ...` — non-interactive
-- `python3 run_general.py --backend ... --prompt ... --repo ...` — freeform
-
-Equivalent invocations via the packaged workspace entry points:
-
-- `agent-runner --change-id WI-XXXX ...`
-- `agent-runner-interactive`
-- `agent-runner-general --backend ... --prompt ...`
-- `agent-runner-registry list`
-- `agent-runner-harness evaluate --task <id> --dev-mode`
-
-## Install
-
-```
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .[dev]
+```bash
+python run.py --repo /absolute/path/to/target/repo --story-file /path/to/custom_story.json
 ```
 
-## Development
+### Run against Azure DevOps
 
-```
-# Run all tests
-PYTHONPATH=packages/shared:packages/runner:packages/registry:packages/harness \
-  pytest
-
-# Lint import boundaries
-lint-imports -c pyproject.toml
+```bash
+python run.py --repo /absolute/path/to/target/repo --ado-url 'https://dev.azure.com/<org>/<project>/_workitems/edit/123456'
 ```
 
-## Architecture
+### Choose a runner
 
-See `docs/01-broad-architecture.md` and `docs/02-detailed-architecture.md`
-(copies of the documents under `../agent-development/agent-infra/`) for
-the full design intent. Key principles:
+```bash
+python run.py --repo /path/to/repo --runner gemini   # gemini (default model: gemini-2.5-flash)
+python run.py --repo /path/to/repo --runner claude   # default
+python run.py --repo /path/to/repo --runner copilot
+```
 
-1. Agents are **source-of-truth versioned** in `agent-sources/`, not
-   inside `.claude/agents/`. The registry materializes bundles into
-   `.claude/agents/` at run start.
-2. Workflows are **data** (`packages/runner/agent_runner/workflows/*.yaml`),
-   not code; the imperative engine drives them.
-3. Runs are **hermetic** — container + pinned substrate + cassette
-   playback + pinned models and seeds.
-4. Evaluation is a **first-class subsystem** (the harness) owning
-   corpora, grading, baselines, and regression detection.
-5. Judgments use a **different model** than generation: pinned
-   `gpt-5.4-high`. Any change to the judge is a full rebaseline event.
+Run `python run.py --help` for all options.
 
-## License
+---
 
-Internal / private.
+## Synthetic Mode vs. ADO Mode
+
+| | Synthetic | ADO |
+|---|---|---|
+| Credentials needed | ❌ None | ✅ Azure CLI |
+| Network required | ❌ No | ✅ Yes |
+| Input source | Local JSON file | Live ADO work item |
+| ADO operations | Skipped | Active |
+
+**Synthetic mode** is selected automatically when you pass `--story-file` (or use the default fixture). **ADO mode** is selected when you pass `--ado-url`.
+
+---
+
+## Synthetic Fixture Format
+
+All synthetic story fixtures must be valid JSON objects with these required fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| `change_id` | string | e.g. `TEST-AC-001`. Can instead be passed via `--change-id`. |
+| `title` | string | One-line title |
+| `description` | string | Multi-line narrative |
+| `acceptance_criteria` | list or object | See below |
+
+### Acceptance Criteria
+
+Either a list of strings or a keyed object — both are normalized to `AC1`, `AC2`, ... during intake:
+
+```json
+{ "acceptance_criteria": ["First criterion", "Second criterion"] }
+```
+```json
+{ "acceptance_criteria": { "AC1": "First criterion", "AC2": "Second criterion" } }
+```
+
+Optional fields: `examples`, `constraints`, `non_functional_requirements`, `raw_input_notes`, `ado_metadata`.
+
+### Bundled Fixtures
+
+| File | Change ID | Purpose |
+|------|-----------|---------|
+| `agent-context/test-fixtures/synthetic_story.json` | `TEST-AC-001` | Smoke-test — validates workflow stages |
+| `agent-context/test-fixtures/synthetic_story_medium.json` | `TEST-MEDIUM-001` | Multi-task decomposition scenario |
+
+---
+
+## Artifact Layout
+
+```
+agent-context/<change-id>/
+├── intake/
+│   ├── story.yaml        # Normalized story + acceptance criteria
+│   ├── config.yaml       # Workflow config (includes project_type marker)
+│   └── constraints.md    # Extracted constraints and open questions
+├── planning/             # tasks.yaml, assignments.json
+├── execution/            # impl_report.yaml per UoW
+├── qa/                   # qa_report.yaml
+└── logs/
+```
+
+---
+
+## Workflow Stages
+
+1. **Intake** — Normalizes fixture/ADO context into `intake/*` artifacts
+2. **Task Generation** — Decomposes story into `tasks.yaml`
+3. **Task Assignment** — Schedules units of work into `assignments.json`
+4. **Implementation** — Executes each UoW, writes `impl_report.yaml`
+5. **QA** — Validates outputs, writes `qa_report.yaml`
+6. **Lessons Optimization** — Captures learnings and best practices
+
+---
+
+## Troubleshooting
+
+| Error | Cause | Fix |
+|---|---|---|
+| `Synthetic story fixture not found` | Bad path | Use an absolute path or `~` expansion |
+| `must be a JSON object` | Array at top level or invalid JSON | Wrap in `{}`, validate syntax |
+| `missing required field(s)` | `change_id`/`title`/`description`/`acceptance_criteria` absent or empty | Add the missing field |
+| `acceptance_criteria must be a non-empty list...` | Empty, `null`, or non-string values | Use a non-empty list or map of strings |
+| `change_id does not match` | `--change-id` and fixture `change_id` conflict | Remove one, or make them match |
+| `Provide either ado_url or story_file, not both` | Both flags passed | Pick one mode |
+
+---
+
+## Synthetic Mode Markers
+
+After intake, synthetic runs are identifiable by:
+
+- `config.yaml` → `project_type: 'synthetic-fixture'`
+- `story.yaml` → `raw_input.source_type: synthetic_fixture`
+- `story.yaml` → **no** `ado_provenance` key

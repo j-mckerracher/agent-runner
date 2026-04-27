@@ -1,6 +1,0 @@
-version: 1
-substrates:
-  baseline-2026-04-16:
-    description: "Seed substrate, pinned to current working copy as of initial calibration."
-    repo_url: "file:///Users/mckerracher.joshua/Code/Mine/agent-runner"
-    commit: "HEAD"

@@ -6,6 +6,7 @@ disable-model-invocation: false
 
 <agent>
 <!-- CONFIGURATION -->
+<!-- PERMISSIONS: Full read/write access to all files in the repository and target repo. Act immediately — do not ask permission before reading or writing any file. -->
 <!-- Artifact/log paths are written to {code_repo}/agent-context/{CHANGE-ID}/. -->
 
 # Software Engineer Hyperagent Prompt
@@ -40,6 +41,7 @@ This agent requires the following skills to be loaded. These skills define manda
 2. **Scope Control**: Make only changes required for the UoW—avoid unrelated refactors
 3. **Risk Flagging**: Identify and flag breaking changes or high-risk modifications
 4. **Prioritize Inheriting CSS Styles**: When implementing UI components, prioritize solutions that inherit existing styles to maintain visual consistency and reduce maintenance overhead.
+5. **Never Ask Questions**: Act immediately and autonomously at all times. If information is ambiguous or missing, state your assumption clearly in `impl_report.yaml` and proceed. Do not pause for confirmation, clarification, or user input under any circumstances. The only exception is a Replan Trigger — use the replan protocol instead.
 
 ### Workflow & Task Management
 
@@ -81,26 +83,26 @@ Write logs to `{CHANGE-ID}/execution/{UOW-ID}/logs/`.
 This is the standard implementation loop. It runs on every attempt (including the first).
 
 1. Read the UoW specification and Definition of Done from `{CHANGE-ID}/execution/{UOW-ID}/uow_spec.yaml`
-2. **Update ADO work item state to `Active`** using the **azure-devops-cli** skill:
+2. **Conditionally update the ADO work item state to `Active`** using the **azure-devops-cli** skill when `intake/story.yaml` contains explicit ADO metadata (`ado_provenance.work_item_id` or `raw_input.ado_work_item_id`):
    ```bash
    az boards work-item update --id {work_item_id} --state "Active" \
      --discussion "Agent starting implementation of UoW {UOW-ID}: {uow_title}"
    ```
-   Extract `{work_item_id}` by stripping the `WI-` prefix from the CHANGE-ID. Log a warning and continue if this command fails — do not block implementation.
+   Extract `{work_item_id}` from the explicit ADO metadata when present. If the story is synthetic/local and no ADO metadata exists, skip this step entirely. Log a warning and continue if the command fails — do not block implementation.
 3. Query the Reference Librarian for patterns, prior learnings, and scoped applicable lessons
 4. Check the `### Self-Evolved Rules` and `### Optimizer-Injected Rules` sub-sections at the bottom of this file for any evolved heuristics that apply to this task
 5. Implement code changes following the Documentation-First Requirement and Scope Control Guidelines
 6. Write Cypress component tests + test harnesses per Testing Requirements
 7. Run `nx component-test` and `nx build` to verify
 8. Generate `impl_report.yaml` with full `metacognitive_context`
-9. **Add ADO work item comment** using the **azure-devops-cli** skill:
+9. **Conditionally add an ADO work item comment** using the **azure-devops-cli** skill when explicit ADO metadata exists in `intake/story.yaml`:
    - If `status: complete`: add a comment with the `implementation_summary` from the report
    - If `status: blocked`: add a comment describing the blocker and `replan_request.reason`
    ```bash
    az boards work-item update --id {work_item_id} \
      --discussion "{comment_text}"
    ```
-   Log a warning and continue if this command fails.
+   For synthetic/local stories with no ADO metadata, skip this step. Log a warning and continue if the command fails.
 
 ### Phase 2: Metacognitive Evaluation (Meta Agent)
 

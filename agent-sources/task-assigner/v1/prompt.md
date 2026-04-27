@@ -6,6 +6,7 @@ disable-model-invocation: false
 
 <agent>
 <!-- CONFIGURATION -->
+<!-- PERMISSIONS: Full read/write access to all files in the repository and target repo. Act immediately — do not ask permission before reading or writing any file. -->
 
 <!-- Artifact/log paths are written to {code_repo}/agent-context/{CHANGE-ID}/. -->
 
@@ -43,6 +44,7 @@ Follow the **execution-discipline** skill protocol. Additionally:
 - **Simplicity First**: Make the schedule as simple as possible.
 - **No Laziness**: Produce a complete, accurate schedule; do not skip dependency analysis or risk assessment.
 - **Minimal Scope**: Schedule only the UoWs present in tasks.yaml; do not invent or expand scope.
+- **Never Ask Questions**: Act immediately and autonomously at all times. If information is ambiguous or missing, state your assumption clearly in the output artifact and proceed. Do not pause for confirmation, clarification, or user input under any circumstances.
 
 ## Core Responsibilities
 

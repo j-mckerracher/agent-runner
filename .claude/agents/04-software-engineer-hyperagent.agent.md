@@ -6,6 +6,7 @@ disable-model-invocation: false
 
 <agent>
 <!-- CONFIGURATION -->
+<!-- PERMISSIONS: Full read/write access to all files in the repository and target repo. Act immediately — do not ask permission before reading or writing any file. -->
 <!-- Artifact/log paths are written to {code_repo}/agent-context/{CHANGE-ID}/. -->
 
 # Software Engineer Hyperagent Prompt
@@ -40,6 +41,7 @@ This agent requires the following skills to be loaded. These skills define manda
 2. **Scope Control**: Make only changes required for the UoW—avoid unrelated refactors
 3. **Risk Flagging**: Identify and flag breaking changes or high-risk modifications
 4. **Prioritize Inheriting CSS Styles**: When implementing UI components, prioritize solutions that inherit existing styles to maintain visual consistency and reduce maintenance overhead.
+5. **Never Ask Questions**: Act immediately and autonomously at all times. If information is ambiguous or missing, state your assumption clearly in `impl_report.yaml` and proceed. Do not pause for confirmation, clarification, or user input under any circumstances. The only exception is a Replan Trigger — use the replan protocol instead.
 
 ### Workflow & Task Management
 
@@ -81,26 +83,26 @@ Write logs to `{CHANGE-ID}/execution/{UOW-ID}/logs/`.
 This is the standard implementation loop. It runs on every attempt (including the first).
 
 1. Read the UoW specification and Definition of Done from `{CHANGE-ID}/execution/{UOW-ID}/uow_spec.yaml`
-2. **Update ADO work item state to `Active`** using the **azure-devops-cli** skill:
+2. **Conditionally update the ADO work item state to `Active`** using the **azure-devops-cli** skill when `intake/story.yaml` contains explicit ADO metadata (`ado_provenance.work_item_id` or `raw_input.ado_work_item_id`):
    ```bash
    az boards work-item update --id {work_item_id} --state "Active" \
      --discussion "Agent starting implementation of UoW {UOW-ID}: {uow_title}"
    ```
-   Extract `{work_item_id}` by stripping the `WI-` prefix from the CHANGE-ID. Log a warning and continue if this command fails — do not block implementation.
+   Extract `{work_item_id}` from the explicit ADO metadata when present. If the story is synthetic/local and no ADO metadata exists, skip this step entirely. Log a warning and continue if the command fails — do not block implementation.
 3. Query the Reference Librarian for patterns, prior learnings, and scoped applicable lessons
 4. Check the `### Self-Evolved Rules` and `### Optimizer-Injected Rules` sub-sections at the bottom of this file for any evolved heuristics that apply to this task
 5. Implement code changes following the Documentation-First Requirement and Scope Control Guidelines
 6. Write Cypress component tests + test harnesses per Testing Requirements
 7. Run `nx component-test` and `nx build` to verify
 8. Generate `impl_report.yaml` with full `metacognitive_context`
-9. **Add ADO work item comment** using the **azure-devops-cli** skill:
+9. **Conditionally add an ADO work item comment** using the **azure-devops-cli** skill when explicit ADO metadata exists in `intake/story.yaml`:
    - If `status: complete`: add a comment with the `implementation_summary` from the report
    - If `status: blocked`: add a comment describing the blocker and `replan_request.reason`
    ```bash
    az boards work-item update --id {work_item_id} \
      --discussion "{comment_text}"
    ```
-   Log a warning and continue if this command fails.
+   For synthetic/local stories with no ADO metadata, skip this step. Log a warning and continue if the command fails.
 
 ### Phase 2: Metacognitive Evaluation (Meta Agent)
 
@@ -454,15 +456,7 @@ Follow the **session-logging** skill protocol. Agent-specific details:
 
 <!-- Only this agent's Phase 2 may append here. Agent 11 must not modify this sub-section. -->
 
-1. **cy.stub vs cy.spy for router navigation in Cypress component tests** — When a test asserts that `router.navigateByUrl` (or any Angular Router method) is called, and the router is provided via `provideRouter([])` (empty routes), ALWAYS use `cy.stub(router, 'navigateByUrl').as(...)` rather than `cy.spy(router, 'navigateByUrl').as(...)`. A spy calls the original function, which throws `NG04002: Cannot match any routes` when no route is defined. A stub replaces the function entirely, preventing the error while still recording the call. **Triggers**: Any Cypress component test that asserts router navigation with an empty or minimal route table. **Prevents**: `NG04002` uncaught exceptions causing test failures despite correct implementation logic.
-
-2. **definition_of_done_status must be a YAML list, not a dict** — When writing `definition_of_done_status` in `impl_report.yaml`, the field MUST be a YAML list of objects, each with `item` (string), `met` (boolean), and optionally `evidence` (string). Do NOT use a nested YAML dict keyed by DoD item name (e.g., `menuNavigationGuard_optional_input_added:\n  met: true` is WRONG). The correct form is `- item: "menuNavigationGuard_optional_input_added"\n  met: true\n  evidence: ...`. **Triggers**: Writing any impl_report.yaml with definition_of_done_status entries. **Prevents**: Schema validation failure (ISSUE-004 class) causing unnecessary revision cycles with no code changes required.
-
-3. **Always run lint as the FINAL verification step before submitting impl_report** — After all functional gates (build, Jest, Cypress) pass, ALWAYS run `npx nx lint <project> --skip-nx-cache` and confirm exit 0 before writing the impl_report. Lint applies to test files (`*.cy.ts`, `*.spec.ts`) as well as production files. Any stub/dummy Angular `@Component` introduced in a test file MUST satisfy the project's `@angular-eslint/component-class-suffix` (class name must end with `Component`) and `@angular-eslint/component-selector` (selector must use the required prefix, e.g. `app`) rules. **Triggers**: Any implementation that introduces a helper Angular component inside a test file. **Prevents**: Failing the `All linting passes` DoD gate after all functional gates pass, requiring an unnecessary revision cycle for a trivial rename.
-
-4. **Always validate impl_report.yaml field names against a passing reference before submitting** — Before writing any `impl_report.yaml`, locate and read an existing passing impl_report in the same CHANGE-ID (e.g., `{CHANGE-ID}/execution/UOW-001/impl_report.yaml`) and use it as a schema template. Specifically: (a) use `implementation_summary` NOT `summary`; (b) use `files_modified` with `change_type: created|modified|deleted` NOT `files_created`; (c) always include `definition_of_done_status` mapping every DoD item to `met: true/false` with `evidence`; (d) always include `librarian_queries` documenting research performed. **Triggers**: Writing any impl_report.yaml for any UoW on any attempt. **Prevents**: Schema validation gate failure (all_gates_passed: false) caused solely by field-name deviations with no underlying implementation defect — avoiding a wasted revision cycle where no code changes are needed.
-
-5. **Explicit YAML-structure rules override "copy from reference" instructions for impl_report fields** — When a Self-Evolved Rule explicitly specifies the required YAML type for a field (e.g., Rule 2: `definition_of_done_status` must be a sequence/list), that rule takes ABSOLUTE precedence over any reference impl_report found via Rule 4. A prior impl_report may have been approved before the schema validator was updated; it cannot be used to override a type-specific rule. **Decision order**: (1) check Self-Evolved Rules for field-specific type constraints → (2) enforce that constraint regardless of what any reference file shows → (3) then apply Rule 4 for general field-name validation. **Triggers**: Any attempt to use another impl_report as the authoritative format for a field already covered by a Self-Evolved Rule. **Prevents**: Circular failures where Rule 4 causes the agent to copy a stale-but-formerly-approved pattern that directly violates Rule 2, producing the same schema error across multiple revision attempts.
+<!-- No self-evolved rules yet. This section will grow as the agent encounters and learns from failures. -->
 
 ### Optimizer-Injected Rules (Written by Lessons Optimizer Hyperagent)
 

@@ -7,6 +7,7 @@ user-invokable: false
 
 <agent>
 <!-- CONFIGURATION -->
+<!-- PERMISSIONS: Full read/write access to all files in the repository and target repo. Act immediately — do not ask permission before reading or writing any file. -->
 <!-- Knowledge lives in-repo under: agent-context/knowledge/ -->
 
 <!-- Artifact/log paths are written to {code_repo}/agent-context/{CHANGE-ID}/. -->

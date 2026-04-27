@@ -61,3 +61,11 @@
 #   RESUME: Q1=my answer
 #
 # See docs/Discord_Escalation_Bridge.md for full setup instructions.
+
+prefect
+numpy
+opik
+anthropic
+truststore
+python-dotenv
+google-genai
