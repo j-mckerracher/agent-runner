@@ -28,6 +28,7 @@ truststore.inject_into_ssl()
 import anthropic
 import httpx
 import opik
+from opik import opik_context
 from google import genai as google_genai
 from agent_prompts import load_agent_system_prompt
 
@@ -136,6 +137,7 @@ def call_evaluator_sdk(
                 text = candidates[0].content.parts[0].text or ""
             except (AttributeError, IndexError, TypeError):
                 text = ""
+        _attach_usage_metadata(response, provider="gemini")
         return text
 
     _env_cert = os.environ.get("SSL_CERT_FILE") or os.environ.get("REQUESTS_CA_BUNDLE")
@@ -152,4 +154,50 @@ def call_evaluator_sdk(
         system=system_prompt,
         messages=[{"role": "user", "content": user_message}],
     )
+    _attach_usage_metadata(response, provider="anthropic")
     return response.content[0].text
+
+
+def _attach_usage_metadata(response, *, provider: str) -> None:
+    """
+    Attach token usage to the current Opik span when the response carries it.
+
+    Anthropic responses expose `response.usage` (input_tokens / output_tokens).
+    Gemini responses expose `response.usage_metadata`
+    (prompt_token_count / candidates_token_count / total_token_count).
+
+    Failures are swallowed so observability never breaks the LLM call.
+    """
+    try:
+        usage_payload: dict = {}
+        if provider == "anthropic":
+            usage = getattr(response, "usage", None)
+            if usage is None:
+                return
+            input_tokens = getattr(usage, "input_tokens", None)
+            output_tokens = getattr(usage, "output_tokens", None)
+            if input_tokens is not None:
+                usage_payload["prompt_tokens"] = int(input_tokens)
+            if output_tokens is not None:
+                usage_payload["completion_tokens"] = int(output_tokens)
+            if input_tokens is not None and output_tokens is not None:
+                usage_payload["total_tokens"] = int(input_tokens) + int(output_tokens)
+        elif provider == "gemini":
+            meta = getattr(response, "usage_metadata", None)
+            if meta is None:
+                return
+            prompt = getattr(meta, "prompt_token_count", None)
+            completion = getattr(meta, "candidates_token_count", None)
+            total = getattr(meta, "total_token_count", None)
+            if prompt is not None:
+                usage_payload["prompt_tokens"] = int(prompt)
+            if completion is not None:
+                usage_payload["completion_tokens"] = int(completion)
+            if total is not None:
+                usage_payload["total_tokens"] = int(total)
+
+        if usage_payload:
+            opik_context.update_current_span(usage=usage_payload)
+    except Exception:
+        # Never let observability errors propagate.
+        return
