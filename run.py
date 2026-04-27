@@ -3,6 +3,7 @@ import json
 import os
 import re
 import shutil
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -10,8 +11,6 @@ import yaml
 
 from dotenv import load_dotenv
 load_dotenv()
-
-from prefect import flow, tags
 
 import opik_integration  # noqa: F401 — configures Opik project context before the flow runs
 import steps
@@ -190,7 +189,6 @@ def parse_args() -> argparse.Namespace:
 
 # ====================== MAIN ====================== #
 
-@flow(log_prints=True, timeout_seconds=7200)
 def main(
     repo: str | None = None,
     change_id: str | None = None,
@@ -293,20 +291,20 @@ def main(
         print(f"Executing batch {batch['batch']} — UoWs: {uow_ids} (parallel={is_parallel})")
 
         if is_parallel and len(uow_ids) > 1:
-            # Fan-out: submit all UoWs in the batch concurrently
-            futures = [
-                run_uow_eval_loop.submit(
-                    uow_id=uid,
-                    change_id=resolved_change_id,
-                    repo=resolved_repo,
-                    runner=runner,
-                    **runner_model_kwargs,
-                )
-                for uid in uow_ids
-            ]
-            # Wait for all UoWs in this batch to complete before advancing
-            for future in futures:
-                future.result()
+            with ThreadPoolExecutor() as executor:
+                futures = [
+                    executor.submit(
+                        run_uow_eval_loop,
+                        uow_id=uid,
+                        change_id=resolved_change_id,
+                        repo=resolved_repo,
+                        runner=runner,
+                        **runner_model_kwargs,
+                    )
+                    for uid in uow_ids
+                ]
+                for future in futures:
+                    future.result()
         else:
             for uid in uow_ids:
                 run_uow_eval_loop(
@@ -354,13 +352,12 @@ def main(
 
 if __name__ == "__main__":
     args = parse_args()
-    with tags(f"Running {runner_label(args.runner)} {get_time()}"):
-        main(
-            repo=args.repo,
-            change_id=args.change_id,
-            ado_url=args.ado_url,
-            story_file=args.story_file,
-            runner=args.runner,
-            skip_materialize=args.skip_materialize,
-            gemini_model=args.gemini_model,
-        )
+    main(
+        repo=args.repo,
+        change_id=args.change_id,
+        ado_url=args.ado_url,
+        story_file=args.story_file,
+        runner=args.runner,
+        skip_materialize=args.skip_materialize,
+        gemini_model=args.gemini_model,
+    )

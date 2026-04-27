@@ -1,6 +1,5 @@
 import argparse
 import subprocess
-from prefect import task, tags
 from datetime import datetime
 
 # ====================== HELPERS ====================== #
@@ -48,7 +47,6 @@ def parse_args() -> argparse.Namespace:
 
 # ====================== TASK ====================== #
 
-@task(log_prints=True)
 def run_claude(
     prompt: str,
     agent: str = "reference-librarian",
@@ -88,11 +86,10 @@ def run_claude(
 
 if __name__ == "__main__":
     args = parse_args()
-    with tags(f"Invoking {args.agent} Agent {get_time()}"):
-        run_claude(
-            prompt=args.prompt,
-            agent=args.agent,
-            model=args.model,
-            skip_permissions=not args.no_skip_permissions,
-            extra_flags=args.extra_flags or None,
-        )
+    run_claude(
+        prompt=args.prompt,
+        agent=args.agent,
+        model=args.model,
+        skip_permissions=not args.no_skip_permissions,
+        extra_flags=args.extra_flags or None,
+    )

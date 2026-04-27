@@ -62,7 +62,6 @@
 #
 # See docs/Discord_Escalation_Bridge.md for full setup instructions.
 
-prefect
 numpy
 opik
 anthropic

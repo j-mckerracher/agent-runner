@@ -3,7 +3,6 @@ import json
 import subprocess
 
 import opik
-from prefect import task, tags
 from run_cmds import run_claude_cmd, run_agent_cmd
 from opik_integration import call_evaluator_sdk
 from runner_models import DEFAULT_GEMINI_MODEL
@@ -137,8 +136,6 @@ def build_intake_prompt(
     return prompt
 
 
-# 1
-@task(log_prints=True, name="intake")
 def step_intake(
     intake_source: str,
     repo: str,
@@ -147,38 +144,36 @@ def step_intake(
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
 ):
-    with tags('intake-agent'):
-        print(f"Received intake source ({intake_mode}): {intake_source}")
-        prompt = build_intake_prompt(
-            intake_source=intake_source,
-            repo=repo,
-            change_id=change_id,
-            intake_mode=intake_mode,
+    print(f"Received intake source ({intake_mode}): {intake_source}")
+    prompt = build_intake_prompt(
+        intake_source=intake_source,
+        repo=repo,
+        change_id=change_id,
+        intake_mode=intake_mode,
+        runner=runner,
+        ado_work_item_json=(
+            _fetch_ado_work_item(intake_source)
+            if runner == "gemini" and intake_mode == "ado"
+            else None
+        ),
+    )
+    # For Gemini, no extra skills needed — work item data is embedded in the prompt
+    extra_skills = None
+    with opik.start_as_current_trace("intake", project_name="agent-runner") as trace:
+        trace.input = {"intake_source": intake_source, "change_id": change_id, "intake_mode": intake_mode}
+        trace.thread_id = change_id
+        result = run_agent_cmd(
             runner=runner,
-            ado_work_item_json=(
-                _fetch_ado_work_item(intake_source)
-                if runner == "gemini" and intake_mode == "ado"
-                else None
-            ),
+            prompt=prompt,
+            agent="intake",
+            extra_skills=extra_skills,
+            **_agent_runner_kwargs(runner_model),
         )
-        # For Gemini, no extra skills needed — work item data is embedded in the prompt
-        extra_skills = None
-        with opik.start_as_current_trace("intake", project_name="agent-runner") as trace:
-            trace.input = {"intake_source": intake_source, "change_id": change_id, "intake_mode": intake_mode}
-            trace.thread_id = change_id
-            result = run_agent_cmd(
-                runner=runner,
-                prompt=prompt,
-                agent="intake",
-                extra_skills=extra_skills,
-                **_agent_runner_kwargs(runner_model),
-            )
-            trace.output = {"stdout_preview": result[:2000]}
-        return result
+        trace.output = {"stdout_preview": result[:2000]}
+    return result
 
 
 # 2
-@task(log_prints=True, name="task-gen-producer")
 def step_task_gen_producer(
     context: str,
     runner: str = "claude",
@@ -198,7 +193,6 @@ def step_task_gen_producer(
 
 
 # 3
-@task(log_prints=True, name="task-gen-evaluator")
 def step_task_gen_evaluator(
     context: str,
     runner: str = "claude",
@@ -218,7 +212,6 @@ def step_task_gen_evaluator(
 
 
 # 4
-@task(log_prints=True, name="task-assigner")
 def step_task_assigner(
     context: str,
     runner: str = "claude",
@@ -238,7 +231,6 @@ def step_task_assigner(
 
 
 # 4b
-@task(log_prints=True, name="assignment-evaluator")
 def step_assignment_evaluator(
     context: str,
     runner: str = "claude",
@@ -258,7 +250,6 @@ def step_assignment_evaluator(
 
 
 # 5
-@task(log_prints=True, name="software-engineer")
 def step_software_engineer(
     uow_id: str,
     change_id: str,
@@ -291,7 +282,6 @@ def step_software_engineer(
 
 
 # 6
-@task(log_prints=True, name="software-engineer-evaluator")
 def step_software_engineer_evaluator(
     uow_id: str,
     change_id: str,
@@ -319,7 +309,6 @@ def step_software_engineer_evaluator(
 
 
 # 7
-@task(log_prints=True, name="qa-engineer")
 def step_qa_engineer(
     context: str,
     runner: str = "claude",
@@ -339,7 +328,6 @@ def step_qa_engineer(
 
 
 # 8
-@task(log_prints=True, name="qa-evaluator")
 def step_qa_evaluator(
     context: str,
     runner: str = "claude",
@@ -359,7 +347,6 @@ def step_qa_evaluator(
 
 
 # 9
-@task(log_prints=True, name="lessons-optimizer")
 def step_lessons_optimizer(
     change_id: str,
     repo: str,
