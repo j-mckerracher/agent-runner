@@ -3,7 +3,6 @@ import re
 import subprocess
 import time
 from pathlib import Path
-from prefect import task
 
 from agent_prompts import load_agent_system_prompt
 from runner_models import DEFAULT_GEMINI_MODEL
@@ -123,7 +122,6 @@ def run_claude_cmd(
     return result.stdout
 
 
-@task(log_prints=True, name="run-claude")
 def run_claude(
     prompt: str,
     agent: str,
@@ -131,7 +129,7 @@ def run_claude(
     skip_permissions: bool = True,
     extra_flags: list[str] | None = None,
 ) -> str:
-    """Prefect task wrapper around run_claude_cmd."""
+    """Wrapper around run_claude_cmd."""
     return run_claude_cmd(prompt=prompt, agent=agent, model=model,
                           skip_permissions=skip_permissions, extra_flags=extra_flags)
 
@@ -249,7 +247,6 @@ def run_agent_cmd(
         raise ValueError(f"Unknown runner: {runner!r}. Must be 'claude', 'copilot', or 'gemini'.")
 
 
-@task(log_prints=True, name="run-copilot")
 def run_copilot(
     prompt: str,
     agent: str,
@@ -257,17 +254,16 @@ def run_copilot(
     silent: bool = True,
     extra_flags: list[str] | None = None,
 ) -> str:
-    """Prefect task wrapper around run_copilot_cmd."""
+    """Wrapper around run_copilot_cmd."""
     return run_copilot_cmd(prompt=prompt, agent=agent, model=model,
                            silent=silent, extra_flags=extra_flags)
 
 
-@task(log_prints=True, name="run-gemini")
 def run_gemini(
     prompt: str,
     agent: str,
     model: str = DEFAULT_GEMINI_MODEL,
     extra_flags: list[str] | None = None,
 ) -> str:
-    """Prefect task wrapper around run_gemini_cmd."""
+    """Wrapper around run_gemini_cmd."""
     return run_gemini_cmd(prompt=prompt, agent=agent, model=model, extra_flags=extra_flags)

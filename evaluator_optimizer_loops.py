@@ -1,9 +1,7 @@
 import opik
-from prefect import task, flow
 import steps
 from runner_models import DEFAULT_GEMINI_MODEL
 
-@task(log_prints=True, name="run-uow-eval-loop", timeout_seconds=3600)
 def run_uow_eval_loop(
     uow_id: str,
     change_id: str,
@@ -47,7 +45,6 @@ def run_uow_eval_loop(
 
 # ====================== EVAL-OPTIMIZER LOOP ====================== #
 
-@flow(log_prints=True, timeout_seconds=1800)
 def run_eval_optimizer_loop(
     producer_func,
     producer_input,
