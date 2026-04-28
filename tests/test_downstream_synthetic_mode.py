@@ -1,9 +1,11 @@
 """
 Test verification of downstream stages' synthetic mode detection and ADO operation skipping.
-Verifies that task-gen, task-assigner, software-engineer, and QA stages correctly:
-1. Detect synthetic mode from config.yaml (project_type='synthetic-fixture')
-2. Detect absence of ado_provenance metadata
-3. Skip all ADO-specific operations
+
+Difficulty rubric for this file:
+  easy   = single-field assertion on a pre-loaded config.yaml or story.yaml.
+  medium = multi-step skip-logic precondition checks (still single-criterion
+           per test, but require derived booleans).
+  hard   = (none in this file)
 """
 
 import json
@@ -32,24 +34,24 @@ class ConfigSyntheticModeDetectionTests(unittest.TestCase):
         with open(cls.story_path, "r") as f:
             cls.story = yaml.safe_load(f)
 
-    def test_config_has_project_type_field(self):
+    def test_easy__config_has_project_type_field(self):
         """Verify config.yaml includes project_type field."""
         self.assertIn("project_type", self.config,
                      "config.yaml must have project_type field for synthetic mode detection")
 
-    def test_config_project_type_is_synthetic_fixture(self):
+    def test_easy__config_project_type_is_synthetic_fixture(self):
         """Verify project_type is set to synthetic-fixture."""
         project_type = self.config.get("project_type")
         self.assertEqual(project_type, "synthetic-fixture",
                         "project_type must be 'synthetic-fixture' to signal downstream stages to skip ADO")
 
-    def test_story_has_no_ado_provenance_metadata(self):
+    def test_easy__story_has_no_ado_provenance_metadata(self):
         """Verify ado_provenance is absent (secondary synthetic detection marker)."""
         ado_provenance = self.story.get("ado_provenance")
         self.assertIsNone(ado_provenance,
                          "story.yaml must not have ado_provenance in synthetic mode (used as secondary detection)")
 
-    def test_config_has_change_id_for_artifact_routing(self):
+    def test_easy__config_change_id_equals_test_ac_001(self):
         """Verify config.yaml has change_id for artifact routing."""
         change_id = self.config.get("change_id")
         self.assertEqual(change_id, "TEST-AC-001",
@@ -59,7 +61,7 @@ class ConfigSyntheticModeDetectionTests(unittest.TestCase):
 class TaskGeneratorSyntheticModeTests(unittest.TestCase):
     """Test that task-gen agent receives correct context for synthetic mode detection."""
 
-    def test_task_gen_receives_config_context(self):
+    def test_easy__task_gen_config_yaml_path_exists(self):
         """Verify that prompts to task-gen include config.yaml context."""
         # The task-gen producer prompt should instruct the agent to read config.yaml
         # and detect project_type for synthetic mode handling
@@ -69,7 +71,7 @@ class TaskGeneratorSyntheticModeTests(unittest.TestCase):
         self.assertTrue(config_path.exists(),
                        "config.yaml must exist for task-gen to read and detect synthetic mode")
 
-    def test_task_gen_can_detect_synthetic_from_config(self):
+    def test_easy__task_gen_can_detect_synthetic_from_config(self):
         """Verify config.yaml provides unambiguous synthetic mode marker."""
         agent_context = Path(__file__).parent.parent / "agent-context" / "TEST-AC-001"
         config_path = agent_context / "intake" / "config.yaml"
@@ -94,18 +96,18 @@ class AssignmentsJsonSyntheticHandlingTests(unittest.TestCase):
         except FileNotFoundError:
             cls.assignments = None
 
-    def test_assignments_exist(self):
+    def test_easy__assignments_json_loads_successfully(self):
         """Verify assignments.json was created by task-assigner."""
         self.assertIsNotNone(self.assignments,
                             "assignments.json must be created by task-assigner stage")
 
-    def test_assignments_have_execution_schedule(self):
+    def test_easy__assignments_json_has_execution_schedule_key(self):
         """Verify execution schedule is defined."""
         if self.assignments:
             self.assertIn("execution_schedule", self.assignments,
                          "assignments.json must have execution_schedule")
 
-    def test_assignments_no_ado_metadata_references(self):
+    def test_easy__assignments_json_serializes_to_non_none(self):
         """Verify assignments don't reference ADO-specific metadata."""
         if self.assignments:
             assignments_str = json.dumps(self.assignments)
@@ -117,7 +119,7 @@ class AssignmentsJsonSyntheticHandlingTests(unittest.TestCase):
 class DownstreamSyntheticModeSkipLogicTests(unittest.TestCase):
     """Test that downstream stages have conditional logic to skip ADO operations."""
 
-    def test_synthetic_marker_enables_skip_logic(self):
+    def test_medium__synthetic_marker_enables_skip_logic(self):
         """Verify that having project_type='synthetic-fixture' enables ADO skip logic."""
         # In synthetic mode, downstream stages should:
         # 1. Check config.get("project_type") == "synthetic-fixture"
@@ -135,7 +137,7 @@ class DownstreamSyntheticModeSkipLogicTests(unittest.TestCase):
         self.assertTrue(is_synthetic,
                        "Downstream stages must detect synthetic mode from project_type")
 
-    def test_synthetic_mode_marker_unambiguous(self):
+    def test_medium__synthetic_mode_marker_unambiguous(self):
         """Verify synthetic mode marker cannot be confused with other modes."""
         agent_context = Path(__file__).parent.parent / "agent-context" / "TEST-AC-001"
         config_path = agent_context / "intake" / "config.yaml"
@@ -152,7 +154,7 @@ class DownstreamSyntheticModeSkipLogicTests(unittest.TestCase):
 class DownstreamPromptContextTests(unittest.TestCase):
     """Test that agent prompts include necessary context for synthetic mode detection."""
 
-    def test_task_gen_prompt_can_reference_config(self):
+    def test_easy__downstream_prompt_config_yaml_path_exists(self):
         """Verify task-gen prompts are expected to read config.yaml."""
         # The run.py main() function passes the change_id to task-gen
         # Task-gen agent prompt should instruct reading config.yaml from agent-context/
@@ -163,7 +165,7 @@ class DownstreamPromptContextTests(unittest.TestCase):
         self.assertTrue(config_path.exists(),
                        "config.yaml must exist at the expected path for agents to discover it")
 
-    def test_story_no_ado_provenance_signals_synthetic(self):
+    def test_easy__story_no_ado_provenance_signals_synthetic(self):
         """Verify absence of ado_provenance in story.yaml signals synthetic mode."""
         agent_context = Path(__file__).parent.parent / "agent-context" / "TEST-AC-001"
         story_path = agent_context / "intake" / "story.yaml"
@@ -175,7 +177,7 @@ class DownstreamPromptContextTests(unittest.TestCase):
         self.assertIsNone(ado_provenance,
                          "Absence of ado_provenance is secondary signal for synthetic mode")
 
-    def test_constraints_file_documents_synthetic_handling(self):
+    def test_easy__constraints_md_is_non_empty(self):
         """Verify constraints.md explains the synthetic mode handling requirement."""
         agent_context = Path(__file__).parent.parent / "agent-context" / "TEST-AC-001"
         constraints_path = agent_context / "intake" / "constraints.md"
@@ -191,7 +193,7 @@ class DownstreamPromptContextTests(unittest.TestCase):
 class SyntheticModeErrorHandlingTests(unittest.TestCase):
     """Test error messages when synthetic mode constraints are violated."""
 
-    def test_synthetic_mode_requires_no_ado_calls(self):
+    def test_medium__synthetic_mode_requires_no_ado_calls(self):
         """Verify that synthetic mode should NOT make ADO API calls."""
         # This is verified through:
         # 1. Absence of azure-devops-cli in prompts for synthetic mode
@@ -225,21 +227,21 @@ class SoftwareEngineerADOSkipLogicTests(unittest.TestCase):
         with open(cls.story_path, "r") as f:
             cls.story = yaml.safe_load(f)
 
-    def test_software_engineer_detects_synthetic_mode_from_story(self):
+    def test_easy__software_engineer_story_has_no_ado_provenance(self):
         """Verify software-engineer can detect synthetic mode from story.yaml absence of ado_provenance."""
         # The software-engineer agent should check story.get("ado_provenance") is None
         ado_provenance = self.story.get("ado_provenance")
         self.assertIsNone(ado_provenance,
                          "story.yaml must not have ado_provenance for synthetic mode")
 
-    def test_software_engineer_detects_synthetic_from_config_project_type(self):
+    def test_easy__software_engineer_detects_synthetic_from_config_project_type(self):
         """Verify software-engineer can detect synthetic mode from config.yaml project_type."""
         # Fallback detection: config.get("project_type") == "synthetic-fixture"
         project_type = self.config.get("project_type")
         self.assertEqual(project_type, "synthetic-fixture",
                         "config.yaml project_type enables secondary synthetic detection for software-engineer")
 
-    def test_software_engineer_should_skip_ado_state_update_when_synthetic(self):
+    def test_medium__software_engineer_should_skip_ado_state_update_when_synthetic(self):
         """Verify that in synthetic mode, software-engineer does NOT call az boards work-item update --state Active."""
         # Given: synthetic story with no ado_provenance
         is_synthetic = self.story.get("ado_provenance") is None
@@ -253,7 +255,7 @@ class SoftwareEngineerADOSkipLogicTests(unittest.TestCase):
         self.assertIsNone(work_item_id,
                          "software-engineer must find no work_item_id in synthetic mode, enabling skip logic")
 
-    def test_software_engineer_should_skip_ado_comment_when_synthetic(self):
+    def test_medium__software_engineer_should_skip_ado_comment_when_synthetic(self):
         """Verify that in synthetic mode, software-engineer does NOT call az boards work-item update --discussion."""
         # Given: synthetic story with no ado_provenance
         is_synthetic = self.story.get("ado_provenance") is None
@@ -279,14 +281,14 @@ class QAEngineerADOSkipLogicTests(unittest.TestCase):
         with open(cls.story_path, "r") as f:
             cls.story = yaml.safe_load(f)
 
-    def test_qa_engineer_detects_synthetic_from_story_no_ado_provenance(self):
+    def test_easy__qa_engineer_story_has_no_ado_provenance(self):
         """Verify QA can detect synthetic mode from absence of ado_provenance."""
         # The QA agent should check story.get("ado_provenance") is None
         ado_provenance = self.story.get("ado_provenance")
         self.assertIsNone(ado_provenance,
                          "story.yaml absence of ado_provenance signals synthetic mode to QA")
 
-    def test_qa_engineer_should_skip_state_update_to_resolved_when_synthetic(self):
+    def test_medium__qa_engineer_should_skip_state_update_to_resolved_when_synthetic(self):
         """Verify that in synthetic mode, QA does NOT call az boards work-item update --state Resolved."""
         # Given: synthetic story with no ado_provenance
         is_synthetic = self.story.get("ado_provenance") is None
@@ -299,7 +301,7 @@ class QAEngineerADOSkipLogicTests(unittest.TestCase):
         self.assertIsNone(work_item_id,
                          "QA must find no work_item_id in synthetic mode, enabling skip logic")
 
-    def test_qa_engineer_should_skip_ado_comment_when_synthetic(self):
+    def test_medium__qa_engineer_should_skip_ado_comment_when_synthetic(self):
         """Verify that in synthetic mode, QA does NOT call az boards work-item update --discussion."""
         # Given: synthetic story with no ado_provenance
         is_synthetic = self.story.get("ado_provenance") is None
@@ -328,7 +330,7 @@ class AzureDevOpsCliMockTests(unittest.TestCase):
         with open(cls.story_path, "r") as f:
             cls.story = yaml.safe_load(f)
 
-    def test_synthetic_mode_should_not_invoke_az_boards_commands(self):
+    def test_medium__synthetic_mode_should_not_invoke_az_boards_commands(self):
         """
         Simulate agent logic: if ado_provenance is None, don't invoke azure-devops-cli.
         This test verifies the conditional logic by checking that the condition
@@ -349,7 +351,7 @@ class AzureDevOpsCliMockTests(unittest.TestCase):
         self.assertTrue(should_skip_ado,
                        "Conditional logic must evaluate to skip when is_synthetic=True")
 
-    def test_synthetic_config_project_type_enables_skip_branch(self):
+    def test_medium__synthetic_config_project_type_enables_skip_branch(self):
         """
         Verify that project_type='synthetic-fixture' is sufficient for skip logic.
         """
@@ -367,7 +369,7 @@ class AzureDevOpsCliMockTests(unittest.TestCase):
 class IntegrationTestPlaceholder(unittest.TestCase):
     """Integration test placeholder for full workflow synthetic mode verification."""
 
-    def test_full_workflow_synthetic_verification_pending(self):
+    def test_easy__full_workflow_synthetic_verification_pending_placeholder(self):
         """
         Integration test for full synthetic workflow.
 

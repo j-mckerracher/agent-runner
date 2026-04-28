@@ -1,7 +1,34 @@
+import re
+
 import opik
+from opik import opik_context
+
 import steps
 from runner_models import DEFAULT_GEMINI_MODEL
 
+
+def _extract_change_id(text: str) -> str:
+    if not text:
+        return ""
+    match = re.search(r"agent-context/([\w\-]+)/", text)
+    return match.group(1) if match else ""
+
+
+def _annotate_loop_trace(*, runner: str, change_id: str, stage: str, extra_metadata: dict | None = None) -> None:
+    metadata = {"change_id": change_id, "runner": runner, "stage": stage}
+    if extra_metadata:
+        metadata.update({k: v for k, v in extra_metadata.items() if v is not None})
+    tags = [runner, f"loop:{stage}"]
+    try:
+        kwargs: dict = {"tags": tags, "metadata": metadata}
+        if change_id:
+            kwargs["thread_id"] = change_id
+        opik_context.update_current_trace(**kwargs)
+    except Exception:
+        pass
+
+
+@opik.track(name="loop:uow-eval", type="general")
 def run_uow_eval_loop(
     uow_id: str,
     change_id: str,
@@ -14,6 +41,12 @@ def run_uow_eval_loop(
     Run the software-engineer + implementation-evaluator eval-optimizer loop
     for a single Unit of Work. Returns (final_impl_out, final_eval_out).
     """
+    _annotate_loop_trace(
+        runner=runner,
+        change_id=change_id,
+        stage="uow-eval",
+        extra_metadata={"uow_id": uow_id},
+    )
     producer_out, evaluator_out = "", ""
     for i in range(iter_count):
         with opik.start_as_current_span(f"uow-iteration-{i + 1}", type="general") as span:
@@ -35,9 +68,19 @@ def run_uow_eval_loop(
             )
             passed = "PASS" in evaluator_out
             span.output = {"passed": passed}
-            opik.opik_context.update_current_span(
-                metadata={"iteration": i + 1, "uow_id": uow_id, "passed": passed},
-            )
+            try:
+                opik_context.update_current_span(
+                    metadata={
+                        "iteration": i + 1,
+                        "attempt": i + 1,
+                        "uow_id": uow_id,
+                        "change_id": change_id,
+                        "stage": "uow-eval",
+                        "passed": passed,
+                    },
+                )
+            except Exception:
+                pass
         if passed:
             print(f"[{uow_id}] Evaluator passed on iteration {i + 1} — stopping loop early.")
             break
@@ -45,6 +88,7 @@ def run_uow_eval_loop(
 
 # ====================== EVAL-OPTIMIZER LOOP ====================== #
 
+@opik.track(name="loop:eval-optimizer", type="general")
 def run_eval_optimizer_loop(
     producer_func,
     producer_input,
@@ -54,6 +98,8 @@ def run_eval_optimizer_loop(
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
 ):
+    change_id = _extract_change_id(producer_input) or _extract_change_id(evaluator_prompt)
+    _annotate_loop_trace(runner=runner, change_id=change_id, stage="eval-optimizer")
     producer_out, evaluator_out = "", ""
 
     for i in range(iter_count):
@@ -71,9 +117,18 @@ def run_eval_optimizer_loop(
             evaluator_out = evaluator_func(evaluator_prompt, runner=runner, runner_model=runner_model)
             passed = "PASS" in evaluator_out
             span.output = {"passed": passed}
-            opik.opik_context.update_current_span(
-                metadata={"iteration": i + 1, "passed": passed},
-            )
+            try:
+                opik_context.update_current_span(
+                    metadata={
+                        "iteration": i + 1,
+                        "attempt": i + 1,
+                        "change_id": change_id,
+                        "stage": "eval-optimizer",
+                        "passed": passed,
+                    },
+                )
+            except Exception:
+                pass
         if passed:
             print(f"Evaluator passed on iteration {i + 1} — stopping loop early.")
             break

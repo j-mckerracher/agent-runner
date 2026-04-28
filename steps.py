@@ -3,6 +3,7 @@ import json
 import subprocess
 
 import opik
+from opik import opik_context
 from run_cmds import run_claude_cmd, run_agent_cmd
 from opik_integration import call_evaluator_sdk
 from runner_models import DEFAULT_GEMINI_MODEL
@@ -16,6 +17,33 @@ def _extract_change_id(context: str) -> str:
     """Parse change_id from a context string that references agent-context paths."""
     match = re.search(r"agent-context/([\w\-]+)/", context)
     return match.group(1) if match else ""
+
+
+def _annotate_trace(
+    *,
+    stage: str,
+    runner: str,
+    change_id: str,
+    extra_metadata: dict | None = None,
+    extra_tags: list[str] | None = None,
+) -> None:
+    """
+    Attach standard Opik thread/tags/metadata to the current trace.
+    Safe no-op if Opik is disabled or no trace is active.
+    """
+    metadata = {"change_id": change_id, "runner": runner, "stage": stage}
+    if extra_metadata:
+        metadata.update({k: v for k, v in extra_metadata.items() if v is not None})
+    tags = [runner, f"stage:{stage}"]
+    if extra_tags:
+        tags.extend(extra_tags)
+    try:
+        kwargs: dict = {"tags": tags, "metadata": metadata}
+        if change_id:
+            kwargs["thread_id"] = change_id
+        opik_context.update_current_trace(**kwargs)
+    except Exception:
+        pass
 
 
 _INTAKE_FIELDS = {
@@ -42,7 +70,6 @@ def _trim_ado_work_item(raw: dict) -> dict:
     for key in _INTAKE_FIELDS:
         if key in fields:
             value = fields[key]
-            # Flatten identity objects to display name only
             if isinstance(value, dict) and "displayName" in value:
                 value = value["displayName"]
             trimmed_fields[key] = value
@@ -56,16 +83,11 @@ def _trim_ado_work_item(raw: dict) -> dict:
 def _fetch_ado_work_item(ado_url: str) -> str | None:
     """
     Pre-fetch an Azure DevOps work item using the az CLI.
-
-    Parses the org, project, and item ID from the URL and runs
-    `az boards work-item show`. Returns a trimmed JSON string with
-    only intake-relevant fields, or None on failure.
     """
     try:
         from urllib.parse import urlparse
         parsed = urlparse(ado_url)
         parts = parsed.path.strip("/").split("/")
-        # URL format: /<org>/<project>/_workitems/edit/<id>
         if len(parts) < 5:
             return None
         org_name = parts[0]
@@ -109,7 +131,6 @@ def build_intake_prompt(
         prompt += f"Target repo: {repo}\n"
         prompt += "If intake artifacts already exist for this story, you must delete them and create new ones.\n"
         if runner == "gemini" and ado_work_item_json:
-            # Pre-fetched work item data embedded directly — no shell execution needed.
             prompt += (
                 "The work item data has already been fetched for you. "
                 "Use the JSON below as the raw input; do NOT run any shell commands to re-fetch it.\n\n"
@@ -136,6 +157,7 @@ def build_intake_prompt(
     return prompt
 
 
+@opik.track(name="stage:intake", type="tool")
 def step_intake(
     intake_source: str,
     repo: str,
@@ -145,6 +167,12 @@ def step_intake(
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
 ):
     print(f"Received intake source ({intake_mode}): {intake_source}")
+    _annotate_trace(
+        stage="intake",
+        runner=runner,
+        change_id=change_id,
+        extra_metadata={"intake_mode": intake_mode, "intake_source": intake_source},
+    )
     prompt = build_intake_prompt(
         intake_source=intake_source,
         repo=repo,
@@ -157,99 +185,89 @@ def step_intake(
             else None
         ),
     )
-    # For Gemini, no extra skills needed — work item data is embedded in the prompt
     extra_skills = None
-    with opik.start_as_current_trace("intake", project_name="agent-runner") as trace:
-        trace.input = {"intake_source": intake_source, "change_id": change_id, "intake_mode": intake_mode}
-        trace.thread_id = change_id
-        result = run_agent_cmd(
-            runner=runner,
-            prompt=prompt,
-            agent="intake",
-            extra_skills=extra_skills,
-            **_agent_runner_kwargs(runner_model),
-        )
-        trace.output = {"stdout_preview": result[:2000]}
-    return result
+    return run_agent_cmd(
+        runner=runner,
+        prompt=prompt,
+        agent="intake",
+        extra_skills=extra_skills,
+        **_agent_runner_kwargs(runner_model),
+    )
 
 
-# 2
+@opik.track(name="stage:task-gen-producer", type="tool")
 def step_task_gen_producer(
     context: str,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
 ) -> str:
-    with opik.start_as_current_trace("task-gen-producer", project_name="agent-runner") as trace:
-        trace.input = {"context": context}
-        trace.thread_id = _extract_change_id(context)
-        result = run_agent_cmd(
-            runner=runner,
-            prompt=context,
-            agent="task-generator",
-            **_agent_runner_kwargs(runner_model),
-        )
-        trace.output = {"stdout_preview": result[:2000]}
-    return result
+    change_id = _extract_change_id(context)
+    _annotate_trace(stage="task-gen-producer", runner=runner, change_id=change_id)
+    return run_agent_cmd(
+        runner=runner,
+        prompt=context,
+        agent="task-generator",
+        **_agent_runner_kwargs(runner_model),
+    )
 
 
-# 3
+@opik.track(name="stage:task-gen-evaluator", type="tool")
 def step_task_gen_evaluator(
     context: str,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
 ) -> str:
-    with opik.start_as_current_trace("task-gen-evaluator", project_name="agent-runner") as trace:
-        trace.input = {"context": context}
-        trace.thread_id = _extract_change_id(context)
-        result = call_evaluator_sdk(context, "task-plan-evaluator", runner=runner, runner_model=runner_model)
-        passed = "PASS" in result
-        opik.opik_context.update_current_trace(
+    change_id = _extract_change_id(context)
+    _annotate_trace(stage="task-gen-evaluator", runner=runner, change_id=change_id)
+    result = call_evaluator_sdk(context, "task-plan-evaluator", runner=runner, runner_model=runner_model)
+    passed = "PASS" in result
+    try:
+        opik_context.update_current_trace(
             feedback_scores=[{"name": "evaluator_pass", "value": 1.0 if passed else 0.0}],
             metadata={"evaluator": "task-plan-evaluator", "passed": passed},
         )
-        trace.output = {"result": result}
+    except Exception:
+        pass
     return result
 
 
-# 4
+@opik.track(name="stage:task-assigner", type="tool")
 def step_task_assigner(
     context: str,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
 ) -> str:
-    with opik.start_as_current_trace("task-assigner", project_name="agent-runner") as trace:
-        trace.input = {"context": context}
-        trace.thread_id = _extract_change_id(context)
-        result = run_agent_cmd(
-            runner=runner,
-            prompt=context,
-            agent="task-assigner",
-            **_agent_runner_kwargs(runner_model),
-        )
-        trace.output = {"stdout_preview": result[:2000]}
-    return result
+    change_id = _extract_change_id(context)
+    _annotate_trace(stage="task-assigner", runner=runner, change_id=change_id)
+    return run_agent_cmd(
+        runner=runner,
+        prompt=context,
+        agent="task-assigner",
+        **_agent_runner_kwargs(runner_model),
+    )
 
 
-# 4b
+@opik.track(name="stage:assignment-evaluator", type="tool")
 def step_assignment_evaluator(
     context: str,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
 ) -> str:
-    with opik.start_as_current_trace("assignment-evaluator", project_name="agent-runner") as trace:
-        trace.input = {"context": context}
-        trace.thread_id = _extract_change_id(context)
-        result = call_evaluator_sdk(context, "assignment-evaluator", runner=runner, runner_model=runner_model)
-        passed = "PASS" in result
-        opik.opik_context.update_current_trace(
+    change_id = _extract_change_id(context)
+    _annotate_trace(stage="assignment-evaluator", runner=runner, change_id=change_id)
+    result = call_evaluator_sdk(context, "assignment-evaluator", runner=runner, runner_model=runner_model)
+    passed = "PASS" in result
+    try:
+        opik_context.update_current_trace(
             feedback_scores=[{"name": "evaluator_pass", "value": 1.0 if passed else 0.0}],
             metadata={"evaluator": "assignment-evaluator", "passed": passed},
         )
-        trace.output = {"result": result}
+    except Exception:
+        pass
     return result
 
 
-# 5
+@opik.track(name="stage:implementation", type="tool")
 def step_software_engineer(
     uow_id: str,
     change_id: str,
@@ -258,6 +276,12 @@ def step_software_engineer(
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
 ) -> str:
+    _annotate_trace(
+        stage="implementation",
+        runner=runner,
+        change_id=change_id,
+        extra_metadata={"uow_id": uow_id, "has_feedback": bool(evaluator_feedback)},
+    )
     prompt = (
         f"Implement UoW {uow_id} for change {change_id}.\n"
         f"Read the UoW spec from agent-context/{change_id}/execution/{uow_id}/uow_spec.yaml.\n"
@@ -268,20 +292,15 @@ def step_software_engineer(
             f"\n\n## Evaluator Issues to Fix:\n{evaluator_feedback}\n\n"
             f"Address every issue listed above. Do not ask questions — act immediately."
         )
-    with opik.start_as_current_trace("software-engineer", project_name="agent-runner") as trace:
-        trace.input = {"uow_id": uow_id, "change_id": change_id, "has_feedback": bool(evaluator_feedback)}
-        trace.thread_id = change_id
-        result = run_agent_cmd(
-            runner=runner,
-            prompt=prompt,
-            agent="software-engineer-hyperagent",
-            **_agent_runner_kwargs(runner_model),
-        )
-        trace.output = {"stdout_preview": result[:2000]}
-    return result
+    return run_agent_cmd(
+        runner=runner,
+        prompt=prompt,
+        agent="software-engineer-hyperagent",
+        **_agent_runner_kwargs(runner_model),
+    )
 
 
-# 6
+@opik.track(name="stage:implementation-evaluator", type="tool")
 def step_software_engineer_evaluator(
     uow_id: str,
     change_id: str,
@@ -289,70 +308,74 @@ def step_software_engineer_evaluator(
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
 ) -> str:
+    _annotate_trace(
+        stage="implementation-evaluator",
+        runner=runner,
+        change_id=change_id,
+        extra_metadata={"uow_id": uow_id},
+    )
     context = (
         f"Evaluate the implementation of UoW {uow_id} for change {change_id}.\n"
         f"Read the implementation report from agent-context/{change_id}/execution/{uow_id}/impl_report.yaml.\n"
         f"Read the UoW spec from agent-context/{change_id}/execution/{uow_id}/uow_spec.yaml.\n"
         f"Target repo: {repo}"
     )
-    with opik.start_as_current_trace("implementation-evaluator", project_name="agent-runner") as trace:
-        trace.input = {"uow_id": uow_id, "change_id": change_id}
-        trace.thread_id = change_id
-        result = call_evaluator_sdk(context, "implementation-evaluator", runner=runner, runner_model=runner_model)
-        passed = "PASS" in result
-        opik.opik_context.update_current_trace(
+    result = call_evaluator_sdk(context, "implementation-evaluator", runner=runner, runner_model=runner_model)
+    passed = "PASS" in result
+    try:
+        opik_context.update_current_trace(
             feedback_scores=[{"name": "evaluator_pass", "value": 1.0 if passed else 0.0}],
             metadata={"evaluator": "implementation-evaluator", "uow_id": uow_id, "passed": passed},
         )
-        trace.output = {"result": result}
+    except Exception:
+        pass
     return result
 
 
-# 7
+@opik.track(name="stage:qa", type="tool")
 def step_qa_engineer(
     context: str,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
 ) -> str:
-    with opik.start_as_current_trace("qa-engineer", project_name="agent-runner") as trace:
-        trace.input = {"context": context}
-        trace.thread_id = _extract_change_id(context)
-        result = run_agent_cmd(
-            runner=runner,
-            prompt=context,
-            agent="qa",
-            **_agent_runner_kwargs(runner_model),
-        )
-        trace.output = {"stdout_preview": result[:2000]}
-    return result
+    change_id = _extract_change_id(context)
+    _annotate_trace(stage="qa", runner=runner, change_id=change_id)
+    return run_agent_cmd(
+        runner=runner,
+        prompt=context,
+        agent="qa",
+        **_agent_runner_kwargs(runner_model),
+    )
 
 
-# 8
+@opik.track(name="stage:qa-evaluator", type="tool")
 def step_qa_evaluator(
     context: str,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
 ) -> str:
-    with opik.start_as_current_trace("qa-evaluator", project_name="agent-runner") as trace:
-        trace.input = {"context": context}
-        trace.thread_id = _extract_change_id(context)
-        result = call_evaluator_sdk(context, "qa-evaluator", runner=runner, runner_model=runner_model)
-        passed = "PASS" in result
-        opik.opik_context.update_current_trace(
+    change_id = _extract_change_id(context)
+    _annotate_trace(stage="qa-evaluator", runner=runner, change_id=change_id)
+    result = call_evaluator_sdk(context, "qa-evaluator", runner=runner, runner_model=runner_model)
+    passed = "PASS" in result
+    try:
+        opik_context.update_current_trace(
             feedback_scores=[{"name": "evaluator_pass", "value": 1.0 if passed else 0.0}],
             metadata={"evaluator": "qa-evaluator", "passed": passed},
         )
-        trace.output = {"result": result}
+    except Exception:
+        pass
     return result
 
 
-# 9
+@opik.track(name="stage:lessons-optimizer", type="tool")
 def step_lessons_optimizer(
     change_id: str,
     repo: str,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
 ) -> str:
+    _annotate_trace(stage="lessons-optimizer", runner=runner, change_id=change_id)
     prompt = (
         f"Run the end-of-workflow lessons optimization for change {change_id}.\n"
         f"Read agent-context/lessons.md for recorded lessons.\n"
@@ -361,14 +384,9 @@ def step_lessons_optimizer(
         f"Write your report to agent-context/{change_id}/summary/lessons_optimizer_report.yaml.\n"
         f"Act immediately. Do not ask questions."
     )
-    with opik.start_as_current_trace("lessons-optimizer", project_name="agent-runner") as trace:
-        trace.input = {"change_id": change_id, "repo": repo}
-        trace.thread_id = change_id
-        result = run_agent_cmd(
-            runner=runner,
-            prompt=prompt,
-            agent="lessons-optimizer-hyperagent",
-            **_agent_runner_kwargs(runner_model),
-        )
-        trace.output = {"stdout_preview": result[:2000]}
-    return result
+    return run_agent_cmd(
+        runner=runner,
+        prompt=prompt,
+        agent="lessons-optimizer-hyperagent",
+        **_agent_runner_kwargs(runner_model),
+    )
