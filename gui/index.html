@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>agent-runner</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d1117; --surface: #161b22; --surface2: #1c2128; --border: #30363d;
+    --text: #e6edf3; --text2: #8b949e; --accent: #58a6ff; --green: #3fb950;
+    --red: #f85149; --yellow: #d29922; --purple: #bc8cff;
+    --sidebar-w: 220px;
+  }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; display: flex; height: 100vh; overflow: hidden; }
+
+  /* Sidebar */
+  #sidebar { width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+  #sidebar .logo { padding: 18px 16px 12px; font-weight: 700; font-size: 15px; color: var(--accent); border-bottom: 1px solid var(--border); }
+  #sidebar nav { flex: 1; padding: 8px 0; }
+  #sidebar nav a { display: flex; align-items: center; gap: 10px; padding: 9px 16px; color: var(--text2); text-decoration: none; cursor: pointer; border-radius: 6px; margin: 2px 8px; transition: background .15s, color .15s; }
+  #sidebar nav a:hover { background: var(--surface2); color: var(--text); }
+  #sidebar nav a.active { background: var(--surface2); color: var(--accent); }
+  #sidebar nav a .icon { font-size: 16px; width: 20px; text-align: center; }
+  #sidebar .footer { padding: 12px 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text2); display: flex; align-items: center; gap: 6px; }
+  #sidebar .footer .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); flex-shrink: 0; }
+  #sidebar .footer .dot.online { background: var(--green); }
+
+  /* Main content */
+  #main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+  /* Views */
+  .view { display: none; flex: 1; overflow: auto; padding: 24px; }
+  .view.active { display: flex; flex-direction: column; gap: 20px; }
+
+  /* Cards */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+  .card-header { padding: 14px 16px; border-bottom: 1px solid var(--border); font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .card-body { padding: 16px; }
+
+  /* Form */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .form-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field.full { grid-column: 1 / -1; }
+  label { font-size: 12px; color: var(--text2); font-weight: 500; }
+  input, select, textarea { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 7px 10px; font-size: 13px; width: 100%; outline: none; }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 60px; font-family: inherit; }
+  .toggle-row { display: flex; align-items: center; gap: 10px; }
+  .toggle { width: 36px; height: 20px; background: var(--border); border-radius: 10px; cursor: pointer; position: relative; border: none; flex-shrink: 0; transition: background .2s; }
+  .toggle.on { background: var(--accent); }
+  .toggle::after { content: ''; position: absolute; width: 14px; height: 14px; background: #fff; border-radius: 50%; top: 3px; left: 3px; transition: left .2s; }
+  .toggle.on::after { left: 19px; }
+
+  /* Buttons */
+  .btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; transition: opacity .15s; }
+  .btn:hover { opacity: .85; }
+  .btn-primary { background: var(--accent); color: #0d1117; }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text2); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* Job list */
+  .job-list { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; }
+  .job-item { padding: 8px 12px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 10px; border: 1px solid transparent; }
+  .job-item:hover { background: var(--surface2); }
+  .job-item.selected { border-color: var(--accent); background: var(--surface2); }
+  .job-item .job-id { font-family: monospace; font-size: 12px; color: var(--text2); flex-shrink: 0; }
+  .job-item .job-change { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge { padding: 2px 7px; border-radius: 12px; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+  .badge-queued { background: rgba(88,166,255,.15); color: var(--accent); }
+  .badge-running { background: rgba(210,153,34,.15); color: var(--yellow); }
+  .badge-succeeded { background: rgba(63,185,80,.15); color: var(--green); }
+  .badge-failed { background: rgba(248,81,73,.15); color: var(--red); }
+  .badge-cancelled { background: rgba(139,148,158,.15); color: var(--text2); }
+
+  /* Terminal */
+  .terminal { background: #010409; border: 1px solid var(--border); border-radius: 8px; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; line-height: 1.6; overflow-y: auto; max-height: 400px; }
+  .terminal-header { padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; background: var(--surface); color: var(--text2); font-size: 12px; }
+  .terminal-body { padding: 10px 14px; }
+  .t-stdout { color: #c9d1d9; }
+  .t-stderr { color: #f85149; }
+  .t-info { color: #58a6ff; }
+  .t-stage { color: #bc8cff; font-weight: bold; }
+  .t-metrics { color: #3fb950; }
+  .t-system { color: #8b949e; font-style: italic; }
+
+  /* Metrics strip */
+  .metrics-strip { display: flex; gap: 16px; padding: 10px 16px; background: var(--surface2); border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; font-size: 12px; }
+  .metric { display: flex; flex-direction: column; gap: 2px; }
+  .metric .val { font-weight: 700; color: var(--text); }
+  .metric .lbl { color: var(--text2); }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 12px; color: var(--text2); font-weight: 600; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  td { padding: 10px 12px; border-bottom: 1px solid #21262d; font-size: 13px; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+
+  /* Progress bar */
+  .progress-bar { background: var(--surface2); border-radius: 4px; height: 6px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 4px; background: var(--accent); transition: width .3s; }
+
+  /* Stats grid */
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .stat-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .stat-card .val { font-size: 28px; font-weight: 700; }
+  .stat-card .lbl { font-size: 12px; color: var(--text2); margin-top: 4px; }
+
+  /* Corpus */
+  .corpus-layout { display: grid; grid-template-columns: 280px 1fr; gap: 16px; }
+  .corpus-list { display: flex; flex-direction: column; gap: 4px; max-height: 600px; overflow-y: auto; }
+  .corpus-item { padding: 10px 12px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
+  .corpus-item:hover { background: var(--surface2); }
+  .corpus-item.selected { border-color: var(--accent); background: var(--surface2); }
+  .corpus-item .ct { font-weight: 600; }
+  .corpus-item .cs { font-size: 12px; color: var(--text2); margin-top: 2px; }
+  .ac-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .ac-list li { background: var(--surface2); border-radius: 6px; padding: 8px 12px; font-size: 13px; line-height: 1.5; }
+  .ac-label { font-size: 11px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+
+  /* Section header */
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  h2 { font-size: 18px; font-weight: 700; }
+
+  /* Spinner */
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Toast */
+  #toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px; font-size: 13px; display: none; z-index: 999; box-shadow: 0 4px 20px rgba(0,0,0,.4); }
+
+  /* Settings */
+  .settings-form { max-width: 520px; }
+  .settings-hint { font-size: 12px; color: var(--yellow); margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<nav id="sidebar">
+  <div class="logo">⚡ agent-runner</div>
+  <nav>
+    <a class="active" data-view="runs"><span class="icon">▶</span> Runs</a>
+    <a data-view="agents"><span class="icon">🤖</span> Agents</a>
+    <a data-view="corpus"><span class="icon">📚</span> Corpus</a>
+    <a data-view="evaluate"><span class="icon">📊</span> Evaluate</a>
+    <a data-view="settings"><span class="icon">⚙</span> Settings</a>
+  </nav>
+  <div class="footer">
+    <div class="dot" id="health-dot"></div>
+    <span id="health-label">API :8742</span>
+  </div>
+</nav>
+
+<main id="main">
+  <!-- ── Runs View ── -->
+  <div class="view active" id="view-runs">
+    <div class="section-header"><h2>Runs</h2></div>
+
+    <div class="card">
+      <div class="card-header">▶ Submit New Run</div>
+      <div class="card-body">
+        <form id="submit-form">
+          <div class="form-grid">
+            <div class="field">
+              <label>Repository path</label>
+              <input id="f-repo" type="text" placeholder="." value=".">
+            </div>
+            <div class="field">
+              <label>Change ID (optional)</label>
+              <input id="f-change-id" type="text" placeholder="auto-generated">
+            </div>
+            <div class="field full">
+              <label>ADO URL (leave blank for story file)</label>
+              <input id="f-ado-url" type="text" placeholder="https://dev.azure.com/...">
+            </div>
+            <div class="field full">
+              <label>Story file path (leave blank for ADO URL)</label>
+              <input id="f-story-file" type="text" placeholder="eval/stories/EVAL-001.json">
+            </div>
+            <div class="field">
+              <label>Runner</label>
+              <select id="f-runner">
+                <option value="claude">Claude Code</option>
+                <option value="copilot">GitHub Copilot</option>
+                <option value="gemini">Gemini CLI</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Model</label>
+              <select id="f-model"></select>
+            </div>
+            <div class="field">
+              <label>Copilot effort</label>
+              <select id="f-copilot-effort">
+                <option value="">— default —</option>
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
+                <option value="xhigh">xhigh</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Mode</label>
+              <div class="toggle-row">
+                <button type="button" class="toggle" id="mode-toggle"></button>
+                <span id="mode-label">live</span>
+              </div>
+            </div>
+            <div class="field full">
+              <label>Extra context</label>
+              <textarea id="f-extra-context" placeholder="Optional free-form context for the intake agent"></textarea>
+            </div>
+            <div class="field">
+              <div class="toggle-row">
+                <button type="button" class="toggle" id="skip-mat-toggle"></button>
+                <label>Skip materialization</label>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:14px; display:flex; gap:8px;">
+            <button type="submit" class="btn btn-primary">Submit Run</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header" style="justify-content:space-between;">
+        <span>Run History</span>
+        <span id="jobs-spinner" style="display:none;" class="spinner"></span>
+      </div>
+      <div class="card-body" style="padding:8px">
+        <div class="job-list" id="job-list"></div>
+      </div>
+    </div>
+
+    <div class="card" id="job-detail" style="display:none;">
+      <div class="card-header" style="justify-content:space-between;">
+        <span id="job-detail-title">Job Detail</span>
+        <button class="btn btn-danger" id="cancel-btn" style="display:none;">Cancel</button>
+      </div>
+      <div class="terminal">
+        <div class="terminal-header">
+          <span id="term-status">—</span>
+          <span style="flex:1"></span>
+          <span id="term-stage"></span>
+        </div>
+        <div class="terminal-body" id="terminal"></div>
+      </div>
+      <div class="metrics-strip" id="metrics-strip">
+        <div class="metric"><div class="val" id="m-tokens-in">—</div><div class="lbl">Tokens in</div></div>
+        <div class="metric"><div class="val" id="m-tokens-out">—</div><div class="lbl">Tokens out</div></div>
+        <div class="metric"><div class="val" id="m-cost">—</div><div class="lbl">Cost USD</div></div>
+        <div class="metric"><div class="val" id="m-stage">—</div><div class="lbl">Stage</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Agents View ── -->
+  <div class="view" id="view-agents">
+    <div class="section-header"><h2>Agents</h2><button class="btn btn-ghost" onclick="loadAgents()">↻ Refresh</button></div>
+    <div class="card">
+      <div class="card-body" style="padding:0;">
+        <table id="agents-table">
+          <thead><tr><th>Name</th><th>Version</th><th>Bundle hash</th><th>Tags</th></tr></thead>
+          <tbody id="agents-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Corpus View ── -->
+  <div class="view" id="view-corpus">
+    <div class="section-header"><h2>Corpus</h2><button class="btn btn-ghost" onclick="loadCorpus()">↻ Refresh</button></div>
+    <div class="corpus-layout">
+      <div class="card">
+        <div class="card-header">Stories</div>
+        <div class="card-body" style="padding:8px;">
+          <div class="corpus-list" id="corpus-list"></div>
+        </div>
+      </div>
+      <div class="card" id="corpus-detail" style="display:none;">
+        <div class="card-header" id="corpus-detail-title">Detail</div>
+        <div class="card-body" id="corpus-detail-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Evaluate View ── -->
+  <div class="view" id="view-evaluate">
+    <div class="section-header"><h2>Evaluate</h2><button class="btn btn-ghost" onclick="loadEvaluate()">↻ Refresh</button></div>
+    <div class="stats-grid" id="eval-stats">
+      <div class="stat-card"><div class="val" id="ev-total">—</div><div class="lbl">Total runs</div></div>
+      <div class="stat-card"><div class="val" id="ev-pass">—</div><div class="lbl">Passed</div></div>
+      <div class="stat-card"><div class="val" id="ev-fail">—</div><div class="lbl">Failed</div></div>
+      <div class="stat-card"><div class="val" id="ev-rate">—</div><div class="lbl">Pass rate</div></div>
+    </div>
+    <div class="card">
+      <div class="card-header">Per-story pass rates</div>
+      <div class="card-body" style="padding:0;">
+        <table><thead><tr><th>Change ID</th><th>Total</th><th>Passed</th><th>Pass rate</th><th>Last run</th></tr></thead>
+        <tbody id="eval-table-body"></tbody></table>
+      </div>
+    </div>
+    <div class="card" id="eval-regressions-card" style="display:none;">
+      <div class="card-header" style="color:var(--red)">⚠ Regressions</div>
+      <div class="card-body">
+        <ul id="eval-regressions" style="list-style:none; display:flex; flex-direction:column; gap:6px;"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Settings View ── -->
+  <div class="view" id="view-settings">
+    <div class="section-header"><h2>Settings</h2></div>
+    <div class="card settings-form">
+      <div class="card-header">API Server</div>
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="field">
+            <label>Host</label>
+            <input id="s-host" type="text">
+          </div>
+          <div class="field">
+            <label>Port</label>
+            <input id="s-port" type="number" min="1" max="65535">
+            <div class="settings-hint" id="port-hint" style="display:none;">Restart required for port change to take effect.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card settings-form">
+      <div class="card-header">Defaults</div>
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="field">
+            <label>Default runner</label>
+            <select id="s-runner">
+              <option value="claude">claude</option>
+              <option value="copilot">copilot</option>
+              <option value="gemini">gemini</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Default mode</label>
+            <select id="s-mode">
+              <option value="live">live</option>
+              <option value="hermetic">hermetic</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card settings-form">
+      <div class="card-header">Concurrency</div>
+      <div class="card-body">
+        <div class="field" style="max-width:180px;">
+          <label>Max running jobs</label>
+          <input id="s-max-jobs" type="number" min="1" max="20">
+        </div>
+      </div>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-primary" onclick="saveSettings()">Save settings</button>
+      <button class="btn btn-ghost" onclick="loadSettings()">↻ Reset</button>
+    </div>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+const API = '';  // same-origin
+
+// Runner → models mapping (from runner_models.py)
+const RUNNER_MODELS = {
+  claude:  ['claude-opus-4-6','claude-sonnet-4-6','claude-haiku-4-5-20251001'],
+  copilot: ['gpt-5.5','gpt-5.4','gpt-5.4-mini','gpt-5.3-codex','gpt-5.2','gpt-5.2-codex','gpt-5-mini','gpt-4.1','claude-opus-4.7','claude-sonnet-4.6','claude-sonnet-4.5','claude-sonnet-4','claude-haiku-4.5'],
+  gemini:  ['gemini-3-pro-preview','gemini-3-flash-preview','gemini-3.1-flash-lite-preview','gemini-3.1-pro-preview','gemini-flash-lite-latest','gemini-2.5-pro','gemini-2.5-flash','gemini-2.5-flash-lite','gemini-2.0-flash','gemini-2.0-flash-lite'],
+};
+const RUNNER_DEFAULTS = { claude: 'claude-haiku-4-5-20251001', copilot: 'gpt-5-mini', gemini: 'gemini-2.5-flash' };
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let activeJobId = null;
+let activeSSE = null;
+let jobPollTimer = null;
+let modeHermetic = false;
+let skipMat = false;
+let originalPort = null;
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function toast(msg, duration=3000) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.style.display='none', duration);
+}
+
+async function api(path, opts={}) {
+  const r = await fetch(API + path, opts);
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({detail: r.statusText}));
+    throw new Error(body.detail || r.statusText);
+  }
+  return r.json();
+}
+
+function statusBadge(status) {
+  return `<span class="badge badge-${status}">${status}</span>`;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Health polling ────────────────────────────────────────────────────────────
+async function checkHealth() {
+  const dot = document.getElementById('health-dot');
+  const lbl = document.getElementById('health-label');
+  try {
+    const h = await api('/health');
+    dot.className = 'dot online';
+    lbl.textContent = `API :${location.port || 8742} v${h.version}`;
+  } catch {
+    dot.className = 'dot';
+    lbl.textContent = 'API offline';
+  }
+}
+setInterval(checkHealth, 5000);
+checkHealth();
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+document.querySelectorAll('#sidebar nav a[data-view]').forEach(link => {
+  link.addEventListener('click', () => {
+    document.querySelectorAll('#sidebar nav a').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    link.classList.add('active');
+    document.getElementById('view-' + link.dataset.view).classList.add('active');
+    // Load data for the activated view
+    if (link.dataset.view === 'agents') loadAgents();
+    if (link.dataset.view === 'corpus') loadCorpus();
+    if (link.dataset.view === 'evaluate') loadEvaluate();
+    if (link.dataset.view === 'settings') loadSettings();
+  });
+});
+
+// ── Runner model dropdown ─────────────────────────────────────────────────────
+function updateModelDropdown() {
+  const runner = document.getElementById('f-runner').value;
+  const sel = document.getElementById('f-model');
+  sel.innerHTML = '';
+  const models = RUNNER_MODELS[runner] || [];
+  const def = RUNNER_DEFAULTS[runner] || models[0];
+  models.forEach(m => {
+    const o = document.createElement('option');
+    o.value = m; o.textContent = m;
+    if (m === def) o.selected = true;
+    sel.appendChild(o);
+  });
+  // Copilot effort: show/hide
+  document.getElementById('f-copilot-effort').closest('.field').style.display =
+    runner === 'copilot' ? '' : 'none';
+}
+document.getElementById('f-runner').addEventListener('change', updateModelDropdown);
+updateModelDropdown();
+
+// ── Mode toggle ───────────────────────────────────────────────────────────────
+document.getElementById('mode-toggle').addEventListener('click', function() {
+  modeHermetic = !modeHermetic;
+  this.classList.toggle('on', modeHermetic);
+  document.getElementById('mode-label').textContent = modeHermetic ? 'hermetic' : 'live';
+});
+
+document.getElementById('skip-mat-toggle').addEventListener('click', function() {
+  skipMat = !skipMat;
+  this.classList.toggle('on', skipMat);
+});
+
+// ── Submit form ───────────────────────────────────────────────────────────────
+document.getElementById('submit-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const body = {
+    repo: document.getElementById('f-repo').value || '.',
+    change_id: document.getElementById('f-change-id').value || null,
+    ado_url: document.getElementById('f-ado-url').value || null,
+    story_file: document.getElementById('f-story-file').value || null,
+    runner: document.getElementById('f-runner').value,
+    model: document.getElementById('f-model').value || null,
+    copilot_effort: document.getElementById('f-copilot-effort').value || null,
+    skip_materialize: skipMat,
+    extra_context: document.getElementById('f-extra-context').value || null,
+    mode: modeHermetic ? 'hermetic' : 'live',
+  };
+  const btn = this.querySelector('button[type=submit]');
+  btn.disabled = true; btn.textContent = 'Submitting…';
+  try {
+    const res = await api('/runs', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    toast(`Submitted job ${res.job_id}`);
+    await loadJobs();
+    selectJob(res.job_id);
+  } catch(err) {
+    toast('Error: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Submit Run';
+  }
+});
+
+// ── Job list ──────────────────────────────────────────────────────────────────
+async function loadJobs() {
+  try {
+    const jobs = await api('/runs?limit=50');
+    renderJobList(jobs);
+  } catch {}
+}
+
+function renderJobList(jobs) {
+  const el = document.getElementById('job-list');
+  if (!jobs.length) { el.innerHTML = '<div style="color:var(--text2);padding:8px;">No runs yet.</div>'; return; }
+  el.innerHTML = jobs.map(j => `
+    <div class="job-item${j.id===activeJobId?' selected':''}" data-id="${j.id}" onclick="selectJob('${j.id}')">
+      <span class="job-id">${j.id.slice(0,16)}</span>
+      <span class="job-change">${escHtml(j.change_id)}</span>
+      ${statusBadge(j.status)}
+    </div>`).join('');
+}
+
+// Poll every 3s
+jobPollTimer = setInterval(loadJobs, 3000);
+loadJobs();
+
+// ── Job detail ────────────────────────────────────────────────────────────────
+async function selectJob(jobId) {
+  activeJobId = jobId;
+  // Highlight in list
+  document.querySelectorAll('.job-item').forEach(el => {
+    el.classList.toggle('selected', el.dataset.id === jobId);
+  });
+  document.getElementById('job-detail').style.display = '';
+  document.getElementById('terminal').innerHTML = '';
+  document.getElementById('job-detail-title').textContent = `Job: ${jobId}`;
+
+  // Close any existing SSE
+  if (activeSSE) { activeSSE.close(); activeSSE = null; }
+
+  const job = await api(`/runs/${jobId}`).catch(() => null);
+  if (!job) return;
+
+  updateJobMeta(job);
+
+  // Replay historical events
+  const events = await api(`/runs/${jobId}/events`).catch(() => []);
+  events.forEach(renderEvent);
+
+  // If terminal, no SSE needed
+  if (['succeeded','failed','cancelled'].includes(job.status)) return;
+
+  // Live SSE stream
+  activeSSE = new EventSource(`/runs/${jobId}/stream`);
+  activeSSE.onmessage = e => {
+    try { renderEvent(JSON.parse(e.data)); } catch {}
+  };
+  activeSSE.onerror = () => {};
+}
+
+function updateJobMeta(job) {
+  const statusEl = document.getElementById('term-status');
+  statusEl.innerHTML = statusBadge(job.status);
+  document.getElementById('m-stage').textContent = job.current_stage || '—';
+  document.getElementById('m-tokens-in').textContent = job.tokens_in > 0 ? job.tokens_in.toLocaleString() : '—';
+  document.getElementById('m-tokens-out').textContent = job.tokens_out > 0 ? job.tokens_out.toLocaleString() : '—';
+  document.getElementById('m-cost').textContent = job.cost_usd > 0 ? '$' + job.cost_usd.toFixed(4) : '—';
+  const cancelBtn = document.getElementById('cancel-btn');
+  cancelBtn.style.display = ['queued','running'].includes(job.status) ? '' : 'none';
+}
+
+let tokensIn = 0, tokensOut = 0, costUsd = 0;
+
+function renderEvent(evt) {
+  const term = document.getElementById('terminal');
+  const type = evt.type || '';
+  let html = '';
+
+  if (type === 'stage.start') {
+    html = `<div class="t-stage">▶ Stage: ${escHtml(evt.stage)}</div>`;
+    document.getElementById('m-stage').textContent = evt.stage;
+    document.getElementById('term-stage').textContent = evt.stage;
+  } else if (type === 'stage.end') {
+    html = `<div class="t-stage">✓ Stage done: ${escHtml(evt.stage)} (${evt.status || 'ok'})</div>`;
+  } else if (type === 'cli.stdout') {
+    html = `<div class="t-stdout">${escHtml(evt.line)}</div>`;
+  } else if (type === 'cli.stderr') {
+    html = `<div class="t-stderr">${escHtml(evt.line)}</div>`;
+  } else if (type === 'cli.invoke') {
+    html = `<div class="t-info">$ ${escHtml(evt.cmd)} ${(evt.args||[]).slice(0,3).map(escHtml).join(' ')}…</div>`;
+  } else if (type === 'cli.exit') {
+    const col = evt.exit_code === 0 ? 't-info' : 't-stderr';
+    html = `<div class="${col}">exit ${evt.exit_code} (${evt.duration_ms}ms)</div>`;
+  } else if (type === 'log') {
+    html = `<div class="t-info">[${evt.level||'info'}] ${escHtml(evt.msg)}</div>`;
+  } else if (type === 'metrics') {
+    tokensIn += (evt.tokens_in || 0);
+    tokensOut += (evt.tokens_out || 0);
+    costUsd += (evt.cost_usd || 0);
+    document.getElementById('m-tokens-in').textContent = tokensIn.toLocaleString();
+    document.getElementById('m-tokens-out').textContent = tokensOut.toLocaleString();
+    document.getElementById('m-cost').textContent = '$' + costUsd.toFixed(4);
+    html = `<div class="t-metrics">metrics: in=${evt.tokens_in} out=${evt.tokens_out} cost=$${(evt.cost_usd||0).toFixed(4)}</div>`;
+  } else if (type === 'job.start') {
+    html = `<div class="t-system">Job started: ${escHtml(evt.change_id)}</div>`;
+  } else if (type === 'job.end') {
+    const col = evt.status === 'succeeded' ? 't-metrics' : 't-stderr';
+    html = `<div class="${col}">Job ${evt.status} (exit ${evt.exit_code})</div>`;
+    if (activeSSE) { activeSSE.close(); activeSSE = null; }
+    loadJobs();
+    // Refresh detail
+    api(`/runs/${activeJobId}`).then(updateJobMeta).catch(()=>{});
+  }
+
+  if (html) {
+    term.insertAdjacentHTML('beforeend', html);
+    term.scrollTop = term.scrollHeight;
+  }
+}
+
+// Cancel button
+document.getElementById('cancel-btn').addEventListener('click', async () => {
+  if (!activeJobId) return;
+  try {
+    await api(`/runs/${activeJobId}/cancel`, {method:'POST'});
+    toast('Job cancelled');
+    loadJobs();
+  } catch(err) {
+    toast('Error: ' + err.message);
+  }
+});
+
+// ── Agents view ───────────────────────────────────────────────────────────────
+async function loadAgents() {
+  try {
+    const agents = await api('/agents');
+    const tbody = document.getElementById('agents-body');
+    if (!agents.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text2)">No agents found in agent-sources/</td></tr>';
+      return;
+    }
+    tbody.innerHTML = agents.map(a => `
+      <tr>
+        <td><strong>${escHtml(a.name)}</strong></td>
+        <td>${escHtml(a.version)}</td>
+        <td><code style="font-family:monospace;font-size:11px;">${escHtml(a.bundle_hash)}</code></td>
+        <td>${(a.tags||[]).map(t=>`<span class="badge badge-queued">${escHtml(t)}</span>`).join(' ')}</td>
+      </tr>`).join('');
+  } catch(err) {
+    document.getElementById('agents-body').innerHTML = `<tr><td colspan="4" style="color:var(--red)">${escHtml(err.message)}</td></tr>`;
+  }
+}
+
+// ── Corpus view ───────────────────────────────────────────────────────────────
+async function loadCorpus() {
+  try {
+    const items = await api('/corpus');
+    const list = document.getElementById('corpus-list');
+    if (!items.length) {
+      list.innerHTML = '<div style="color:var(--text2);padding:8px;">No stories found in eval/stories/</div>';
+      return;
+    }
+    list.innerHTML = items.map(s => `
+      <div class="corpus-item" data-id="${escHtml(s.id)}" onclick="selectCorpusItem('${escHtml(s.id)}')">
+        <div class="ct">${escHtml(s.id)}</div>
+        <div class="cs">${escHtml(s.title)} · ${s.ac_count} ACs · pass rate: ${s.pass_rate !== null ? Math.round(s.pass_rate*100)+'%' : 'n/a'}</div>
+      </div>`).join('');
+  } catch(err) {
+    document.getElementById('corpus-list').innerHTML = `<div style="color:var(--red)">${escHtml(err.message)}</div>`;
+  }
+}
+
+async function selectCorpusItem(id) {
+  document.querySelectorAll('.corpus-item').forEach(el => el.classList.toggle('selected', el.dataset.id===id));
+  try {
+    const s = await api('/corpus/' + encodeURIComponent(id));
+    const detail = document.getElementById('corpus-detail');
+    detail.style.display = '';
+    document.getElementById('corpus-detail-title').textContent = s.title || s.id;
+    const history = (s.pass_rate_history || []).map(h =>
+      `<tr><td>${escHtml(h.id.slice(0,16))}</td><td>${statusBadge(h.status)}</td><td>${h.submitted_at||''}</td></tr>`
+    ).join('');
+    document.getElementById('corpus-detail-body').innerHTML = `
+      <p style="color:var(--text2);margin-bottom:12px;">${escHtml(s.description||'')}</p>
+      <div style="font-weight:600;margin-bottom:8px;">Acceptance Criteria</div>
+      <ul class="ac-list">${(s.acceptance_criteria||[]).map((ac,i)=>`<li><div class="ac-label">AC${i+1}</div>${escHtml(ac)}</li>`).join('')}</ul>
+      ${history ? `<div style="font-weight:600;margin:14px 0 8px;">Run history</div>
+      <table><thead><tr><th>Job ID</th><th>Status</th><th>Submitted</th></tr></thead><tbody>${history}</tbody></table>` : ''}
+    `;
+  } catch {}
+}
+
+// ── Evaluate view ─────────────────────────────────────────────────────────────
+async function loadEvaluate() {
+  try {
+    const s = await api('/evaluate/summary');
+    document.getElementById('ev-total').textContent = s.total_runs;
+    document.getElementById('ev-pass').textContent = s.succeeded;
+    document.getElementById('ev-fail').textContent = s.failed;
+    document.getElementById('ev-rate').textContent = s.overall_pass_rate !== null ? Math.round(s.overall_pass_rate*100)+'%' : 'n/a';
+
+    const tbody = document.getElementById('eval-table-body');
+    tbody.innerHTML = (s.per_change||[]).map(r => `
+      <tr>
+        <td>${escHtml(r.change_id)}</td>
+        <td>${r.total_runs}</td>
+        <td>${r.passed}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="progress-bar" style="width:80px;"><div class="progress-fill" style="width:${r.pass_rate!==null?Math.round(r.pass_rate*100):0}%"></div></div>
+            ${r.pass_rate !== null ? Math.round(r.pass_rate*100)+'%' : 'n/a'}
+          </div>
+        </td>
+        <td style="color:var(--text2)">${r.last_run||''}</td>
+      </tr>`).join('');
+
+    const regs = s.regressions || [];
+    const regsCard = document.getElementById('eval-regressions-card');
+    if (regs.length) {
+      regsCard.style.display = '';
+      document.getElementById('eval-regressions').innerHTML = regs.map(r =>
+        `<li>⚠ ${escHtml(r.change_id)} — last run failed (was passing)</li>`).join('');
+    } else {
+      regsCard.style.display = 'none';
+    }
+  } catch(err) {
+    toast('Evaluate error: ' + err.message);
+  }
+}
+
+// ── Settings view ─────────────────────────────────────────────────────────────
+let _loadedCfg = null;
+
+async function loadSettings() {
+  try {
+    const cfg = await api('/settings');
+    _loadedCfg = cfg;
+    document.getElementById('s-host').value = cfg.api?.host || '127.0.0.1';
+    originalPort = cfg.api?.port || 8742;
+    document.getElementById('s-port').value = originalPort;
+    document.getElementById('s-runner').value = cfg.defaults?.runner || 'claude';
+    document.getElementById('s-mode').value = cfg.defaults?.mode || 'live';
+    document.getElementById('s-max-jobs').value = cfg.concurrency?.max_running_jobs || 2;
+
+    document.getElementById('s-port').addEventListener('input', function() {
+      document.getElementById('port-hint').style.display =
+        Number(this.value) !== originalPort ? '' : 'none';
+    });
+  } catch(err) {
+    toast('Settings error: ' + err.message);
+  }
+}
+
+async function saveSettings() {
+  if (!_loadedCfg) return;
+  const updated = {
+    ..._loadedCfg,
+    api: {
+      host: document.getElementById('s-host').value,
+      port: Number(document.getElementById('s-port').value),
+    },
+    defaults: {
+      ..._loadedCfg.defaults,
+      runner: document.getElementById('s-runner').value,
+      mode: document.getElementById('s-mode').value,
+    },
+    concurrency: {
+      max_running_jobs: Number(document.getElementById('s-max-jobs').value),
+    },
+  };
+  try {
+    await api('/settings', {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(updated),
+    });
+    toast('Settings saved!');
+    await loadSettings();
+  } catch(err) {
+    toast('Save error: ' + err.message);
+  }
+}
+</script>
+</body>
+</html>

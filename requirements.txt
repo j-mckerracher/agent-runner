@@ -68,3 +68,7 @@ anthropic
 truststore
 python-dotenv
 google-genai
+fastapi
+uvicorn[standard]
+sse-starlette
+httpx

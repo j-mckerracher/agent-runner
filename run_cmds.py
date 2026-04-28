@@ -15,6 +15,129 @@ CLAUDE_AUTH_ENV_VARS = frozenset({
     "CLAUDE_CODE_API_KEY",
 })
 
+# ── Event / cassette hooks (no-op when server package not present) ────────────
+try:
+    from server.events import get_emitter
+    from server.cassette import get_recorder
+    _HAS_SERVER = True
+except ImportError:
+    _HAS_SERVER = False
+
+# Stage context for event emission — set by callers via set_current_stage()
+_current_stage: str = "unknown"
+
+
+def set_current_stage(stage: str) -> None:
+    global _current_stage
+    _current_stage = stage
+
+
+def _run_with_hooks(
+    cmd: list[str],
+    *,
+    capture_output: bool = True,
+    text: bool = True,
+    env: dict | None = None,
+    stage: str | None = None,
+    stdin_content: str | None = None,
+) -> subprocess.CompletedProcess:
+    """Run a subprocess, emitting events and recording cassettes when enabled."""
+    effective_stage = stage or _current_stage
+    t_start = time.monotonic()
+
+    kwargs: dict = {"text": text, "capture_output": capture_output}
+    if env is not None:
+        kwargs["env"] = env
+
+    result = subprocess.run(cmd, **kwargs)
+    duration_ms = (time.monotonic() - t_start) * 1000
+
+    if _HAS_SERVER:
+        emitter = get_emitter()
+        recorder = get_recorder()
+        cmd_name = cmd[0] if cmd else ""
+        args = cmd[1:] if len(cmd) > 1 else []
+
+        emitter.emit({
+            "type": "cli.invoke",
+            "stage": effective_stage,
+            "cmd": cmd_name,
+            "args": args,
+        })
+        if result.stdout:
+            for line in result.stdout.splitlines():
+                emitter.emit({
+                    "type": "cli.stdout",
+                    "stage": effective_stage,
+                    "line": line,
+                })
+        if result.stderr:
+            for line in result.stderr.splitlines():
+                emitter.emit({
+                    "type": "cli.stderr",
+                    "stage": effective_stage,
+                    "line": line,
+                })
+        emitter.emit({
+            "type": "cli.exit",
+            "stage": effective_stage,
+            "exit_code": result.returncode,
+            "duration_ms": round(duration_ms, 1),
+        })
+
+        # Best-effort token/cost extraction from Claude output
+        if cmd_name == "claude" and result.stdout:
+            _try_emit_metrics(emitter, result.stdout)
+
+        recorder.record(
+            stage=effective_stage,
+            cmd=cmd_name,
+            args=args,
+            stdin=stdin_content,
+            stdout=result.stdout or "",
+            stderr=result.stderr or "",
+            exit_code=result.returncode,
+            duration_ms=round(duration_ms, 1),
+        )
+
+    return result
+
+
+def _try_emit_metrics(emitter, stdout: str) -> None:
+    """Best-effort parse of token/cost info from CLI output."""
+    import re as _re
+    tokens_in = 0
+    tokens_out = 0
+    cost_usd = 0.0
+    changed = False
+
+    m_in = _re.search(r"input[_ ]tokens?[:\s]+([0-9,]+)", stdout, _re.IGNORECASE)
+    if m_in:
+        try:
+            tokens_in = int(m_in.group(1).replace(",", ""))
+            changed = True
+        except ValueError:
+            pass
+
+    m_out = _re.search(r"output[_ ]tokens?[:\s]+([0-9,]+)", stdout, _re.IGNORECASE)
+    if m_out:
+        try:
+            tokens_out = int(m_out.group(1).replace(",", ""))
+            changed = True
+        except ValueError:
+            pass
+
+    m_cost = _re.search(r"cost[:\s]+\$?([0-9]+\.[0-9]+)", stdout, _re.IGNORECASE)
+    if m_cost:
+        try:
+            cost_usd = float(m_cost.group(1))
+            changed = True
+        except ValueError:
+            pass
+
+    if changed:
+        emitter.metrics(tokens_in=tokens_in, tokens_out=tokens_out, cost_usd=cost_usd)
+
 
 def _without_claude_auth_env() -> dict[str, str]:
     env = dict(os.environ)
@@ -112,7 +235,7 @@ def run_claude_cmd(
         cmd.append("--dangerously-skip-permissions")
     if extra_flags:
         cmd.extend(extra_flags)
-    result = subprocess.run(cmd, text=True, capture_output=True)
+    result = _run_with_hooks(cmd, stage="claude")
     if result.stdout:
         print(result.stdout)
     if result.stderr:
@@ -173,7 +296,7 @@ def run_copilot_cmd(
         cmd.append("--yolo")
     if extra_flags:
         cmd.extend(extra_flags)
-    result = subprocess.run(cmd, text=True, capture_output=True, env=_without_claude_auth_env())
+    result = _run_with_hooks(cmd, env=_without_claude_auth_env(), stage="copilot")
     if result.stdout:
         print(result.stdout)
     if result.stderr:
@@ -211,7 +334,7 @@ def run_gemini_cmd(
     if extra_flags:
         cmd.extend(extra_flags)
     for _attempt in range(5):
-        result = subprocess.run(cmd, text=True, capture_output=True, env=_without_claude_auth_env())
+        result = _run_with_hooks(cmd, env=_without_claude_auth_env(), stage="gemini")
         if result.stdout:
             print(result.stdout)
         if result.stderr:

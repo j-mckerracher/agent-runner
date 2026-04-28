@@ -19,6 +19,15 @@ from materialize import run_materialization
 from runner_models import COPILOT_EFFORT_CHOICES, RUNNER_DEFAULT_MODELS, RUNNER_MODEL_CHOICES
 from workflow_inputs import DEFAULT_TEST_STORY_FILE, resolve_workflow_input
 
+# ── Event / cassette wiring (no-op when env vars are unset) ──────────────────
+# Import lazily so that the server package is not required for pure CLI usage.
+try:
+    from server.events import init_emitter_from_env, get_emitter
+    from server.cassette import init_recorder_from_env
+    _HAS_SERVER = True
+except ImportError:
+    _HAS_SERVER = False
+
 # ====================== HELPERS ====================== #
 
 RUNNER_ROOT = Path(__file__).resolve().parent
@@ -232,6 +241,13 @@ def main(
     copilot_effort: str | None = None,
     extra_context: str | None = None,
 ):
+    # ── Initialize event emitter and cassette recorder from env vars ──────────
+    if _HAS_SERVER:
+        emitter = init_emitter_from_env()
+        init_recorder_from_env()
+    else:
+        emitter = None
+
     workflow_input = resolve_workflow_input(
         repo=repo,
         change_id=change_id,
@@ -245,6 +261,9 @@ def main(
     intake_source = workflow_input.intake_source
 
     clean_workspace(resolved_change_id)
+
+    if emitter:
+        emitter.job_start(resolved_change_id)
 
     print(f"Running workflow for {resolved_change_id}")
     print(f"Target repo: {resolved_repo}")
@@ -262,11 +281,17 @@ def main(
     # ── Stage 0: Materialize agents ───────────────────────────────────────────
     if not skip_materialize:
         print("Materializing agents from agent-sources/...")
+        if emitter:
+            emitter.stage_start("materialize")
         run_materialization()
+        if emitter:
+            emitter.stage_end("materialize")
     else:
         print("Skipping materialization (--skip-materialize).")
 
     # ── Stage 1: Intake ───────────────────────────────────────────────────────
+    if emitter:
+        emitter.stage_start("intake")
     result_intake = steps.step_intake(
         intake_source=intake_source,
         repo=resolved_repo,
@@ -276,6 +301,8 @@ def main(
         extra_context=extra_context,
         **runner_model_kwargs,
     )
+    if emitter:
+        emitter.stage_end("intake")
 
     # ── Stage 2: Task Generation (eval-optimizer loop) ───────────────────────
     task_gen_input = (
@@ -287,6 +314,8 @@ def main(
         f"Evaluate the task plan for {resolved_change_id} in {resolved_repo}. "
         f"Read {AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/tasks.yaml."
     )
+    if emitter:
+        emitter.stage_start("task-gen")
     run_eval_optimizer_loop(
         producer_func=steps.step_task_gen_producer,
         producer_input=task_gen_input,
@@ -295,6 +324,8 @@ def main(
         runner=runner,
         **runner_model_kwargs,
     )
+    if emitter:
+        emitter.stage_end("task-gen")
 
     # ── Stage 3: Task Assignment (eval-optimizer loop) ────────────────────────
     assigner_input = (
@@ -310,6 +341,8 @@ def main(
         f"Read {AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/assignments.json and "
         f"{AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/tasks.yaml."
     )
+    if emitter:
+        emitter.stage_start("assignment")
     run_eval_optimizer_loop(
         producer_func=steps.step_task_assigner,
         producer_input=assigner_input,
@@ -318,15 +351,21 @@ def main(
         runner=runner,
         **runner_model_kwargs,
     )
+    if emitter:
+        emitter.stage_end("assignment")
 
     # ── Stage 4: Execution — per-batch, parallel where safe ──────────────────
     assignments = load_assignments(resolved_change_id)
     batches = sorted(assignments.get("execution_schedule", []), key=lambda b: b["batch"])
 
+    if emitter:
+        emitter.stage_start("execution")
     for batch in batches:
         uow_ids = [uow["uow_id"] for uow in batch.get("uows", [])]
         is_parallel = batch.get("parallel_execution", False)
         print(f"Executing batch {batch['batch']} — UoWs: {uow_ids} (parallel={is_parallel})")
+        if emitter:
+            emitter.log(f"Executing batch {batch['batch']} — UoWs: {uow_ids} (parallel={is_parallel})")
 
         if is_parallel and len(uow_ids) > 1:
             with ThreadPoolExecutor() as executor:
@@ -352,6 +391,8 @@ def main(
                     runner=runner,
                     **runner_model_kwargs,
                 )
+    if emitter:
+        emitter.stage_end("execution")
 
     # ── Stage 5: QA Validation (eval-optimizer loop) ─────────────────────────
     qa_producer_input = (
@@ -369,6 +410,8 @@ def main(
         f"Read {AGENT_CONTEXT_ROOT}/{resolved_change_id}/qa/qa_report.yaml and "
         f"{AGENT_CONTEXT_ROOT}/{resolved_change_id}/intake/story.yaml."
     )
+    if emitter:
+        emitter.stage_start("qa")
     run_eval_optimizer_loop(
         producer_func=steps.step_qa_engineer,
         producer_input=qa_producer_input,
@@ -377,14 +420,21 @@ def main(
         runner=runner,
         **runner_model_kwargs,
     )
+    if emitter:
+        emitter.stage_end("qa")
 
     # ── Stage 6: Lessons Optimization (one-shot) ─────────────────────────────
+    if emitter:
+        emitter.stage_start("lessons")
     steps.step_lessons_optimizer(
         change_id=resolved_change_id,
         repo=resolved_repo,
         runner=runner,
         **runner_model_kwargs,
     )
+    if emitter:
+        emitter.stage_end("lessons")
+        emitter.job_end(status="succeeded", exit_code=0)
 
     return intake_source
 
