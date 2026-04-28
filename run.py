@@ -16,7 +16,7 @@ import opik_integration  # noqa: F401 — configures Opik project context before
 import steps
 from evaluator_optimizer_loops import run_uow_eval_loop, run_eval_optimizer_loop
 from materialize import run_materialization
-from runner_models import DEFAULT_GEMINI_MODEL, GEMINI_MODEL_CHOICES
+from runner_models import COPILOT_EFFORT_CHOICES, RUNNER_DEFAULT_MODELS, RUNNER_MODEL_CHOICES
 from workflow_inputs import DEFAULT_TEST_STORY_FILE, resolve_workflow_input
 
 # ====================== HELPERS ====================== #
@@ -135,6 +135,19 @@ def load_assignments(change_id: str) -> dict:
     return data
 
 
+def _validate_runner_model(parser: argparse.ArgumentParser, runner: str, model: str | None) -> str:
+    """Return resolved model string; error via parser if incompatible with runner."""
+    if model is None:
+        return RUNNER_DEFAULT_MODELS[runner]
+    valid = RUNNER_MODEL_CHOICES[runner]
+    if model not in valid:
+        parser.error(
+            f"Model '{model}' is not valid for --runner {runner}. "
+            f"Valid models: {', '.join(valid)}"
+        )
+    return model
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run the agent workflow against either a live ADO story or a local synthetic story fixture."
@@ -177,15 +190,34 @@ def parse_args() -> argparse.Namespace:
         help="Skip the agent materialization step (useful when agents are known to be up-to-date).",
     )
     parser.add_argument(
-        "--gemini-model",
-        default=DEFAULT_GEMINI_MODEL,
-        choices=GEMINI_MODEL_CHOICES,
+        "--model",
+        default=None,
         help=(
-            "Gemini model to use when --runner gemini. "
-            f"Defaults to '{DEFAULT_GEMINI_MODEL}'."
+            "Model to use for the selected runner. "
+            "Defaults to the runner's default model if omitted. "
+            "Must be compatible with --runner (e.g., Claude models for --runner claude)."
         ),
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--copilot-effort",
+        default=None,
+        choices=COPILOT_EFFORT_CHOICES,
+        help=(
+            "Reasoning effort level when --runner copilot. "
+            f"Choices: {', '.join(COPILOT_EFFORT_CHOICES)}. Omitted by default."
+        ),
+    )
+    parser.add_argument(
+        "--extra-context",
+        default=None,
+        help=(
+            "Optional free-form context to pass to the intake agent — e.g., a "
+            "reference PR URL and notes. Appended verbatim to the intake prompt."
+        ),
+    )
+    args = parser.parse_args()
+    args.model = _validate_runner_model(parser, args.runner, args.model)
+    return args
 
 # ====================== MAIN ====================== #
 
@@ -196,7 +228,9 @@ def main(
     story_file: str | None = None,
     runner: str = "claude",
     skip_materialize: bool = False,
-    gemini_model: str = DEFAULT_GEMINI_MODEL,
+    model: str | None = None,
+    copilot_effort: str | None = None,
+    extra_context: str | None = None,
 ):
     workflow_input = resolve_workflow_input(
         repo=repo,
@@ -217,10 +251,13 @@ def main(
     print(f"Intake mode: {intake_mode}")
     print(f"Intake source: {intake_source}")
     print(f"Runner: {runner}")
-    selected_runner_model = gemini_model if runner == "gemini" else None
-    runner_model_kwargs = {"runner_model": selected_runner_model} if selected_runner_model is not None else {}
-    if selected_runner_model is not None:
-        print(f"Gemini model: {gemini_model}")
+    resolved_model = model or RUNNER_DEFAULT_MODELS[runner]
+    runner_model_kwargs: dict = {"runner_model": resolved_model}
+    if copilot_effort is not None:
+        runner_model_kwargs["copilot_effort"] = copilot_effort
+    print(f"Model: {resolved_model}")
+    if copilot_effort:
+        print(f"Copilot effort: {copilot_effort}")
 
     # ── Stage 0: Materialize agents ───────────────────────────────────────────
     if not skip_materialize:
@@ -236,18 +273,19 @@ def main(
         change_id=resolved_change_id,
         intake_mode=intake_mode,
         runner=runner,
+        extra_context=extra_context,
         **runner_model_kwargs,
     )
 
     # ── Stage 2: Task Generation (eval-optimizer loop) ───────────────────────
     task_gen_input = (
         f"Generate a task plan for change {resolved_change_id} in {resolved_repo}.\n"
-        f"Read the intake artifacts from agent-context/{resolved_change_id}/intake/.\n"
+        f"Read the intake artifacts from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/intake/.\n"
         f"Act immediately. Do not ask questions."
     )
     task_gen_evaluator_prompt = (
         f"Evaluate the task plan for {resolved_change_id} in {resolved_repo}. "
-        f"Read agent-context/{resolved_change_id}/planning/tasks.yaml."
+        f"Read {AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/tasks.yaml."
     )
     run_eval_optimizer_loop(
         producer_func=steps.step_task_gen_producer,
@@ -261,16 +299,16 @@ def main(
     # ── Stage 3: Task Assignment (eval-optimizer loop) ────────────────────────
     assigner_input = (
         f"Create an execution schedule for change {resolved_change_id}.\n"
-        f"Read tasks from agent-context/{resolved_change_id}/planning/tasks.yaml.\n"
-        f"Read story context from agent-context/{resolved_change_id}/intake/story.yaml.\n"
-        f"Read constraints from agent-context/{resolved_change_id}/intake/constraints.md.\n"
+        f"Read tasks from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/tasks.yaml.\n"
+        f"Read story context from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/intake/story.yaml.\n"
+        f"Read constraints from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/intake/constraints.md.\n"
         f"Target repo: {resolved_repo}\n"
         f"Act immediately. Do not ask questions."
     )
     assignment_evaluator_prompt = (
         f"Evaluate the execution schedule for {resolved_change_id}. "
-        f"Read agent-context/{resolved_change_id}/planning/assignments.json and "
-        f"agent-context/{resolved_change_id}/planning/tasks.yaml."
+        f"Read {AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/assignments.json and "
+        f"{AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/tasks.yaml."
     )
     run_eval_optimizer_loop(
         producer_func=steps.step_task_assigner,
@@ -318,18 +356,18 @@ def main(
     # ── Stage 5: QA Validation (eval-optimizer loop) ─────────────────────────
     qa_producer_input = (
         f"Perform QA validation for change {resolved_change_id}.\n"
-        f"Read story ACs from agent-context/{resolved_change_id}/intake/story.yaml.\n"
-        f"Read task plan from agent-context/{resolved_change_id}/planning/tasks.yaml.\n"
-        f"Read assignments from agent-context/{resolved_change_id}/planning/assignments.json.\n"
-        f"Read all implementation reports from agent-context/{resolved_change_id}/execution/*/impl_report.yaml.\n"
+        f"Read story ACs from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/intake/story.yaml.\n"
+        f"Read task plan from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/tasks.yaml.\n"
+        f"Read assignments from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/assignments.json.\n"
+        f"Read all implementation reports from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/execution/*/impl_report.yaml.\n"
         f"Target repo: {resolved_repo}\n"
-        f"Write your report to agent-context/{resolved_change_id}/qa/qa_report.yaml.\n"
+        f"Write your report to {AGENT_CONTEXT_ROOT}/{resolved_change_id}/qa/qa_report.yaml.\n"
         f"Act immediately. Do not ask questions."
     )
     qa_evaluator_prompt = (
         f"Evaluate the QA report for {resolved_change_id}. "
-        f"Read agent-context/{resolved_change_id}/qa/qa_report.yaml and "
-        f"agent-context/{resolved_change_id}/intake/story.yaml."
+        f"Read {AGENT_CONTEXT_ROOT}/{resolved_change_id}/qa/qa_report.yaml and "
+        f"{AGENT_CONTEXT_ROOT}/{resolved_change_id}/intake/story.yaml."
     )
     run_eval_optimizer_loop(
         producer_func=steps.step_qa_engineer,
@@ -359,5 +397,7 @@ if __name__ == "__main__":
         story_file=args.story_file,
         runner=args.runner,
         skip_materialize=args.skip_materialize,
-        gemini_model=args.gemini_model,
+        model=args.model,
+        copilot_effort=args.copilot_effort,
+        extra_context=args.extra_context,
     )

@@ -1,6 +1,7 @@
 import re
 import json
 import subprocess
+from pathlib import Path
 
 import opik
 from opik import opik_context
@@ -8,9 +9,16 @@ from run_cmds import run_claude_cmd, run_agent_cmd
 from opik_integration import call_evaluator_sdk
 from runner_models import DEFAULT_GEMINI_MODEL
 
+AGENT_CONTEXT_ROOT = Path(__file__).resolve().parent / "agent-context"
 
-def _agent_runner_kwargs(runner_model: str | None) -> dict[str, str]:
-    return {"runner_model": runner_model} if runner_model is not None else {}
+
+def _agent_runner_kwargs(runner_model: str | None, copilot_effort: str | None = None) -> dict:
+    result: dict = {}
+    if runner_model is not None:
+        result["runner_model"] = runner_model
+    if copilot_effort is not None:
+        result["copilot_effort"] = copilot_effort
+    return result
 
 
 def _extract_change_id(context: str) -> str:
@@ -119,6 +127,7 @@ def build_intake_prompt(
     intake_mode: str,
     runner: str = "claude",
     ado_work_item_json: str | None = None,
+    extra_context: str | None = None,
 ) -> str:
     if not intake_source:
         raise ValueError("intake_source cannot be empty.")
@@ -139,8 +148,10 @@ def build_intake_prompt(
         elif runner != "gemini":
             prompt += "Use the azure-devops-cli skill (already loaded) to interact with ADO.\n"
         prompt += (
-            f"Normalize the result into canonical intake artifacts under agent-context/{change_id}/intake/."
+            f"Normalize the result into canonical intake artifacts under {AGENT_CONTEXT_ROOT}/{change_id}/intake/."
         )
+        if extra_context:
+            prompt += f"\n\nAdditional context from the user:\n{extra_context}\n"
         return prompt
 
     prompt = f"Create intake artifacts for a synthetic test story from the local fixture: {intake_source}\n"
@@ -152,8 +163,10 @@ def build_intake_prompt(
     prompt += "Preserve the fixture contents under raw_input.\n"
     prompt += "Do NOT require or use the azure-devops-cli skill unless the fixture explicitly includes ADO metadata.\n"
     prompt += (
-        f"Normalize the result into canonical intake artifacts under agent-context/{change_id}/intake/."
+        f"Normalize the result into canonical intake artifacts under {AGENT_CONTEXT_ROOT}/{change_id}/intake/."
     )
+    if extra_context:
+        prompt += f"\n\nAdditional context from the user:\n{extra_context}\n"
     return prompt
 
 
@@ -165,6 +178,8 @@ def step_intake(
     intake_mode: str = "ado",
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    copilot_effort: str | None = None,
+    extra_context: str | None = None,
 ):
     print(f"Received intake source ({intake_mode}): {intake_source}")
     _annotate_trace(
@@ -184,6 +199,7 @@ def step_intake(
             if runner == "gemini" and intake_mode == "ado"
             else None
         ),
+        extra_context=extra_context,
     )
     extra_skills = None
     return run_agent_cmd(
@@ -191,7 +207,7 @@ def step_intake(
         prompt=prompt,
         agent="intake",
         extra_skills=extra_skills,
-        **_agent_runner_kwargs(runner_model),
+        **_agent_runner_kwargs(runner_model, copilot_effort),
     )
 
 
@@ -200,6 +216,7 @@ def step_task_gen_producer(
     context: str,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    copilot_effort: str | None = None,
 ) -> str:
     change_id = _extract_change_id(context)
     _annotate_trace(stage="task-gen-producer", runner=runner, change_id=change_id)
@@ -207,7 +224,7 @@ def step_task_gen_producer(
         runner=runner,
         prompt=context,
         agent="task-generator",
-        **_agent_runner_kwargs(runner_model),
+        **_agent_runner_kwargs(runner_model, copilot_effort),
     )
 
 
@@ -216,6 +233,7 @@ def step_task_gen_evaluator(
     context: str,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    copilot_effort: str | None = None,
 ) -> str:
     change_id = _extract_change_id(context)
     _annotate_trace(stage="task-gen-evaluator", runner=runner, change_id=change_id)
@@ -236,6 +254,7 @@ def step_task_assigner(
     context: str,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    copilot_effort: str | None = None,
 ) -> str:
     change_id = _extract_change_id(context)
     _annotate_trace(stage="task-assigner", runner=runner, change_id=change_id)
@@ -243,7 +262,7 @@ def step_task_assigner(
         runner=runner,
         prompt=context,
         agent="task-assigner",
-        **_agent_runner_kwargs(runner_model),
+        **_agent_runner_kwargs(runner_model, copilot_effort),
     )
 
 
@@ -252,6 +271,7 @@ def step_assignment_evaluator(
     context: str,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    copilot_effort: str | None = None,
 ) -> str:
     change_id = _extract_change_id(context)
     _annotate_trace(stage="assignment-evaluator", runner=runner, change_id=change_id)
@@ -275,6 +295,7 @@ def step_software_engineer(
     evaluator_feedback: str = "",
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    copilot_effort: str | None = None,
 ) -> str:
     _annotate_trace(
         stage="implementation",
@@ -284,7 +305,7 @@ def step_software_engineer(
     )
     prompt = (
         f"Implement UoW {uow_id} for change {change_id}.\n"
-        f"Read the UoW spec from agent-context/{change_id}/execution/{uow_id}/uow_spec.yaml.\n"
+        f"Read the UoW spec from {AGENT_CONTEXT_ROOT}/{change_id}/execution/{uow_id}/uow_spec.yaml.\n"
         f"Target repo: {repo}\n"
     )
     if evaluator_feedback:
@@ -296,7 +317,7 @@ def step_software_engineer(
         runner=runner,
         prompt=prompt,
         agent="software-engineer-hyperagent",
-        **_agent_runner_kwargs(runner_model),
+        **_agent_runner_kwargs(runner_model, copilot_effort),
     )
 
 
@@ -307,6 +328,7 @@ def step_software_engineer_evaluator(
     repo: str,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    copilot_effort: str | None = None,
 ) -> str:
     _annotate_trace(
         stage="implementation-evaluator",
@@ -316,8 +338,8 @@ def step_software_engineer_evaluator(
     )
     context = (
         f"Evaluate the implementation of UoW {uow_id} for change {change_id}.\n"
-        f"Read the implementation report from agent-context/{change_id}/execution/{uow_id}/impl_report.yaml.\n"
-        f"Read the UoW spec from agent-context/{change_id}/execution/{uow_id}/uow_spec.yaml.\n"
+        f"Read the implementation report from {AGENT_CONTEXT_ROOT}/{change_id}/execution/{uow_id}/impl_report.yaml.\n"
+        f"Read the UoW spec from {AGENT_CONTEXT_ROOT}/{change_id}/execution/{uow_id}/uow_spec.yaml.\n"
         f"Target repo: {repo}"
     )
     result = call_evaluator_sdk(context, "implementation-evaluator", runner=runner, runner_model=runner_model)
@@ -337,6 +359,7 @@ def step_qa_engineer(
     context: str,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    copilot_effort: str | None = None,
 ) -> str:
     change_id = _extract_change_id(context)
     _annotate_trace(stage="qa", runner=runner, change_id=change_id)
@@ -344,7 +367,7 @@ def step_qa_engineer(
         runner=runner,
         prompt=context,
         agent="qa",
-        **_agent_runner_kwargs(runner_model),
+        **_agent_runner_kwargs(runner_model, copilot_effort),
     )
 
 
@@ -353,6 +376,7 @@ def step_qa_evaluator(
     context: str,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    copilot_effort: str | None = None,
 ) -> str:
     change_id = _extract_change_id(context)
     _annotate_trace(stage="qa-evaluator", runner=runner, change_id=change_id)
@@ -374,19 +398,20 @@ def step_lessons_optimizer(
     repo: str,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    copilot_effort: str | None = None,
 ) -> str:
     _annotate_trace(stage="lessons-optimizer", runner=runner, change_id=change_id)
     prompt = (
         f"Run the end-of-workflow lessons optimization for change {change_id}.\n"
-        f"Read agent-context/lessons.md for recorded lessons.\n"
-        f"Read all execution artifacts under agent-context/{change_id}/.\n"
+        f"Read {AGENT_CONTEXT_ROOT}/lessons.md for recorded lessons.\n"
+        f"Read all execution artifacts under {AGENT_CONTEXT_ROOT}/{change_id}/.\n"
         f"Target repo: {repo}\n"
-        f"Write your report to agent-context/{change_id}/summary/lessons_optimizer_report.yaml.\n"
+        f"Write your report to {AGENT_CONTEXT_ROOT}/{change_id}/summary/lessons_optimizer_report.yaml.\n"
         f"Act immediately. Do not ask questions."
     )
     return run_agent_cmd(
         runner=runner,
         prompt=prompt,
         agent="lessons-optimizer-hyperagent",
-        **_agent_runner_kwargs(runner_model),
+        **_agent_runner_kwargs(runner_model, copilot_effort),
     )

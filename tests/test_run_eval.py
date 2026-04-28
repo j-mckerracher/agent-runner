@@ -44,7 +44,7 @@ def _make_args(**overrides):
         "change_id": "EVAL-001",
         "mono_root": "/tmp/mono",
         "runner": "claude",
-        "gemini_model": "gemini-2.5-flash",
+        "model": "gemini-2.5-flash",
         "runs": 1,
         "max_concurrent": 1,
         "testing_branch": run_eval.DEFAULT_TESTING_BRANCH,
@@ -214,7 +214,7 @@ class RunPipelineGeminiPassthroughTests(unittest.TestCase):
                     mono_root="/tmp/mono",
                     runner="gemini",
                     skip_materialize=False,
-                    gemini_model="gemini-3-pro-preview",
+                    model="gemini-3-pro-preview",
                     story_path=story_path,
                 )
         return exit_code, run_subprocess.call_args.args[0]
@@ -236,13 +236,13 @@ class RunPipelineGeminiPassthroughTests(unittest.TestCase):
         runner_index = called_cmd.index("--runner")
         self.assertEqual(called_cmd[runner_index + 1], "gemini")
 
-    def test_medium__run_pipeline_argv_includes_gemini_model_flag(self):
+    def test_medium__run_pipeline_argv_includes_model_flag(self):
         _, called_cmd = self._run_pipeline()
-        self.assertIn("--gemini-model", called_cmd)
+        self.assertIn("--model", called_cmd)
 
-    def test_medium__run_pipeline_argv_passes_explicit_gemini_model(self):
+    def test_medium__run_pipeline_argv_passes_explicit_model(self):
         _, called_cmd = self._run_pipeline()
-        model_index = called_cmd.index("--gemini-model")
+        model_index = called_cmd.index("--model")
         self.assertEqual(called_cmd[model_index + 1], "gemini-3-pro-preview")
 
 

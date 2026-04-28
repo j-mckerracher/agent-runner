@@ -138,6 +138,7 @@ def run_copilot_cmd(
     prompt: str,
     agent: str,
     model: str = "gpt-5-mini",
+    effort: str | None = None,
     skip_permissions: bool = True,
     silent: bool = True,
     extra_flags: list[str] | None = None,
@@ -161,7 +162,11 @@ def run_copilot_cmd(
     print(f"Starting Copilot CLI via {agent}...")
     print(f"Prompt: {prompt}")
     print(f"Model: {model}")
+    if effort:
+        print(f"Effort: {effort}")
     cmd = ["copilot", "-p", prompt, f"--agent={agent}", "--model", model]
+    if effort:
+        cmd.extend(["--effort", effort])
     if silent:
         cmd.append("-s")
     if skip_permissions:
@@ -235,14 +240,15 @@ def run_agent_cmd(
     """Dispatch to the selected CLI runner based on runner."""
     runner_model = kwargs.pop("runner_model", None)
     extra_skills = kwargs.pop("extra_skills", None)
+    copilot_effort = kwargs.pop("copilot_effort", None)
+    model_kwarg = {"model": runner_model} if runner_model is not None else {}
     if runner == "copilot":
-        return run_copilot_cmd(prompt=prompt, agent=agent, **kwargs)
+        effort_kwarg = {"effort": copilot_effort} if copilot_effort is not None else {}
+        return run_copilot_cmd(prompt=prompt, agent=agent, **model_kwarg, **effort_kwarg, **kwargs)
     elif runner == "claude":
-        return run_claude_cmd(prompt=prompt, agent=agent, **kwargs)
+        return run_claude_cmd(prompt=prompt, agent=agent, **model_kwarg, **kwargs)
     elif runner == "gemini":
-        if runner_model is not None:
-            kwargs.setdefault("model", runner_model)
-        return run_gemini_cmd(prompt=prompt, agent=agent, extra_skills=extra_skills, **kwargs)
+        return run_gemini_cmd(prompt=prompt, agent=agent, extra_skills=extra_skills, **model_kwarg, **kwargs)
     else:
         raise ValueError(f"Unknown runner: {runner!r}. Must be 'claude', 'copilot', or 'gemini'.")
 

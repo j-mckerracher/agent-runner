@@ -40,6 +40,17 @@ python run.py --repo /path/to/repo --runner claude   # default
 python run.py --repo /path/to/repo --runner copilot
 ```
 
+### Pass extra context to the intake agent
+
+Use `--extra-context` to supply free-form notes that the intake agent should consider — for example, a reference PR URL that demonstrates the expected pattern:
+
+```bash
+python run.py --repo /path/to/repo --ado-url 'https://dev.azure.com/...' \
+  --extra-context "See PR https://dev.azure.com/.../pullrequest/456 for implementation examples."
+```
+
+The text is appended verbatim to the intake prompt. The intake agent incorporates it into `story.yaml` and `constraints.md`, so all downstream stages inherit it through those artifacts.
+
 Run `python run.py --help` for all options.
 
 ---

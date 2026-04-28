@@ -78,12 +78,17 @@ class ParseArgsTests(unittest.TestCase):
             args = run.parse_args()
         self.assertEqual(args.runner, "gemini")
 
-    def test_easy__parse_args_default_gemini_model_is_gemini_2_5_flash(self):
+    def test_easy__parse_args_default_model_for_gemini_runner_is_gemini_2_5_flash(self):
         with patch.object(sys, "argv", ["run.py", "--repo", "/tmp/target-repo", "--runner", "gemini"]):
             args = run.parse_args()
-        self.assertEqual(args.gemini_model, "gemini-2.5-flash")
+        self.assertEqual(args.model, "gemini-2.5-flash")
 
-    def test_easy__parse_args_accepts_explicit_gemini_model(self):
+    def test_easy__parse_args_default_model_for_claude_runner_is_haiku(self):
+        with patch.object(sys, "argv", ["run.py", "--repo", "/tmp/target-repo", "--runner", "claude"]):
+            args = run.parse_args()
+        self.assertEqual(args.model, "claude-haiku-4-5-20251001")
+
+    def test_easy__parse_args_accepts_explicit_model_for_gemini_runner(self):
         with patch.object(
             sys,
             "argv",
@@ -93,12 +98,23 @@ class ParseArgsTests(unittest.TestCase):
                 "/tmp/target-repo",
                 "--runner",
                 "gemini",
-                "--gemini-model",
+                "--model",
                 "gemini-3-pro-preview",
             ],
         ):
             args = run.parse_args()
-        self.assertEqual(args.gemini_model, "gemini-3-pro-preview")
+        self.assertEqual(args.model, "gemini-3-pro-preview")
+
+    def test_easy__parse_args_rejects_cross_runner_model(self):
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["run.py", "--repo", "/tmp/target-repo", "--runner", "claude", "--model", "gpt-5-mini"],
+            ),
+            self.assertRaises(SystemExit),
+        ):
+            run.parse_args()
 
 
 class RunMainBundledFixtureDispatchTests(unittest.TestCase):
@@ -261,7 +277,7 @@ class RunMainGeminiRunnerTests(unittest.TestCase):
         self._patches[5].start()
         self.lessons_optimizer = self._patches[6].start()
         self.addCleanup(self._stop_all)
-        run.main.fn(repo="/tmp/target-repo", runner="gemini", gemini_model="gemini-3-pro-preview")
+        run.main.fn(repo="/tmp/target-repo", runner="gemini", model="gemini-3-pro-preview")
 
     def _stop_all(self):
         for p in self._patches:

@@ -36,6 +36,7 @@ def run_uow_eval_loop(
     iter_count: int = 3,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    copilot_effort: str | None = None,
 ) -> tuple[str, str]:
     """
     Run the software-engineer + implementation-evaluator eval-optimizer loop
@@ -58,6 +59,7 @@ def run_uow_eval_loop(
                 evaluator_feedback=evaluator_out if i > 0 else "",
                 runner=runner,
                 runner_model=runner_model,
+                copilot_effort=copilot_effort,
             )
             evaluator_out = steps.step_software_engineer_evaluator(
                 uow_id=uow_id,
@@ -65,6 +67,7 @@ def run_uow_eval_loop(
                 repo=repo,
                 runner=runner,
                 runner_model=runner_model,
+                copilot_effort=copilot_effort,
             )
             passed = "PASS" in evaluator_out
             span.output = {"passed": passed}
@@ -97,6 +100,7 @@ def run_eval_optimizer_loop(
     iter_count: int = 3,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    copilot_effort: str | None = None,
 ):
     change_id = _extract_change_id(producer_input) or _extract_change_id(evaluator_prompt)
     _annotate_loop_trace(runner=runner, change_id=change_id, stage="eval-optimizer")
@@ -113,8 +117,8 @@ def run_eval_optimizer_loop(
                     f"## Evaluator Issues to Fix (iteration {i}):\n{evaluator_out}\n\n"
                     f"Revise your output artifact to address the issues above. Do not ask questions — act immediately."
                 )
-            producer_out = producer_func(combined_input, runner=runner, runner_model=runner_model)
-            evaluator_out = evaluator_func(evaluator_prompt, runner=runner, runner_model=runner_model)
+            producer_out = producer_func(combined_input, runner=runner, runner_model=runner_model, copilot_effort=copilot_effort)
+            evaluator_out = evaluator_func(evaluator_prompt, runner=runner, runner_model=runner_model, copilot_effort=copilot_effort)
             passed = "PASS" in evaluator_out
             span.output = {"passed": passed}
             try:
