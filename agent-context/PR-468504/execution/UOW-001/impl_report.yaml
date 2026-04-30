@@ -1,0 +1,82 @@
+uow_id: "UOW-001"
+status: "blocked"
+implementation_summary: "No source code changes were made. Execution is blocked because /Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/execution/UOW-001/uow_spec.yaml is missing, and the scoped execution lesson for software-engineer work requires the execution spec to exist before touching code."
+librarian_queries:
+  - query: "PR-468504 / UOW-001 implementation context, scoped lessons, ADO metadata, repo patterns, impl_report schema"
+    confidence_received: "full"
+    answer_summary: "The execution UoW spec is missing, ADO metadata is present for work item 5043919, the shutdown surfaces are Program.cs and GoogleCloudLoggingStartup.cs, and impl_report.yaml must use a list-based definition_of_done_status."
+librarian_exploration_summaries:
+  - query: "What repo touchpoints and existing shutdown patterns are relevant to UOW-001?"
+    summary_received: "Program.cs and App_Start/GoogleCloudLoggingStartup.cs are the bootstrap surfaces. Existing startup wiring uses Serilog but no host-lifetime shutdown hooks were found, so implementation should not start until the missing execution spec is materialized."
+applied_lessons:
+  - lesson_id: "SE-EXEC-REPO-MISMATCH-BLOCK"
+    why_applied: "The lesson explicitly applies to execution-stage software-engineer work and requires blocking when execution/UOW-001/uow_spec.yaml is absent."
+files_modified: []
+definition_of_done_status:
+  - item: "Program.cs and related startup wiring explicitly implement graceful host shutdown behavior for Cloud Run on .NET 8/alpine."
+    met: false
+    evidence: "No implementation started because execution/UOW-001/uow_spec.yaml is missing."
+  - item: "The API has a defined mechanism to stop accepting new work once shutdown begins."
+    met: false
+    evidence: "No implementation started because execution/UOW-001/uow_spec.yaml is missing."
+  - item: "Serilog flush and close behavior is wired into shutdown without introducing unhandled exceptions."
+    met: false
+    evidence: "No implementation started because execution/UOW-001/uow_spec.yaml is missing."
+  - item: "Shutdown-focused automated coverage or equivalent verification is updated."
+    met: false
+    evidence: "No implementation started because execution/UOW-001/uow_spec.yaml is missing."
+library_research:
+  feature_needed: "Cloud Run/.NET 8 graceful host shutdown and Serilog flush behavior"
+  libraries_checked:
+    - "ASP.NET Core host startup surface in Program.cs"
+    - "Existing Serilog bootstrap in GoogleCloudLoggingStartup.cs"
+  documentation_consulted: "Local startup code plus librarian-provided repo pattern summaries"
+  existing_solution_found: true
+  solution_used: "Identified the startup surfaces that would be modified once the missing execution spec is materialized; no implementation was applied while blocked."
+commands_executed:
+  - command: "az boards work-item update --id 5043919 --state Active --discussion \"Agent starting implementation of UoW UOW-001: Implement host-lifecycle graceful shutdown and Serilog flush behavior\" --only-show-errors -o none"
+    result: "pass"
+    output_summary: "Azure DevOps work item 5043919 was updated to Active with the implementation-start discussion."
+  - command: "dotnet build src/Mayo.MCS.RLS.OrdersConsumer.sln"
+    result: "pass"
+    output_summary: "Baseline solution build succeeded with pre-existing warnings."
+  - command: "dotnet test src/Mayo.MCS.RLS.OrdersConsumer.sln"
+    result: "fail"
+    output_summary: "Baseline test run failed before any code changes. Integration tests reported 427 failures, 0 passes, and 2 skips, dominated by NullReferenceException in Mayo.ODN.Test.E2E.ConfigurationHelper.get_UseAzureADAuth(); the unit test assembly passed with 1206 passes and 3 skips."
+test_results:
+  build:
+    status: "pass"
+    summary: "dotnet build succeeded."
+  tests:
+    status: "fail"
+    summary: "Pre-existing test failures are present in the integration suite before any implementation work."
+risks_identified:
+  - type: "tech_debt"
+    description: "The workflow did not materialize execution/UOW-001/uow_spec.yaml, so the implementation contract is incomplete at execution time."
+    mitigation: "Materialize execution/UOW-001/uow_spec.yaml from planning artifacts, then rerun the software-engineer stage."
+    requires_escalation: false
+notes: "Planning artifacts clearly map UOW-001 to T1 and identify the likely bootstrap files, but the execution-stage contract file is absent. To avoid scope creep and comply with the scoped execution lesson, code changes were intentionally not started."
+replan_request:
+  reason: "missing_execution_artifact"
+  discovery: "execution/UOW-001/uow_spec.yaml is missing and execution/ was empty when implementation began."
+  impact: "The software-engineer stage cannot safely start code changes without the materialized UoW execution contract."
+  recommended_action: "re-execute_dependency"
+  suggested_scope_change: "Materialize execution/UOW-001/uow_spec.yaml from planning/assignments.json before rerunning implementation."
+metacognitive_context:
+  decision_rationale: "Blocking was the simplest robust response because the scoped execution lesson requires the materialized UoW spec before code changes, and the software-engineer role is not permitted to backfill upstream planning artifacts."
+  alternatives_discarded:
+    - approach: "Proceed with code changes using planning/assignments.json as an informal substitute for uow_spec.yaml."
+      reason_rejected: "The scoped lesson explicitly requires execution/UOW-ID/uow_spec.yaml before touching code."
+    - approach: "Create the missing uow_spec.yaml inside the software-engineer stage and then continue implementation."
+      reason_rejected: "That would modify an upstream execution input artifact outside the software-engineer write scope."
+  knowledge_gaps:
+    - "The materialized execution contract for UOW-001 is missing."
+    - "The exact stop-accepting-new-work mechanism to apply after shutdown begins is still undecided in the planning artifacts."
+  tool_anomalies:
+    - tool: "workflow artifacts"
+      anomaly: "execution/UOW-001/uow_spec.yaml was absent even though planning artifacts reference UOW-001."
+    - tool: "dotnet test"
+      anomaly: "Baseline integration tests fail in the current environment with NullReferenceException from Mayo.ODN.Test.E2E.ConfigurationHelper.get_UseAzureADAuth()."
+revision_history:
+  - attempt: 1
+    feedback_addressed: "Initial attempt; no prior evaluator feedback."

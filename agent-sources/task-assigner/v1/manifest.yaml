@@ -1,0 +1,5 @@
+name: task-assigner
+version: v1
+description: "task-assigner agent, v1, seeded from .claude/agents/03-task-assigner.agent.md"
+source: "agent-development/.claude/agents/03-task-assigner.agent.md"
+claude_code_agent_file: "03-task-assigner.agent.md"

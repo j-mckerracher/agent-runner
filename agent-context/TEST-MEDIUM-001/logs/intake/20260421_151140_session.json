@@ -1,0 +1,19 @@
+{
+  "log_type": "intake_session",
+  "timestamp": "2026-04-21T15:11:40.603-06:00",
+  "change_id": "TEST-MEDIUM-001",
+  "iteration": 1,
+  "session_summary": "Intake artifacts normalized from local synthetic fixture; story.yaml, config.yaml, constraints.md created.",
+  "decisions_made": [
+    "Preserved fixture JSON under story.raw_input",
+    "Inferred project_type 'angular' from raw_input_notes.domain"
+  ],
+  "issues_encountered": [],
+  "notes": "No ADO metadata present; source is synthetic local fixture.",
+  "project_type": "angular",
+  "acceptance_criteria_count": 3,
+  "planning_docs_ingested": 0,
+  "open_questions_count": 3,
+  "context_confidence_score": 0.85,
+  "execution_blockers": []
+}

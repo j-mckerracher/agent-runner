@@ -1,0 +1,35 @@
+{
+  "change_id": "EVAL-002",
+  "title": "Add reactive manifest specimen summary row with empty-state coverage",
+  "description": "Extend the manifest header so it renders a dedicated specimen summary row beneath the manifest number. The row must expose machine-checkable summary and status elements, derive its state from exact computed signals in the component class, and update the existing locator, test harness, and Cypress component spec with exact symbol names and test titles. This story is intentionally harder than EVAL-001 because it requires coordinated updates across template, component logic, locators, harness helpers, and two explicit Cypress component tests plus successful component-test and build commands.",
+  "acceptance_criteria": [
+    "AC1: In libs/pearls/sendouts/ui/manifest-ui/src/lib/components/manifest-header/manifest-header.component.ts, add computed signals named specimenSummaryText and hasSpecimens. In libs/pearls/sendouts/ui/manifest-ui/src/lib/components/manifest-header/manifest-header.component.html, render a summary container with data-test-id=\"manifest-specimen-summary\" and a nested status element with data-test-id=\"manifest-specimen-status\". The template must reference hasSpecimens() and include an empty-state class token containing the exact text is-empty or empty-state.",
+    "AC2: In libs/pearls/sendouts/common/src/testing/locators/manifestCreateEdit.locators.ts, add exact locator symbols manifestSpecimenSummary and manifestSpecimenStatus targeting the new data-test-id values. In libs/pearls/sendouts/ui/manifest-ui/src/lib/components/manifest-header/manifest-header.component.test-harness.ts, add exact assertion/helper methods shouldDisplaySpecimenSummary and shouldShowEmptyState.",
+    "AC3: In libs/pearls/sendouts/ui/manifest-ui/src/lib/components/manifest-header/manifest-header.component.cy.ts, add Cypress test cases whose names include the exact strings 'should display specimen summary text' and 'should show empty specimen state'. The project command npx nx component-test rls-sendouts-ui-manifest-ui --browser=chrome --skip-nx-cache must exit with code 0.",
+    "AC4: The project command npx nx build rls-sendouts-ui-manifest-ui --skip-nx-cache must exit with code 0."
+  ],
+  "examples": [
+    "If the manifest contains 0 specimens, the summary row shows the empty-state status and the empty-state test passes.",
+    "If the manifest contains 3 specimens, the summary row text updates via specimenSummaryText and the summary test passes.",
+    "The locator and harness additions allow the Cypress tests to assert the summary row without raw selectors."
+  ],
+  "constraints": [
+    "Modify only the exact files named in the acceptance criteria unless the existing repo structure requires adjacent imports/exports.",
+    "Reuse existing manifest-header and locator patterns; do not introduce a custom testing abstraction.",
+    "Keep every required symbol name, data-test-id value, and Cypress test title exact so the evaluation checks remain machine-verifiable.",
+    "Do not modify evaluation logic for EVAL-001 beyond refactoring it into a story-dispatch path."
+  ],
+  "non_functional_requirements": [
+    "All acceptance criteria must remain machine-checkable through exact files, symbols, test names, and commands.",
+    "The story should be difficult enough that current agents are expected to satisfy only a subset of the checks on average, targeting an approximate 50/100 mean score."
+  ],
+  "raw_input_notes": {
+    "purpose": "Harder evaluation framework calibration story with independent scoring",
+    "domain": "Mayo Collaborative Services — RLS Send-Outs manifest header summary row",
+    "owner": "agent-runner-eval",
+    "difficulty": "hard",
+    "difficulty_rationale": "Requires synchronized updates across 4 exact files plus two exact Cypress test names and two runtime commands. Agents that only modify the component or skip harness/locator conventions should land near a partial score instead of 100.",
+    "target_average_score": "approximately 50/100 on current runs"
+  }
+}
+

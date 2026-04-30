@@ -1,0 +1,212 @@
+[
+  {
+    "id": "LRN-001",
+    "category": "planning",
+    "title": "PR-468504 planning should follow explicit API acceptance criteria over mismatched repo path",
+    "keywords": [
+      "PR-468504",
+      "graceful shutdown",
+      "repo mismatch",
+      "task_generator_findings",
+      "rls-docgen-system-api",
+      "rls-orders-cnsmr-api",
+      "cancellation propagation"
+    ],
+    "files": [
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/planning/tasks.yaml",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/intake/story.yaml",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/intake/constraints.md"
+    ],
+    "pattern": "When intake artifacts explicitly scope .NET APIs but the supplied repository does not contain those APIs, planning should stay anchored to the acceptance criteria and record the repo mismatch instead of inventing implementation work for the wrong codebase.",
+    "notes": "The accepted decomposition for PR-468504 is four broad tasks: host-lifecycle graceful shutdown wiring across both APIs, deep cancellation propagation for rls-docgen-system-api to PR 468504 depth, equivalent shutdown-aware cancellation work for rls-orders-cnsmr-api, and documentation of out-of-scope follow-up APIs plus the repo-mismatch assumption. Concrete implementation evidence was only available for the rls-docgen-system-api PR 468504 propagation chain. The findings explicitly keep rls-orders-orch-api and rls-orders-data-api as follow-up scope.",
+    "date": "2026-04-28"
+  },
+  {
+    "id": "LRN-002",
+    "category": "planning",
+    "title": "planning/tasks.yaml currently needs prompt and validator compatibility aliases",
+    "keywords": [
+      "PR-468504",
+      "planning",
+      "tasks.yaml",
+      "task-generator",
+      "schema mismatch",
+      "validate-artifact-schema",
+      "task_id",
+      "id",
+      "ac_mapping",
+      "complexity"
+    ],
+    "files": [
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-sources/task-generator/v1/prompt.md",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/.claude/scripts/validate-artifact-schema.py",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/planning/tasks.yaml"
+    ],
+    "pattern": "When revising planning/tasks.yaml, preserve the task-generator prompt fields but also carry compatibility aliases for validator-facing names until the repo standard is unified.",
+    "notes": "The task-generator prompt documents task_id, acceptance_criteria_mapped, and estimated_complexity, while the repo-local schema validator enforces id, ac_mapping, and complexity. PR-468504 iteration 2 passed validation by including both naming sets on each task entry, making the mismatch explicit for future planning and evaluation work.",
+    "date": "2026-04-28"
+  },
+  {
+    "id": "LRN-003",
+    "category": "execution",
+    "title": "PR-468504 UOW-001 must stay blocked when the execution spec is missing, even if baseline repo verification is available",
+    "keywords": [
+      "PR-468504",
+      "UOW-001",
+      "WI-5043919",
+      "execution",
+      "missing uow_spec",
+      "SE-EXEC-REPO-MISMATCH-BLOCK",
+      "dotnet build",
+      "dotnet test",
+      "integration failures",
+      "NullReferenceException",
+      "rls-orders-cnsmr-api"
+    ],
+    "files": [
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/execution/UOW-001/impl_report.yaml",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/execution/UOW-001/logs/20260428_202120_session.json",
+      "/Users/mckerracher.joshua/Code/rls-orders-cnsmr-api/src/Mayo.MCS.RLS.OrdersConsumer.sln"
+    ],
+    "pattern": "When execution/UOW-ID/uow_spec.yaml is absent, software-engineer work must block without code changes even if the target repo can still be baseline-verified with build and test commands.",
+    "notes": "For PR-468504 / UOW-001, the implementation report records that execution/UOW-001/uow_spec.yaml was missing and execution/ was empty when execution started. The scoped lesson SE-EXEC-REPO-MISMATCH-BLOCK required a blocked impl_report rather than proceeding from planning artifacts alone. Baseline verification in /Users/mckerracher.joshua/Code/rls-orders-cnsmr-api still established that dotnet build src/Mayo.MCS.RLS.OrdersConsumer.sln succeeds, while dotnet test src/Mayo.MCS.RLS.OrdersConsumer.sln has pre-existing integration failures: Mayo.MCS.RLS.OrdersConsumer.Tests.Integration.dll reported 427 failed, 0 passed, 2 skipped, dominated by NullReferenceException in Mayo.ODN.Test.E2E.ConfigurationHelper.get_UseAzureADAuth(); the unit suite passed with 1206 passed and 3 skipped. Traceability also records WI-5043919 being moved to Active at start and later receiving a blocked-status discussion update once the missing execution spec was confirmed.",
+    "date": "2026-04-28"
+  },
+  {
+    "id": "LRN-004",
+    "category": "execution",
+    "title": "PR-468504 UOW-003 blocker is missing execution spec, not missing secondary controller touchpoints",
+    "keywords": [
+      "PR-468504",
+      "UOW-003",
+      "execution",
+      "missing uow_spec",
+      "artifact-state blocker",
+      "assignments.json",
+      "AccountsController",
+      "DocumentsController",
+      "LabelsController",
+      "ReportsController",
+      "rls-orders-cnsmr-api",
+      "WI-5043919"
+    ],
+    "files": [
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/execution/UOW-003/impl_report.yaml",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/planning/assignments.json",
+      "/Users/mckerracher.joshua/Code/rls-orders-cnsmr-api/src/Mayo.MCS.RLS.OrdersConsumer.Api/Controllers/AccountsController.cs",
+      "/Users/mckerracher.joshua/Code/rls-orders-cnsmr-api/src/Mayo.MCS.RLS.OrdersConsumer.Api/Controllers/DocumentsController.cs",
+      "/Users/mckerracher.joshua/Code/rls-orders-cnsmr-api/src/Mayo.MCS.RLS.OrdersConsumer.Api/Controllers/LabelsController.cs",
+      "/Users/mckerracher.joshua/Code/rls-orders-cnsmr-api/src/Mayo.MCS.RLS.OrdersConsumer.Api/Controllers/ReportsController.cs"
+    ],
+    "pattern": "When PR-468504 / UOW-003 is blocked and execution/UOW-003/uow_spec.yaml is missing, classify the issue as workflow artifact-state remediation after verifying the secondary controller family exists in rls-orders-cnsmr-api.",
+    "notes": "The durable execution-stage fact is that Accounts, Documents, Labels, and Reports controller families do exist in /Users/mckerracher.joshua/Code/rls-orders-cnsmr-api, so future retries should not treat UOW-003 as blocked by a repo mismatch once those touchpoints are confirmed. The correct retry precondition is regeneration of agent-context/PR-468504/execution/UOW-003/uow_spec.yaml; planning/assignments.json, the blocked impl_report.yaml, and Azure DevOps work item 5043919 provide traceability but do not replace the missing execution contract.",
+    "date": "2026-04-28"
+  },
+  {
+    "id": "LRN-005",
+    "category": "execution",
+    "title": "Synthetic story change_id mismatches fail before event emission and leave the Runs UI blank",
+    "keywords": [
+      "WI-EVAL-003-A",
+      "EVAL-003",
+      "job_fd5cff592ed7f6c1",
+      "workflow input validation",
+      "synthetic story fixture",
+      "change_id mismatch",
+      "resolve_workflow_input",
+      "events.jsonl",
+      "Runs UI",
+      "runner_proc",
+      "error_message"
+    ],
+    "files": [
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/workflow_inputs.py",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/run.py",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/gui/index.html",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/server/runner_proc.py",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/server/jobs.py",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/eval/stories/EVAL-003.json"
+    ],
+    "pattern": "When a submitted change_id does not match the synthetic story fixture change_id, resolve_workflow_input raises before run.py emits any events, so the subprocess fails with an empty events.jsonl and the Runs UI terminal stays blank because it only replays and streams events.",
+    "notes": "The specific reproduced case used runner change_id WI-EVAL-003-A with eval/stories/EVAL-003.json, whose embedded fixture change_id remained EVAL-003. That pre-stage ValueError caused rc=1, status=failed, and a zero-byte agent-context/WI-EVAL-003-A/events.jsonl for job_fd5cff592ed7f6c1. server/runner_proc.py pipes stdout/stderr, drains it, and discards the traceback, while gui/index.html replays /runs/{job_id}/events and subscribes to /runs/{job_id}/stream but does not render db error_message, so the failure leaves the Runs UI with no visible logs.",
+    "date": "2026-04-29"
+  },
+  {
+    "id": "LRN-006",
+    "category": "execution",
+    "title": "Surface Opik traces locally by mirroring them into the existing JSONL and SSE run stream",
+    "keywords": [
+      "Opik",
+      "tracing",
+      "ui_trace_bridge",
+      "Runs UI",
+      "JSONL",
+      "SSE",
+      "opik.start",
+      "opik.end",
+      "local traces",
+      "evaluator loops"
+    ],
+    "files": [
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/ui_trace_bridge.py",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/opik_integration.py",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/steps.py",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/evaluator_optimizer_loops.py",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/gui/index.html",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/tests/test_ui_trace_bridge.py"
+    ],
+    "pattern": "To surface Opik traces in the local Runs UI, keep backend tracing authoritative and mirror trace/span boundaries into the existing JSONL and SSE event stream, then render opik.start and opik.end events in gui/index.html instead of querying Opik from the frontend.",
+    "notes": "The shared bridge in ui_trace_bridge.py wraps existing Opik-traced workflow stage functions, evaluator loop traces, and loop iteration spans so the same trace boundaries appear in both Opik and the local Runs UI. gui/index.html subscribes to mirrored opik.start/opik.end events and renders nesting depth with compact metadata. This preserves the existing Opik dashboard link while avoiding any direct frontend dependency on Opik APIs. tests/test_ui_trace_bridge.py is the focused regression surface for the mirroring behavior.",
+    "date": "2026-04-29"
+  },
+  {
+    "id": "LRN-007",
+    "category": "server-db",
+    "title": "SQLite schema migrations must defer dependent indexes until legacy columns exist",
+    "keywords": [
+      "sqlite",
+      "run_kind",
+      "schema migration",
+      "_SCHEMA",
+      "_ensure_schema",
+      "jobs.db",
+      "GET /runs",
+      "list_jobs"
+    ],
+    "files": [
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/server/db.py",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/tests/test_server_routes.py"
+    ],
+    "pattern": "When evolving a SQLite table used by existing databases, keep new columns in the base CREATE TABLE definition for fresh databases but create dependent indexes only after migration logic has backfilled or added the column on legacy databases.",
+    "notes": "Legacy jobs.db files without run_kind failed because _SCHEMA tried to create idx_jobs_run_kind during executescript before the column existed. The fix was to leave run_kind in fresh table creation, remove the run_kind index from _SCHEMA, and let server/db.py:_ensure_schema() add the column and create the index afterward. A regression test now precreates a legacy jobs.db without run_kind and verifies db.list_jobs(run_kind=\"regular\") migrates successfully. Full validation passed with python3 -m pytest -q tests/ => 265 passed, 1 warning.",
+    "date": "2026-04-30"
+  },
+  {
+    "id": "LRN-008",
+    "category": "execution",
+    "title": "Change 5035632 UOW-001 implements unsaved-order menu navigation with pending navigation middleware state",
+    "keywords": [
+      "5035632",
+      "UOW-001",
+      "unsaved order",
+      "menu navigation",
+      "pending navigation",
+      "Order Changed handler",
+      "PendingChangeHandler",
+      "PendingNavigationData",
+      "SaveMiddleware",
+      "PendingHandlerMiddleware",
+      "OrdersStore.hasChanged",
+      "specimen-accessioning-orders-ui"
+    ],
+    "files": [
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/5035632/execution/UOW-001/uow_spec.yaml",
+      "/Users/mckerracher.joshua/Code/mcs-products-mono-ui/libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/types/pending-change-handler.ts",
+      "/Users/mckerracher.joshua/Code/mcs-products-mono-ui/libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/middleware/save.middleware.ts",
+      "/Users/mckerracher.joshua/Code/mcs-products-mono-ui/libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/middleware/pending-handler.middleware.ts"
+    ],
+    "pattern": "For unsaved-order menu navigation in orders-ui, reuse the existing Order Changed confirmation handler and carry the selected menu destination plus navigate callback as pending middleware data; navigate immediately only when OrdersStore.hasChanged is clean.",
+    "notes": "The requested UOW spec was missing and was materialized from planning/tasks.yaml T1 plus planning/assignments.json UOW-001 at agent-context/5035632/execution/UOW-001/uow_spec.yaml. The target repo was /Users/mckerracher.joshua/Code/mcs-products-mono-ui, not a literal path with ~/. UOW-001 added PendingChangeHandler.pendingNavigation and PendingNavigationData, SaveMiddleware.confirmAndNavigateToMenuDestination(destination, navigate), and PendingHandlerMiddleware.pendingNavigation. Dirty orders store pendingData and open the existing Order Changed handler; clean orders navigate immediately. Accept calls the stored navigate callback, while reject clears pending data and stays on the current screen. Focused validation passed with npx nx test specimen-accessioning-orders-ui --skip-nx-cache, npx nx build rls-specimen-accessioning --skip-nx-cache, and npx eslint on touched files. Broad component-test and lint failures were pre-existing dirty test-pill issues unrelated to UOW-001.",
+    "date": "2026-04-30"
+  }
+]

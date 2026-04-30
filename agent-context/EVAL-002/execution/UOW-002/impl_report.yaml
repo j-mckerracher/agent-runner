@@ -1,0 +1,22 @@
+uow_id: "UOW-002"
+status: "blocked"
+implementation_summary: "Blocked: uow_spec.yaml not found; cannot determine Definition of Done or implementation hints."
+librarian_queries: []
+files_modified: []
+definition_of_done_status: {}
+commands_executed: []
+risks_identified: []
+notes: "uow_spec.yaml was expected at agent-context/EVAL-002/execution/UOW-002/uow_spec.yaml but is missing. Cannot proceed without the UoW specification."
+metacognitive_context:
+  decision_rationale: "Cannot choose implementation approach because the UoW spec (DoD, implementation_hints, and allowed file modifications) is missing."
+  alternatives_discarded: []
+  knowledge_gaps:
+    - "Missing uow_spec.yaml: DoD, files to modify, tests required, and acceptance criteria unknown."
+  tool_anomalies: []
+replan_request:
+  reason: "missing_uow_spec"
+  discovery: "The expected UoW spec file at agent-context/EVAL-002/execution/UOW-002/uow_spec.yaml is not present."
+  impact: "Cannot determine DoD, implementation scope, or tests to write; implementation must be paused."
+  recommended_action: "revise_uow_inputs"
+  suggested_scope_change: "Provide the uow_spec.yaml for UOW-002 or correct the execution path so the agent can read the specification."
+logs_path: "agent-context/EVAL-002/execution/UOW-002/logs/"

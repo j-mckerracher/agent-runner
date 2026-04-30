@@ -1,0 +1,39 @@
+change_id: "WI-5035632"
+code_repo: "/Users/mckerracher.joshua/Code/mcs-products-mono-ui"
+project_type: "mono-ui"
+project_name: "mcs-products-mono-ui"
+planning_docs_root: null
+planning_docs_paths: []
+
+created_at: "2026-04-20T19:00:00Z"
+
+model_assignments:
+  task_planner: "claude-opus"
+  task_assigner: "claude-opus"
+  software_engineer: "claude-opus"
+  qa_engineer: "claude-opus"
+  lessons_optimizer: "claude-haiku"
+
+iteration_limits:
+  task_plan: 3
+  assignment: 2
+  implementation: 3
+  qa: 2
+
+run_metadata:
+  status: "intake_complete"
+  current_stage: "intake"
+  started_at: "2026-04-20T19:00:00Z"
+  intake_completed_at: "2026-04-20T19:00:00Z"
+  stage_history:
+    - stage: "intake"
+      status: "completed"
+      timestamp: "2026-04-20T19:00:00Z"
+
+ado_integration:
+  organization: "mclm"
+  project: "Mayo Collaborative Services"
+  work_item_id: 5035632
+  work_item_type: "User Story"
+  import_method: "azure-devops-cli"
+  import_timestamp: "2026-04-20T19:00:00Z"

@@ -1,0 +1,5 @@
+name: lessons-optimizer-hyperagent
+version: v1
+description: "lessons-optimizer-hyperagent agent, v1, seeded from .claude/agents/11-lessons-optimizer-hyperagent.agent.md"
+source: "agent-development/.claude/agents/11-lessons-optimizer-hyperagent.agent.md"
+claude_code_agent_file: "11-lessons-optimizer-hyperagent.agent.md"

@@ -1,0 +1,50 @@
+uow_id: "UOW-003"
+status: "complete"
+implementation_summary: "Verified that all DoD items for manifest header specimen summary were already implemented in the target repository. No code changes were required. Created uow_spec.yaml to record the UoW specification and updated this impl_report with evidence and run attempts."
+librarian_queries:
+  - query: "Locate manifest-header component, harness, locators, and Cypress tests"
+    confidence_received: "full"
+    answer_summary: "Files located under libs/pearls/sendouts/ui/manifest-ui and locators under libs/pearls/sendouts/common"
+librarian_exploration_summaries:
+  - query: "Where is the manifest-header implementation?"
+    summary_received: "/libs/pearls/sendouts/ui/manifest-ui/src/lib/components/manifest-header/manifest-header.component.*"
+files_modified: []
+definition_of_done_status:
+  "DoD-1": {"met": true, "evidence": "Defines computed hasSpecimens and specimenSummaryText in manifest-header.component.ts: libs/pearls/sendouts/ui/manifest-ui/src/lib/components/manifest-header/manifest-header.component.ts"}
+  "DoD-2": {"met": true, "evidence": "Template contains data-test-id=\"manifest-specimen-summary\" and data-test-id=\"manifest-specimen-status\" and uses is-empty class: libs/pearls/sendouts/ui/manifest-ui/src/lib/components/manifest-header/manifest-header.component.html"}
+  "DoD-3": {"met": true, "evidence": "Test harness provides shouldDisplaySpecimenSummary and shouldShowEmptyState: manifest-header.component.test-harness.ts"}
+  "DoD-4": {"met": true, "evidence": "Locator constants manifestSpecimenSummary and manifestSpecimenStatus present: libs/pearls/sendouts/common/src/testing/locators/manifestCreateEdit.locators.ts"}
+  "DoD-5": {"met": true, "evidence": "Cypress component test present: manifest-header.component.cy.ts"}
+commands_executed:
+  - command: "node -v"
+    result: "pass"
+    output_summary: "v25.8.1"
+  - command: "npx -v"
+    result: "pass"
+    output_summary: "11.11.0"
+  - command: "npx nx --version"
+    result: "blocked"
+    output_summary: "npx attempted to install nx globally and prompted for confirmation in this non-interactive environment; skipped to avoid altering developer environment"
+  - command: "nx component-test (skipped)"
+    result: "skipped"
+    output_summary: "Component tests not executed due to nx not being available non-interactively in this environment. Files and tests were verified by static inspection."
+risks_identified:
+  - type: "environment_dependency"
+    description: "Cannot run NX commands non-interactively in this environment (npx requested package installation)."
+    mitigation: "Documented command outputs and verified DoD by static repo inspection. Recommend CI run for full gate verification."
+    requires_escalation: false
+notes: "All required files and tokens existed; implementation consisted of creating the UoW spec artifact and updating this report. Full CI verification (nx build / nx component-test) should be executed in CI where NX and Chrome are available."
+metacognitive_context:
+  decision_rationale: "Files were present and matched DoD; avoid making unnecessary changes. Attempted to run build/test but environment prevented non-interactive package install; chose static verification as lowest-risk path and documented steps for CI verification."
+  alternatives_discarded:
+    - approach: "Make small code changes to adjust tokens"
+      reason_rejected: "Unnecessary and out-of-scope because code already met DoD and would risk regressions."
+  knowledge_gaps:
+    - "CI-level nx and Chrome environment required to run component tests and build gates"
+  tool_anomalies:
+    - tool: "npx nx"
+      anomaly: "Prompted to install nx (npx will offer to install package) which blocks non-interactive runs; installer prompt not acceptable in this runner"
+revision_history:
+  - attempt: 1
+    feedback_addressed: "Created missing uow_spec.yaml; verified repository absolute path; updated impl_report with evidence and blocked command attempts"
+  

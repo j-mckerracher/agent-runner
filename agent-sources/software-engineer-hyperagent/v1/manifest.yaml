@@ -1,0 +1,5 @@
+name: software-engineer-hyperagent
+version: v1
+description: "software-engineer-hyperagent agent, v1, seeded from .claude/agents/04-software-engineer-hyperagent.agent.md"
+source: "agent-development/.claude/agents/04-software-engineer-hyperagent.agent.md"
+claude_code_agent_file: "04-software-engineer-hyperagent.agent.md"

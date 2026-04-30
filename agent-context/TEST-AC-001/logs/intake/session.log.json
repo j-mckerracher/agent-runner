@@ -1,0 +1,58 @@
+{
+  "agent": "intake",
+  "session_id": "intake-TEST-AC-001-2026-04-21T22:48:00Z",
+  "change_id": "TEST-AC-001",
+  "timestamp_start": "2026-04-21T22:48:00Z",
+  "timestamp_end": "2026-04-21T22:48:00Z",
+  "status": "completed",
+  "input": {
+    "source": "local_synthetic_fixture",
+    "fixture_path": "agent-context/test-fixtures/synthetic_story.json",
+    "code_repo": "/Users/mckerracher.joshua/Code/Mine/agent-runner"
+  },
+  "output": {
+    "artifacts_created": [
+      "intake/story.yaml",
+      "intake/config.yaml",
+      "intake/constraints.md"
+    ],
+    "artifacts_lines": {
+      "story.yaml": 61,
+      "config.yaml": 22,
+      "constraints.md": 141
+    }
+  },
+  "metrics": {
+    "project_type": "agent_orchestration",
+    "acceptance_criteria_count": 3,
+    "planning_docs_ingested": 0,
+    "open_questions_count": 0,
+    "context_confidence_score": 95,
+    "execution_blockers": []
+  },
+  "normalization_summary": {
+    "acceptance_criteria": {
+      "AC1": "The workflow can start from a local synthetic story fixture instead of a live Azure DevOps work item link.",
+      "AC2": "The intake stage preserves the raw synthetic story input and normalizes acceptance criteria into the canonical intake artifacts consumed by downstream stages.",
+      "AC3": "ADO-specific actions are skipped when the synthetic story does not provide Azure DevOps metadata."
+    },
+    "examples_preserved": 2,
+    "constraints_preserved": 3,
+    "non_functional_requirements_preserved": 2,
+    "raw_input_preserved": true
+  },
+  "processing_notes": [
+    "Source is local synthetic fixture (not live Azure DevOps)",
+    "Acceptance criteria normalized from list to keyed format (AC1–AC3)",
+    "No ADO metadata present; ADO-specific processing skipped",
+    "Fixture content fully preserved under raw_input in story.yaml",
+    "All three artifacts follow canonical schema",
+    "No ambiguities or open questions identified"
+  ],
+  "downstream_readiness": {
+    "task_planning": "ready",
+    "assignment": "ready",
+    "implementation": "ready",
+    "qa": "ready"
+  }
+}

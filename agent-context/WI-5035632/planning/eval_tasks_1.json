@@ -1,0 +1,85 @@
+{
+  "evaluation_id": "eval-tasks-WI-5035632-attempt-1",
+  "artifact_evaluated": "tasks.yaml",
+  "attempt_number": 1,
+  "overall_result": "pass",
+  "score": 100,
+  "programmatic_gates": {
+    "schema_valid": true,
+    "ac_coverage_complete": true,
+    "dependency_graph_valid": true,
+    "task_count_in_range": true,
+    "all_gates_passed": true,
+    "gate_details": {
+      "schema_validation": {
+        "status": "pass",
+        "artifact_type": "tasks",
+        "artifact_path": "agent-context/WI-5035632/planning/tasks.yaml",
+        "issues": []
+      },
+      "dependency_cycles": {
+        "status": "pass",
+        "nodes_count": 4,
+        "edges_count": 4,
+        "has_cycles": false,
+        "cycles": [],
+        "dangling_dependencies": [],
+        "topological_order": ["T1", "T2", "T3", "T4"]
+      },
+      "ac_coverage": {
+        "status": "pass",
+        "total_acs": 1,
+        "total_tasks": 4,
+        "unmapped_acs": [],
+        "tasks_with_no_ac_mapping": [],
+        "ac_coverage_map": {
+          "AC1": ["T1", "T2", "T3", "T4"]
+        }
+      }
+    }
+  },
+  "rubric_results": {
+    "ac_coverage": {
+      "result": "pass",
+      "details": "Story has exactly one AC (AC1). All four tasks map to AC1 and collectively implement it end-to-end. No AC is unmapped.",
+      "missing_acs": []
+    },
+    "dependency_correctness": {
+      "result": "pass",
+      "details": "Dependency graph is a valid DAG. T1 has no deps; T2 and T3 both depend on T1; T4 depends on T2 and T3. Topological order [T1, T2, T3, T4] is valid. Dependencies reflect real implementation ordering: dirty-state detection must precede both the interceptor and dialog, which must both precede integration wiring.",
+      "cycles_detected": [],
+      "ordering_issues": []
+    },
+    "granularity": {
+      "result": "pass",
+      "details": "4 tasks for a 3-story-point user story. Well within the preferred 3–8 broad-task range. Each task represents a distinct logical phase (detection, interception, dialog, integration) rather than a micro-step. Task decomposition mirrors the natural dependency chain of the feature.",
+      "task_count": 4,
+      "micro_step_violations": []
+    },
+    "clarity": {
+      "result": "pass",
+      "details": "Each task has a concise title, a multi-point description that calls out discovery steps and implementation choices, explicit ac_mapping, dependencies, priority, complexity, and a concrete definition_of_done. No vague or contradictory tasks found.",
+      "vague_tasks": []
+    }
+  },
+  "issues": [],
+  "actionable_fixes_summary": [],
+  "escalation_recommendation": null,
+  "notes": "Plan correctly defers codebase-discovery work (whether existing guard/dialog/dirty-state service exists) to the software-engineer stage via definition-of-done discovery steps in T1, T2, and T3 — an appropriate pattern given that librarian confidence was zero for all four codebase queries. Testing strategy is internally consistent: Jest for pure logic (T1, T2), Cypress component test for Angular component (T3), smoke test for integration (T4).",
+  "metacognitive_context": {
+    "decision_rationale": "Ran all three programmatic gate scripts first; all exited 0, so rubric evaluation was straightforward confirmation. Manual rubric review focused on dependency semantic correctness (not just graph validity) and granularity appropriateness for a 3-point story.",
+    "alternatives_discarded": [
+      {
+        "approach": "Skip rubric review after gates pass",
+        "reason_rejected": "Gates confirm structural correctness but not semantic quality of descriptions or appropriateness of decomposition for story size."
+      }
+    ],
+    "knowledge_gaps": [],
+    "tool_anomalies": [
+      {
+        "tool": "Bash (python)",
+        "anomaly": "python binary not found on PATH; python3 required instead. All three scripts succeeded under python3."
+      }
+    ]
+  }
+}

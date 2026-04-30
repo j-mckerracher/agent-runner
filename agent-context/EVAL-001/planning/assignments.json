@@ -1,0 +1,214 @@
+{
+  "story_id": "EVAL-001",
+  "story_title": "Add specimen count badge to manifest header",
+  "execution_schedule": {
+    "batch": 1,
+    "uows": [
+      {
+        "uow_id": "UOW-001",
+        "source_task_id": "T1",
+        "task_title": "Add specimenCount computed signal to manifest-header component",
+        "assigned_role": "software-engineer",
+        "priority_in_batch": 1,
+        "rationale": "Foundational component logic; medium risk (ManifestStore API discovery); must validate early to prevent rework in T2"
+      },
+      {
+        "uow_id": "UOW-002",
+        "source_task_id": "T3",
+        "task_title": "Add specimenCountBadge locator to manifestCreateEdit.locators.ts",
+        "assigned_role": "software-engineer",
+        "priority_in_batch": 2,
+        "rationale": "Independent of T1/T2; low risk; foundation for test harness in T4; can execute in parallel with UOW-001"
+      }
+    ],
+    "parallel_execution": true,
+    "batch_rationale": "Both tasks have no inter-dependencies and establish foundational work (component logic + test infrastructure). Early parallel execution reduces overall critical path."
+  },
+  "batch_2": {
+    "batch": 2,
+    "uows": [
+      {
+        "uow_id": "UOW-003",
+        "source_task_id": "T2",
+        "task_title": "Add p-badge element to manifest-header template",
+        "assigned_role": "software-engineer",
+        "priority_in_batch": 1,
+        "rationale": "Depends on T1 completion; low risk; renders the specimenCount signal. Can run in parallel with T4 (independent concern)"
+      },
+      {
+        "uow_id": "UOW-004",
+        "source_task_id": "T4",
+        "task_title": "Add shouldDisplaySpecimenCount assertion to test harness",
+        "assigned_role": "software-engineer",
+        "priority_in_batch": 2,
+        "rationale": "Depends on T3 completion; medium risk (test harness pattern); validates test infrastructure early; parallel with UOW-003 (different file layers)"
+      }
+    ],
+    "parallel_execution": true,
+    "batch_rationale": "T2 and T4 form parallel work streams: T2 continues component implementation (UI layer), T4 advances test infrastructure (testing layer). No shared file dependencies; safe parallelization."
+  },
+  "batch_3": {
+    "batch": 3,
+    "uows": [
+      {
+        "uow_id": "UOW-005",
+        "source_task_id": "T5",
+        "task_title": "Add test case to manifest-header Cypress spec",
+        "assigned_role": "software-engineer",
+        "priority_in_batch": 1,
+        "rationale": "Depends on T4 completion; medium risk (Cypress pattern); validates the test case pattern and reactive behavior"
+      }
+    ],
+    "parallel_execution": false,
+    "batch_rationale": "Sequential continuation; must follow T4 (test harness) to write test case. Single task in batch."
+  },
+  "batch_4": {
+    "batch": 4,
+    "uows": [
+      {
+        "uow_id": "UOW-006",
+        "source_task_id": "T6",
+        "task_title": "Verify build passes with nx build rls-sendouts-ui-manifest-ui",
+        "assigned_role": "software-engineer",
+        "priority_in_batch": 1,
+        "rationale": "Depends on all implementation tasks (T1-T5); low risk validation; gate for story completion. Must run last to verify no regressions."
+      }
+    ],
+    "parallel_execution": false,
+    "batch_rationale": "Final validation gate. Must execute after all implementation tasks complete to ensure no TypeScript errors, build issues, or linting failures."
+  },
+  "critical_path": [
+    "UOW-002",
+    "UOW-004",
+    "UOW-005",
+    "UOW-006"
+  ],
+  "critical_path_rationale": "T3→T4→T5→T6 has the longest chain of dependencies (length 4). T1→T2→T6 is shorter (length 3 if T2 ends, or joins main path). The T3 → T4 → T5 chain is the bottleneck for story completion.",
+  "risk_ordered_items": [
+    {
+      "uow_id": "UOW-001",
+      "source_task_id": "T1",
+      "risk_level": "medium",
+      "risk_reason": "Requires discovery of ManifestStore.manifest() API and understanding of Angular computed signal pattern",
+      "early_placement": true,
+      "early_placement_rationale": "Placed in Batch 1 to fail fast. If signal pattern is incorrect, discovery happens before T2 depends on it."
+    },
+    {
+      "uow_id": "UOW-004",
+      "source_task_id": "T4",
+      "risk_level": "medium",
+      "risk_reason": "Requires understanding of Cypress test harness pattern and proper assertion implementation",
+      "early_placement": true,
+      "early_placement_rationale": "Placed in Batch 2 (early relative to T5). Validates test infrastructure pattern before writing test case."
+    },
+    {
+      "uow_id": "UOW-005",
+      "source_task_id": "T5",
+      "risk_level": "medium",
+      "risk_reason": "Requires understanding of Cypress spec syntax and test harness integration",
+      "early_placement": false,
+      "early_placement_rationale": "Depends on T4 completion; cannot be earlier. Placed in Batch 3 as soon as dependency resolves."
+    }
+  ],
+  "estimated_total_batches": 4,
+  "estimated_total_duration_minutes": 45,
+  "duration_rationale": "Estimate: T1(10m) + T3(5m) parallel; T2(8m) + T4(10m) parallel; T5(10m); T6(5m). Sequential: 10+max(8,10)+10+5 = 35-40m with parallelization benefit.",
+  "parallelization_opportunities": {
+    "batch_1": {
+      "uows": [
+        "UOW-001",
+        "UOW-002"
+      ],
+      "safety_rationale": "T1 (component logic) and T3 (test locator) have no shared file dependencies. T1 modifies manifest-header.component.ts, T3 modifies manifestCreateEdit.locators.ts. Different concerns, different file layers, safe to parallelize."
+    },
+    "batch_2": {
+      "uows": [
+        "UOW-003",
+        "UOW-004"
+      ],
+      "safety_rationale": "T2 (component template) and T4 (test harness) have no shared file dependencies. T2 modifies manifest-header.component.html, T4 modifies manifest-header.component.test-harness.ts. UI layer vs. testing layer; can merge without conflict."
+    }
+  },
+  "dependency_matrix": {
+    "T1": {
+      "depends_on": [],
+      "unblocks": [
+        "T2"
+      ]
+    },
+    "T2": {
+      "depends_on": [
+        "T1"
+      ],
+      "unblocks": [
+        "T6"
+      ]
+    },
+    "T3": {
+      "depends_on": [],
+      "unblocks": [
+        "T4"
+      ]
+    },
+    "T4": {
+      "depends_on": [
+        "T3"
+      ],
+      "unblocks": [
+        "T5"
+      ]
+    },
+    "T5": {
+      "depends_on": [
+        "T4"
+      ],
+      "unblocks": [
+        "T6"
+      ]
+    },
+    "T6": {
+      "depends_on": [
+        "T1",
+        "T2",
+        "T3",
+        "T4",
+        "T5"
+      ],
+      "unblocks": []
+    }
+  },
+  "execution_blockers": [],
+  "blockers_assessment": "No identified execution blockers. All input context (story, constraints, file paths) is clear. Assumes existing test harness and locator patterns are discoverable in codebase.",
+  "context_assumptions": [
+    "manifestStore is available to manifest-header component via dependency injection",
+    "manifest-header.component.test-harness.ts exists and follows established pattern",
+    "manifestCreateEdit.locators.ts exists and uses selectByDataTestId() pattern",
+    "PrimeNG Badge component is already imported/available in manifest-header module",
+    "manifest-header Cypress spec file exists (assumed manifest-header.component.spec.ts or similar)"
+  ],
+  "metacognitive_context": {
+    "decision_rationale": "Schedule prioritizes de-risking high-complexity tasks (T1 signal discovery, T4 test harness pattern) early while exploiting parallelization opportunities in independent work streams. Batch 1 establishes both the component logic path (T1→T2) and test infrastructure path (T3→T4→T5) in parallel. Batch 2 continues both paths in parallel. This minimizes critical path (4 batches instead of 6) while validating patterns early.",
+    "alternatives_discarded": [
+      {
+        "approach": "Sequential all tasks (T1→T2→T3→T4→T5→T6)",
+        "reason_rejected": "Unnecessarily long critical path (6 batches); fails to exploit parallelization between T1/T3 and T2/T4. T3 and T4 would be delayed unnecessarily."
+      },
+      {
+        "approach": "Immediate parallel T1+T2+T3+T4 (ignore dependency on T1→T2)",
+        "reason_rejected": "Violates T1→T2 dependency. T2 requires T1 completion; cannot parallelize dependent tasks."
+      },
+      {
+        "approach": "Delay T3/T4/T5 until T1/T2 complete",
+        "reason_rejected": "Ignores independent work stream. T3 has no dependency on T1/T2; delaying it wastes parallelization opportunity."
+      }
+    ],
+    "knowledge_gaps": [
+      "Exact file path of manifest-header Cypress spec (assumed manifest-header.component.spec.ts; may differ)",
+      "Whether PrimeNG Badge requires special module imports or if already available in manifest-header module",
+      "Specific signature/pattern of shouldDisplaySpecimenCount assertion (inferred from test harness pattern doc; actual method signature may vary)"
+    ],
+    "tool_anomalies": [],
+    "confidence_score": 8,
+    "confidence_rationale": "High confidence in task decomposition and dependency analysis. Story and constraints are clear and specific. Confidence reduced slightly due to file path assumptions (test harness pattern locations) which could vary from expected values. No blockers identified; all tasks are standard feature development work."
+  }
+}

@@ -1,0 +1,88 @@
+uow_id: "UOW-001"
+source_task_id: "T1"
+title: "Verify fixture validation and error handling"
+story_id: "TEST-AC-001"
+change_id: "TEST-AC-001"
+
+description: |
+  Verify that the workflow_inputs.py module has comprehensive validation for synthetic story
+  fixtures and that all validation logic works correctly. The load_story_fixture() function
+  must reject fixtures missing required fields, with malformed acceptance_criteria, and provide
+  clear error messages.
+
+  All validation tests must pass. Test coverage must be confirmed for:
+  1. Missing required fields (title, description, acceptance_criteria)
+  2. Invalid acceptance_criteria formats (non-list/non-dict, empty list/dict, non-string values)
+  3. Edge cases (whitespace-only strings, None values)
+  4. Error message clarity and actionability
+
+acceptance_criteria_mapped:
+  - AC2
+
+definition_of_done:
+  - title: "All unit tests in test_workflow_inputs.py pass"
+    description: "All validation tests (test_load_story_fixture_*) pass without errors"
+
+  - title: "Coverage confirmed for missing required fields"
+    description: "Tests verify rejection of fixtures missing title, description, or acceptance_criteria"
+
+  - title: "Coverage confirmed for invalid acceptance_criteria formats"
+    description: |
+      Tests verify rejection of:
+      - Non-list, non-dict types
+      - Empty lists and empty dicts
+      - Lists containing non-string values (None, int, etc.)
+      - Lists with whitespace-only strings
+      - Dicts with whitespace-only keys or values
+      - Dicts with non-string keys or values
+
+  - title: "Error messages are clear and actionable"
+    description: "All error messages clearly identify the problem and fixture path"
+
+  - title: "load_story_fixture() function has JSDoc explaining validation contract"
+    description: |
+      Function docstring documents:
+      - What validation is performed
+      - What inputs are accepted (list or dict)
+      - What inputs are rejected (empty, None, non-string, whitespace)
+      - Raised exceptions and when they occur
+
+  - title: "Edge cases tested"
+    description: |
+      Test coverage includes:
+      - Empty strings, whitespace-only strings
+      - None values in lists and dicts
+      - Invalid JSON structure (valid JSON but not a dict)
+      - Multiple missing required fields
+      - Empty title/description fields
+
+target_repository: "/Users/mckerracher.joshua/Code/Mine/agent-runner"
+
+implementation_hints:
+  - "Ensure all existing tests pass first (pytest tests/test_workflow_inputs.py)"
+  - "Add JSDoc to load_story_fixture() and _validate_acceptance_criteria() functions"
+  - "Add edge case tests for whitespace-only strings, None values, invalid types"
+  - "Verify error messages match expected patterns via assertRaisesRegex"
+  - "No production code changes required—only tests and documentation"
+
+test_files_to_update:
+  - "tests/test_workflow_inputs.py"
+
+documentation_files_to_update:
+  - "workflow_inputs.py (add JSDoc to load_story_fixture and _validate_acceptance_criteria)"
+
+dependencies: []
+priority: "high"
+estimated_complexity: "simple"
+
+notes: |
+  This task focuses on verification and documentation of existing fixture validation logic.
+  The fixture validation infrastructure (load_story_fixture, _validate_acceptance_criteria)
+  is already implemented in workflow_inputs.py. This task ensures:
+
+  1. All validation tests pass (confirming the implementation is correct)
+  2. Test coverage is comprehensive for edge cases
+  3. Documentation (JSDoc) explains the validation contract
+
+  This satisfies the NFR "fail fast on malformed fixture input" by verifying that the
+  validation logic is thorough and well-documented.

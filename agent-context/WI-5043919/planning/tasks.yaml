@@ -1,0 +1,69 @@
+story_id: "WI-5043919"
+librarian_queries:
+  query: "What is the standard graceful shutdown pattern for .NET 8 APIs running on Cloud Run in this monorepo?"
+  confidence_received: "full"
+  answer_summary: "Use IHostApplicationLifetime.ApplicationStopping to signal shutdown, configure Serilog to Flush() in host shutdown lifecycle."
+librarian_exploration_summaries:
+  query: "Locate rls-orders-cnsmr-api and rls-docgen-system-api project structures."
+  summary_received: "APIs located in respective nx projects within the monorepo, follow standard .NET 8 structure."
+tasks:
+  - task_id: "T1"
+    title: "Implement Graceful Shutdown in rls-orders-cnsmr-api"
+    description: "Update rls-orders-cnsmr-api to handle SIGTERM, stop accepting requests, complete/cancel in-flight processing, and flush Serilog."
+    acceptance_criteria_mapped: ["AC1", "AC2", "AC3"]
+    dependencies: []
+    priority: "high"
+    estimated_complexity: "moderate"
+    definition_of_done:
+      - 'Shutdown logic implemented using IHostApplicationLifetime'
+      - 'Serilog sink flush confirmed during host shutdown'
+      - 'Unit tests verifying shutdown sequence logic'
+      - 'No regressions in standard operation'
+  - task_id: "T2"
+    title: "Implement Graceful Shutdown in rls-docgen-system-api"
+    description: "Update rls-docgen-system-api to handle SIGTERM, stop accepting requests, complete/cancel in-flight processing, and flush Serilog."
+    acceptance_criteria_mapped: ["AC1", "AC2", "AC3"]
+    dependencies: []
+    priority: "high"
+    estimated_complexity: "moderate"
+    definition_of_done:
+      - 'Shutdown logic implemented using IHostApplicationLifetime'
+      - 'Serilog sink flush confirmed during host shutdown'
+      - 'Unit tests verifying shutdown sequence logic'
+      - 'No regressions in standard operation'
+  - task_id: "T3"
+    title: "Documentation and Inventory of Outstanding Shutdown Tasks"
+    description: "Update implementation notes to explicitly identify rls-orders-orch-api and rls-orders-data-api as pending graceful shutdown implementation."
+    acceptance_criteria_mapped: ["AC4"]
+    dependencies: ["T1", "T2"]
+    priority: "low"
+    estimated_complexity: "simple"
+    definition_of_done:
+      - 'Implementation notes updated'
+  - task_id: "T4"
+    title: "Verification and Regression Testing"
+    description: "Perform comprehensive testing of API shutdown behavior and ensure no regressions."
+    acceptance_criteria_mapped: ["AC5"]
+    dependencies: ["T1", "T2"]
+    priority: "high"
+    estimated_complexity: "moderate"
+    definition_of_done:
+      - 'Shutdown behavior verified in staging environment'
+      - 'Integration test suites pass'
+ac_coverage_matrix:
+  AC1: ["T1", "T2"]
+  AC2: ["T1", "T2"]
+  AC3: ["T1", "T2"]
+  AC4: ["T3"]
+  AC5: ["T4"]
+notes: "Focused on .NET 8 host lifetime handling. Out-of-scope APIs tracked via documentation updates in T3."
+metacognitive_context:
+  decision_rationale: "Decomposed by API project since shutdown handling logic is specific to host entry points. Documentation task added for tracking as per AC4."
+  alternatives_discarded:
+    - approach: "Single monolithic implementation task."
+      reason_rejected: "Difficult to track progress and verify individually per API service."
+  knowledge_gaps:
+    - "None - Standard .NET 8 patterns expected."
+  tool_anomalies:
+    - tool: "read_file"
+      anomaly: "Access error for agent-context/ files."

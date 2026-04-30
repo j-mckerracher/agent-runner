@@ -1,0 +1,355 @@
+change_id: '5035632'
+title: Navigating away from page through menu
+description: As a user, I need the unsaved items dialog box to show if I navigate away using the menu
+acceptance_criteria:
+  AC1: If the page is altered and unsaved, the unsaved changes dialog appears if I navigate away from the page using the menu
+  AC2: If the page is altered and unsaved, clicking on the Triage Worklist pops up the unsaved changes dialog box
+  AC3: If the page is altered and unsaved, clicking on the Specimen Accessioning pops up the unsaved changes dialog box
+examples:
+- name: Menu navigation with unsaved page changes
+  given: The current page has altered, unsaved data.
+  when: The user navigates away using the application menu.
+  then: The unsaved changes dialog appears before navigation continues.
+  source: System.Description AC1
+- name: Triage Worklist menu navigation
+  given: The current page has altered, unsaved data.
+  when: The user clicks the Triage Worklist menu item.
+  then: The unsaved changes dialog box appears.
+  source: System.Description AC2
+- name: Specimen Accessioning menu navigation
+  given: The current page has altered, unsaved data.
+  when: The user clicks the Specimen Accessioning menu item.
+  then: The unsaved changes dialog box appears.
+  source: System.Description AC3
+constraints:
+- Use the "Order Changed" modal provided in the story description/user context for the unsaved changes warning; do not invent
+  a separate dialog pattern.
+- The dialog trigger is limited to pages with altered, unsaved data.
+- Menu-driven navigation away from the current page must be covered, including Triage Worklist and Specimen Accessioning menu
+  entries.
+- Acceptance criteria were normalized from lines prefixed "AC -" in System.Description because no dedicated Acceptance Criteria
+  field was returned by the ADO CLI.
+non_functional_requirements: []
+raw_input:
+  source: azure_devops
+  source_url: https://dev.azure.com/mclm/Mayo%20Collaborative%20Services/_workitems/edit/5035632
+  retrieved_at: '2026-04-30T17:03:20.340000Z'
+  user_additional_context: YOU MUST USE THE "Order Changed" modal provided in the story description.
+  description_html: <div> </div><div style="box-sizing:border-box;">As a user, I need the unsaved items dialog box to show
+    if I navigate away using the menu </div><div style="box-sizing:border-box;"><br style="box-sizing:border-box;"> </div><div
+    style="box-sizing:border-box;">AC - If the page is altered and unsaved, the unsaved changes dialog appears if I navigate
+    away from the page using the menu </div><div style="box-sizing:border-box;"><br style="box-sizing:border-box;"> </div><div
+    style="box-sizing:border-box;">AC - If the page is altered and unsaved, clicking on the Triage Worklist pops up the unsaved
+    changes dialog box </div><div style="box-sizing:border-box;"><span style="box-sizing:border-box;background-color:rgb(0,
+    36, 81);display:inline !important;">AC - If the page is altered and unsaved, clicking on the Specimen Accessioning pops
+    up the unsaved changes dialog box</span><br style="box-sizing:border-box;"> </div><div style="box-sizing:border-box;"><br
+    style="box-sizing:border-box;"> </div><div style="box-sizing:border-box;"><img src="https://dev.azure.com/mclm/f25fdc8e-bb30-470e-b590-3b9d0576193f/_apis/wit/attachments/bc53319c-1268-449d-b5c3-f229fbf27593?fileName=image.png"
+    alt=Image style="box-sizing:border-box;max-width:100%;align-self:center;"> </div><div><br> </div>
+  description_text: 'As a user, I need the unsaved items dialog box to show if I navigate away using the menu
+
+    AC - If the page is altered and unsaved, the unsaved changes dialog appears if I navigate away from the page using the
+    menu
+
+    AC - If the page is altered and unsaved, clicking on the Triage Worklist pops up the unsaved changes dialog box
+
+    AC - If the page is altered and unsaved, clicking on the Specimen Accessioning pops up the unsaved changes dialog box
+
+    [Image: Image]'
+  embedded_images:
+  - src: https://dev.azure.com/mclm/f25fdc8e-bb30-470e-b590-3b9d0576193f/_apis/wit/attachments/bc53319c-1268-449d-b5c3-f229fbf27593?fileName=image.png
+    alt: Image
+  ado_work_item:
+    fields:
+      Custom.BusinessPriority: 4
+      Custom.DisableReadOnly: false
+      Custom.ExecutiveAttention: false
+      Microsoft.VSTS.Common.ActivatedBy:
+        _links:
+          avatar:
+            href: https://dev.azure.com/mclm/_apis/GraphProfile/MemberAvatars/aad.OWRmYjRmZTEtODlhMy03Y2ViLWFhOWQtNjFlODlmMGM4ZWVk
+        descriptor: aad.OWRmYjRmZTEtODlhMy03Y2ViLWFhOWQtNjFlODlmMGM4ZWVk
+        displayName: Kosiorek, Derek J.
+        id: 9dfb4fe1-89a3-6ceb-aa9d-61e89f0c8eed
+        imageUrl: https://dev.azure.com/mclm/_apis/GraphProfile/MemberAvatars/aad.OWRmYjRmZTEtODlhMy03Y2ViLWFhOWQtNjFlODlmMGM4ZWVk
+        uniqueName: Kosiorek.Derek@mayo.edu
+        url: https://spsprodcus2.vssps.visualstudio.com/A18a99511-15b7-4ca2-ae29-5cdad9746b1b/_apis/Identities/9dfb4fe1-89a3-6ceb-aa9d-61e89f0c8eed
+      Microsoft.VSTS.Common.ActivatedDate: '2026-04-29T21:05:56.877Z'
+      Microsoft.VSTS.Common.Priority: 4
+      Microsoft.VSTS.Common.StackRank: 39344887.0
+      Microsoft.VSTS.Common.StateChangeDate: '2026-04-29T21:05:56.877Z'
+      Microsoft.VSTS.Common.ValueArea: Business
+      Microsoft.VSTS.Scheduling.Size: 5.0
+      Microsoft.VSTS.Scheduling.StoryPoints: 5.0
+      System.AreaId: 43695
+      System.AreaLevel1: Mayo Collaborative Services
+      System.AreaLevel2: PEaRLS
+      System.AreaLevel3: Specimen Accessioning
+      System.AreaPath: Mayo Collaborative Services\PEaRLS\Specimen Accessioning
+      System.AssignedTo:
+        _links:
+          avatar:
+            href: https://dev.azure.com/mclm/_apis/GraphProfile/MemberAvatars/aad.YTM3M2Q5NzItYjQ0Zi03OGQwLThhMTMtMzMyMmI2NjJkODgw
+        descriptor: aad.YTM3M2Q5NzItYjQ0Zi03OGQwLThhMTMtMzMyMmI2NjJkODgw
+        displayName: McKerracher, Josh S.
+        id: a373d972-b44f-68d0-8a13-3322b662d880
+        imageUrl: https://dev.azure.com/mclm/_apis/GraphProfile/MemberAvatars/aad.YTM3M2Q5NzItYjQ0Zi03OGQwLThhMTMtMzMyMmI2NjJkODgw
+        uniqueName: McKerracher.Joshua@mayo.edu
+        url: https://spsprodcus2.vssps.visualstudio.com/A18a99511-15b7-4ca2-ae29-5cdad9746b1b/_apis/Identities/a373d972-b44f-68d0-8a13-3322b662d880
+      System.AuthorizedAs:
+        _links:
+          avatar:
+            href: https://dev.azure.com/mclm/_apis/GraphProfile/MemberAvatars/aad.OWRmYjRmZTEtODlhMy03Y2ViLWFhOWQtNjFlODlmMGM4ZWVk
+        descriptor: aad.OWRmYjRmZTEtODlhMy03Y2ViLWFhOWQtNjFlODlmMGM4ZWVk
+        displayName: Kosiorek, Derek J.
+        id: 9dfb4fe1-89a3-6ceb-aa9d-61e89f0c8eed
+        imageUrl: https://dev.azure.com/mclm/_apis/GraphProfile/MemberAvatars/aad.OWRmYjRmZTEtODlhMy03Y2ViLWFhOWQtNjFlODlmMGM4ZWVk
+        uniqueName: Kosiorek.Derek@mayo.edu
+        url: https://spsprodcus2.vssps.visualstudio.com/A18a99511-15b7-4ca2-ae29-5cdad9746b1b/_apis/Identities/9dfb4fe1-89a3-6ceb-aa9d-61e89f0c8eed
+      System.AuthorizedDate: '2026-04-29T21:06:04.997Z'
+      System.BoardColumn: Active
+      System.BoardColumnDone: false
+      System.ChangedBy:
+        _links:
+          avatar:
+            href: https://dev.azure.com/mclm/_apis/GraphProfile/MemberAvatars/aad.OWRmYjRmZTEtODlhMy03Y2ViLWFhOWQtNjFlODlmMGM4ZWVk
+        descriptor: aad.OWRmYjRmZTEtODlhMy03Y2ViLWFhOWQtNjFlODlmMGM4ZWVk
+        displayName: Kosiorek, Derek J.
+        id: 9dfb4fe1-89a3-6ceb-aa9d-61e89f0c8eed
+        imageUrl: https://dev.azure.com/mclm/_apis/GraphProfile/MemberAvatars/aad.OWRmYjRmZTEtODlhMy03Y2ViLWFhOWQtNjFlODlmMGM4ZWVk
+        uniqueName: Kosiorek.Derek@mayo.edu
+        url: https://spsprodcus2.vssps.visualstudio.com/A18a99511-15b7-4ca2-ae29-5cdad9746b1b/_apis/Identities/9dfb4fe1-89a3-6ceb-aa9d-61e89f0c8eed
+      System.ChangedDate: '2026-04-29T21:06:04.997Z'
+      System.CommentCount: 1
+      System.CreatedBy:
+        _links:
+          avatar:
+            href: https://dev.azure.com/mclm/_apis/GraphProfile/MemberAvatars/aad.OWRmYjRmZTEtODlhMy03Y2ViLWFhOWQtNjFlODlmMGM4ZWVk
+        descriptor: aad.OWRmYjRmZTEtODlhMy03Y2ViLWFhOWQtNjFlODlmMGM4ZWVk
+        displayName: Kosiorek, Derek J.
+        id: 9dfb4fe1-89a3-6ceb-aa9d-61e89f0c8eed
+        imageUrl: https://dev.azure.com/mclm/_apis/GraphProfile/MemberAvatars/aad.OWRmYjRmZTEtODlhMy03Y2ViLWFhOWQtNjFlODlmMGM4ZWVk
+        uniqueName: Kosiorek.Derek@mayo.edu
+        url: https://spsprodcus2.vssps.visualstudio.com/A18a99511-15b7-4ca2-ae29-5cdad9746b1b/_apis/Identities/9dfb4fe1-89a3-6ceb-aa9d-61e89f0c8eed
+      System.CreatedDate: '2026-04-15T18:31:06.28Z'
+      System.Description: <div> </div><div style="box-sizing:border-box;">As a user, I need the unsaved items dialog box to
+        show if I navigate away using the menu </div><div style="box-sizing:border-box;"><br style="box-sizing:border-box;">
+        </div><div style="box-sizing:border-box;">AC - If the page is altered and unsaved, the unsaved changes dialog appears
+        if I navigate away from the page using the menu </div><div style="box-sizing:border-box;"><br style="box-sizing:border-box;">
+        </div><div style="box-sizing:border-box;">AC - If the page is altered and unsaved, clicking on the Triage Worklist
+        pops up the unsaved changes dialog box </div><div style="box-sizing:border-box;"><span style="box-sizing:border-box;background-color:rgb(0,
+        36, 81);display:inline !important;">AC - If the page is altered and unsaved, clicking on the Specimen Accessioning
+        pops up the unsaved changes dialog box</span><br style="box-sizing:border-box;"> </div><div style="box-sizing:border-box;"><br
+        style="box-sizing:border-box;"> </div><div style="box-sizing:border-box;"><img src="https://dev.azure.com/mclm/f25fdc8e-bb30-470e-b590-3b9d0576193f/_apis/wit/attachments/bc53319c-1268-449d-b5c3-f229fbf27593?fileName=image.png"
+        alt=Image style="box-sizing:border-box;max-width:100%;align-self:center;"> </div><div><br> </div>
+      System.Id: 5035632
+      System.IterationId: 52659
+      System.IterationLevel1: Mayo Collaborative Services
+      System.IterationLevel2: 2026 Q2
+      System.IterationLevel3: Sprint 3
+      System.IterationPath: Mayo Collaborative Services\2026 Q2\Sprint 3
+      System.NodeName: Specimen Accessioning
+      System.Parent: 5002349
+      System.PersonId: 43296392
+      System.Reason: Acceptance tests fail
+      System.Rev: 36
+      System.RevisedDate: '9999-01-01T00:00:00Z'
+      System.State: Active
+      System.TeamProject: Mayo Collaborative Services
+      System.Title: Navigating away from page through menu
+      System.Watermark: 28879038
+      System.WorkItemType: User Story
+      WEF_46BB3974771B4459A4197543757FF43D_Kanban.Column: Active
+      WEF_46BB3974771B4459A4197543757FF43D_Kanban.Column.Done: false
+      WEF_46BB3974771B4459A4197543757FF43D_System.ExtensionMarker: true
+      WEF_7582A013276E43A9BCF3757587C31BAF_Kanban.Column: Active
+      WEF_7582A013276E43A9BCF3757587C31BAF_Kanban.Column.Done: false
+      WEF_7582A013276E43A9BCF3757587C31BAF_System.ExtensionMarker: true
+    id: 5035632
+    multilineFieldsFormat:
+      System.Description: html
+    relations:
+    - attributes:
+        isLocked: false
+        name: Parent
+      rel: System.LinkTypes.Hierarchy-Reverse
+      url: https://dev.azure.com/mclm/f25fdc8e-bb30-470e-b590-3b9d0576193f/_apis/wit/workItems/5002349
+    - attributes:
+        isLocked: false
+        name: Child
+      rel: System.LinkTypes.Hierarchy-Forward
+      url: https://dev.azure.com/mclm/f25fdc8e-bb30-470e-b590-3b9d0576193f/_apis/wit/workItems/5039213
+    - attributes:
+        isLocked: false
+        name: Child
+      rel: System.LinkTypes.Hierarchy-Forward
+      url: https://dev.azure.com/mclm/f25fdc8e-bb30-470e-b590-3b9d0576193f/_apis/wit/workItems/5039219
+    - attributes:
+        isLocked: false
+        name: Child
+      rel: System.LinkTypes.Hierarchy-Forward
+      url: https://dev.azure.com/mclm/f25fdc8e-bb30-470e-b590-3b9d0576193f/_apis/wit/workItems/5039216
+    - attributes:
+        isLocked: false
+        name: Child
+      rel: System.LinkTypes.Hierarchy-Forward
+      url: https://dev.azure.com/mclm/f25fdc8e-bb30-470e-b590-3b9d0576193f/_apis/wit/workItems/5039217
+    - attributes:
+        isLocked: false
+        name: Child
+      rel: System.LinkTypes.Hierarchy-Forward
+      url: https://dev.azure.com/mclm/f25fdc8e-bb30-470e-b590-3b9d0576193f/_apis/wit/workItems/5039218
+    - attributes:
+        isLocked: false
+        name: Child
+      rel: System.LinkTypes.Hierarchy-Forward
+      url: https://dev.azure.com/mclm/f25fdc8e-bb30-470e-b590-3b9d0576193f/_apis/wit/workItems/5039212
+    - attributes:
+        isLocked: false
+        name: Child
+      rel: System.LinkTypes.Hierarchy-Forward
+      url: https://dev.azure.com/mclm/f25fdc8e-bb30-470e-b590-3b9d0576193f/_apis/wit/workItems/5039215
+    - attributes:
+        isLocked: false
+        name: Child
+      rel: System.LinkTypes.Hierarchy-Forward
+      url: https://dev.azure.com/mclm/f25fdc8e-bb30-470e-b590-3b9d0576193f/_apis/wit/workItems/5039214
+    - attributes:
+        isLocked: false
+        name: Child
+      rel: System.LinkTypes.Hierarchy-Forward
+      url: https://dev.azure.com/mclm/f25fdc8e-bb30-470e-b590-3b9d0576193f/_apis/wit/workItems/5039220
+    - attributes:
+        authorizedDate: '2026-04-27T12:36:51.213Z'
+        id: 24109240
+        name: Fixed in Commit
+        resourceCreatedDate: '2026-04-27T12:36:51.213Z'
+        resourceModifiedDate: '2026-04-27T12:36:51.213Z'
+        revisedDate: '9999-01-01T00:00:00Z'
+      rel: ArtifactLink
+      url: vstfs:///Git/Commit/f25fdc8e-bb30-470e-b590-3b9d0576193f%2f7ec8960b-86af-48b7-b10a-50bd3d169722%2fcb407b4cbe3f13f375eca3f75339878048cd389d
+    - attributes:
+        authorizedDate: '2026-04-28T13:45:29.537Z'
+        id: 24112902
+        name: Pull Request
+        resourceCreatedDate: '2026-04-28T13:45:29.537Z'
+        resourceModifiedDate: '2026-04-28T13:45:29.537Z'
+        revisedDate: '9999-01-01T00:00:00Z'
+      rel: ArtifactLink
+      url: vstfs:///Git/PullRequestId/f25fdc8e-bb30-470e-b590-3b9d0576193f%2F7ec8960b-86af-48b7-b10a-50bd3d169722%2F469906
+    - attributes:
+        authorizedDate: '2026-04-21T17:00:33.86Z'
+        id: 24097254
+        name: Fixed in Commit
+        resourceCreatedDate: '2026-04-21T17:00:33.86Z'
+        resourceModifiedDate: '2026-04-21T17:00:33.86Z'
+        revisedDate: '9999-01-01T00:00:00Z'
+      rel: ArtifactLink
+      url: vstfs:///Git/Commit/f25fdc8e-bb30-470e-b590-3b9d0576193f%2f7ec8960b-86af-48b7-b10a-50bd3d169722%2f37b9e5fbc30b217aadaf598f9063f26f738eae96
+    - attributes:
+        authorizedDate: '2026-04-24T20:12:17.157Z'
+        id: 24106728
+        name: Pull Request
+        resourceCreatedDate: '2026-04-24T20:12:17.157Z'
+        resourceModifiedDate: '2026-04-24T20:12:17.157Z'
+        revisedDate: '9999-01-01T00:00:00Z'
+      rel: ArtifactLink
+      url: vstfs:///Git/PullRequestId/f25fdc8e-bb30-470e-b590-3b9d0576193f%2F7ec8960b-86af-48b7-b10a-50bd3d169722%2F468838
+    - attributes:
+        authorizedDate: '2026-04-20T17:47:25.57Z'
+        id: 24094369
+        name: Pull Request
+        resourceCreatedDate: '2026-04-20T17:47:25.57Z'
+        resourceModifiedDate: '2026-04-20T17:47:25.57Z'
+        revisedDate: '9999-01-01T00:00:00Z'
+      rel: ArtifactLink
+      url: vstfs:///Git/PullRequestId/f25fdc8e-bb30-470e-b590-3b9d0576193f%2F7ec8960b-86af-48b7-b10a-50bd3d169722%2F466118
+    - attributes:
+        authorizedDate: '2026-04-20T22:35:22.313Z'
+        id: 24095871
+        name: Fixed in Commit
+        resourceCreatedDate: '2026-04-20T22:35:22.313Z'
+        resourceModifiedDate: '2026-04-20T22:35:22.313Z'
+        revisedDate: '9999-01-01T00:00:00Z'
+      rel: ArtifactLink
+      url: vstfs:///Git/Commit/f25fdc8e-bb30-470e-b590-3b9d0576193f%2f7ec8960b-86af-48b7-b10a-50bd3d169722%2f3ceb5ad4a1670710b1035aa1bd5e44c54bb68834
+    - attributes:
+        authorizedDate: '2026-04-21T16:06:23.787Z'
+        id: 24097086
+        name: Pull Request
+        resourceCreatedDate: '2026-04-21T16:06:23.787Z'
+        resourceModifiedDate: '2026-04-21T16:06:23.787Z'
+        revisedDate: '9999-01-01T00:00:00Z'
+      rel: ArtifactLink
+      url: vstfs:///Git/PullRequestId/f25fdc8e-bb30-470e-b590-3b9d0576193f%2F7ec8960b-86af-48b7-b10a-50bd3d169722%2F466609
+    - attributes:
+        authorizedDate: '2026-04-28T18:20:21.477Z'
+        id: 24114077
+        name: Fixed in Commit
+        resourceCreatedDate: '2026-04-28T18:20:21.477Z'
+        resourceModifiedDate: '2026-04-28T18:20:21.477Z'
+        revisedDate: '9999-01-01T00:00:00Z'
+      rel: ArtifactLink
+      url: vstfs:///Git/Commit/f25fdc8e-bb30-470e-b590-3b9d0576193f%2f7ec8960b-86af-48b7-b10a-50bd3d169722%2f603105fe9e0d1864165a024aaf372dd1464d1498
+    rev: 36
+    url: https://dev.azure.com/mclm/f25fdc8e-bb30-470e-b590-3b9d0576193f/_apis/wit/workItems/5035632
+ado_provenance:
+  organization: mclm
+  project: Mayo Collaborative Services
+  work_item_id: 5035632
+  work_item_type: User Story
+  revision: 36
+  state: Active
+  area_path: Mayo Collaborative Services\PEaRLS\Specimen Accessioning
+  iteration_path: Mayo Collaborative Services\2026 Q2\Sprint 3
+  priority: 4
+  story_points: 5.0
+  api_url: https://dev.azure.com/mclm/f25fdc8e-bb30-470e-b590-3b9d0576193f/_apis/wit/workItems/5035632
+  web_url: https://dev.azure.com/mclm/Mayo%20Collaborative%20Services/_workitems/edit/5035632
+  parent_ids:
+  - '5002349'
+  child_ids:
+  - '5039213'
+  - '5039219'
+  - '5039216'
+  - '5039217'
+  - '5039218'
+  - '5039212'
+  - '5039215'
+  - '5039214'
+  - '5039220'
+  artifact_links:
+  - name: Fixed in Commit
+    url: vstfs:///Git/Commit/f25fdc8e-bb30-470e-b590-3b9d0576193f%2f7ec8960b-86af-48b7-b10a-50bd3d169722%2fcb407b4cbe3f13f375eca3f75339878048cd389d
+  - name: Pull Request
+    url: vstfs:///Git/PullRequestId/f25fdc8e-bb30-470e-b590-3b9d0576193f%2F7ec8960b-86af-48b7-b10a-50bd3d169722%2F469906
+  - name: Fixed in Commit
+    url: vstfs:///Git/Commit/f25fdc8e-bb30-470e-b590-3b9d0576193f%2f7ec8960b-86af-48b7-b10a-50bd3d169722%2f37b9e5fbc30b217aadaf598f9063f26f738eae96
+  - name: Pull Request
+    url: vstfs:///Git/PullRequestId/f25fdc8e-bb30-470e-b590-3b9d0576193f%2F7ec8960b-86af-48b7-b10a-50bd3d169722%2F468838
+  - name: Pull Request
+    url: vstfs:///Git/PullRequestId/f25fdc8e-bb30-470e-b590-3b9d0576193f%2F7ec8960b-86af-48b7-b10a-50bd3d169722%2F466118
+  - name: Fixed in Commit
+    url: vstfs:///Git/Commit/f25fdc8e-bb30-470e-b590-3b9d0576193f%2f7ec8960b-86af-48b7-b10a-50bd3d169722%2f3ceb5ad4a1670710b1035aa1bd5e44c54bb68834
+  - name: Pull Request
+    url: vstfs:///Git/PullRequestId/f25fdc8e-bb30-470e-b590-3b9d0576193f%2F7ec8960b-86af-48b7-b10a-50bd3d169722%2F466609
+  - name: Fixed in Commit
+    url: vstfs:///Git/Commit/f25fdc8e-bb30-470e-b590-3b9d0576193f%2f7ec8960b-86af-48b7-b10a-50bd3d169722%2f603105fe9e0d1864165a024aaf372dd1464d1498
+planning_docs: []
+metacognitive_context:
+  source_type: live_azure_devops_work_item
+  normalization_notes:
+  - Dedicated ADO acceptance criteria field was not present; ACs were extracted from the HTML description.
+  - User-supplied context elevated the modal requirement to a canonical constraint.
+  - The provided target repo path was preserved exactly even though the literal path was not found locally.
+  known_gaps:
+  - The supplied target repo path does not exist as a literal path because it contains a "~/" segment after the agent-runner
+    directory; intake preserves the runner-supplied value, but downstream stages may need path resolution.
+  - The story description embeds an ADO image attachment for the modal; intake preserved the attachment URL in raw_input but
+    did not transcribe visual details beyond the explicit "Order Changed" modal requirement.
+  context_confidence_score: 0.86
+librarian_queries:
+- query: Scoped lessons for intake-agent normalizing Azure DevOps work item 5035632 into canonical intake artifacts.
+  confidence_received: full
+  answer_summary: No applicable intake-stage lessons matched this task context.
+librarian_exploration_summaries: []
+applied_lessons: []

@@ -1,0 +1,98 @@
+{
+  "schema_version": "1.0",
+  "last_updated": "2026-04-18T00:35:54Z",
+  "sessions": [
+    {
+      "session_id": "WI-5035632-lessons-optimizer-001",
+      "change_id": "WI-5035632",
+      "date": "2026-04-18",
+      "lessons_reviewed": 0,
+      "signatures_extracted": 1,
+      "baseline_repeat_rate": 0.0,
+      "post_iteration_repeat_rate": 0.0,
+      "improved": true,
+      "rules_injected": 1,
+      "recommendations_added": 1
+    },
+    {
+      "session_id": "TEST-MEDIUM-001-lessons-optimizer-001",
+      "change_id": "TEST-MEDIUM-001",
+      "date": "2026-04-21",
+      "lessons_reviewed": 0,
+      "signatures_extracted": 1,
+      "baseline_repeat_rate": 0.0,
+      "post_iteration_repeat_rate": 0.0,
+      "improved": true,
+      "rules_injected": 1,
+      "recommendations_added": 0
+    }
+  ],
+  "signatures": [
+    {
+      "id": "SIG-001",
+      "agent": "qa-engineer",
+      "mistake_pattern": "schema_field_name_mismatch_in_qa_report",
+      "trigger_context": "generating_qa_report_without_running_schema_validation",
+      "occurrences": [
+        {
+          "session_id": "WI-5035632-lessons-optimizer-001",
+          "change_id": "WI-5035632",
+          "evidence": "eval_qa_1.json: 4 critical schema issues (story_id, qa_status, acceptance_criteria_validation dict, release_notes dict). Score 62, overall_result fail.",
+          "iteration_cost": 1
+        }
+      ],
+      "occurrence_count": 1,
+      "rule_injected": true,
+      "rule_injection_target": "05-qa.agent.md",
+      "rule_injection_date": "2026-04-18"
+    },
+    {
+      "id": "SIG-002",
+      "agent": "implementation-evaluator",
+      "mistake_pattern": "check_test_harnesses_script_false_negative",
+      "trigger_context": "mcs_products_mono_ui_component_harness_naming_convention",
+      "occurrences": [
+        {
+          "session_id": "WI-5035632-lessons-optimizer-001",
+          "change_id": "WI-5035632",
+          "evidence": "eval_impl_1.json for UOW-003 and UOW-004: check-test-harnesses.py exits 1 with wrong expected suffix. Evaluator override required each time.",
+          "iteration_cost": 0
+        }
+      ],
+      "occurrence_count": 2,
+      "rule_injected": false,
+      "rule_injection_target": null,
+      "recommendation_id": "REC-001",
+      "note": "Tool-level defect. Medium confidence rule added to rule-recommendations.md pending script fix."
+    },
+    {
+      "id": "SIG-TEST-001",
+      "agent": "software-engineer-hyperagent",
+      "mistake_pattern": "test_count_discrepancy_in_impl_report",
+      "trigger_context": "impl_report.yaml generation during unit test documentation",
+      "occurrences": [
+        {
+          "session_id": "TEST-MEDIUM-001-lessons-optimizer-001",
+          "change_id": "TEST-MEDIUM-001",
+          "uow_id": "UOW-001",
+          "evidence": "impl_report.yaml claims '48 Jest unit tests' but actual test suite contains 37 tests. Jest output confirms: 'Tests: 37 passed, 37 total'. Breakdown in line 47 sums to 38 (7+4+8+5+5+6+3), not 48. Root cause: manual estimate in impl_report not updated with actual test execution results.",
+          "iteration_cost": 0
+        }
+      ],
+      "occurrence_count": 1,
+      "rule_injected": true,
+      "rule_injection_target": "03-software-engineer-hyperagent.agent.md",
+      "rule_injection_date": "2026-04-21",
+      "rule_id": "RULE-TEST-001"
+    }
+  ],
+  "aggregate_metrics": {
+    "total_sessions": 2,
+    "total_signatures": 3,
+    "total_unique_signatures": 3,
+    "repeated_signatures": 0,
+    "cross_session_repeat_rate": 0.0,
+    "total_extra_iterations_caused": 1,
+    "rules_injected_to_date": 2
+  }
+}

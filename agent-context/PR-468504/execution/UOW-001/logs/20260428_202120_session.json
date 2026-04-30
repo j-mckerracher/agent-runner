@@ -1,0 +1,46 @@
+{
+  "log_type": "software_engineer",
+  "timestamp": "2026-04-28T20:21:20Z",
+  "change_id": "PR-468504",
+  "iteration": 1,
+  "uow_id": "UOW-001",
+  "attempt_number": 1,
+  "phase_executed": 1,
+  "phase2_triggered": false,
+  "heuristic_evolved": null,
+  "self_edit_performed": false,
+  "files_modified_count": 0,
+  "tests_written_count": 0,
+  "execution_blockers": [
+    {
+      "blocker": "Missing execution artifact: /Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/execution/UOW-001/uow_spec.yaml",
+      "resolution": "Blocked the implementation and emitted impl_report.yaml instead of making code changes."
+    }
+  ],
+  "context_confidence_score": 9,
+  "session_summary": {
+    "input_artifacts_read": [
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/planning/tasks.yaml",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/planning/assignments.json",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/intake/story.yaml",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/intake/constraints.md"
+    ],
+    "output_artifacts_written": [
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/execution/UOW-001/impl_report.yaml",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/execution/UOW-001/logs/20260428_202120_session.json"
+    ]
+  },
+  "decisions_made": [
+    {
+      "decision": "Block implementation instead of using planning artifacts as a substitute execution contract.",
+      "rationale": "The execution-stage lesson explicitly requires execution/UOW-ID/uow_spec.yaml before code changes."
+    }
+  ],
+  "issues_encountered": [
+    {
+      "issue": "Missing UOW execution spec",
+      "detail": "execution/UOW-001/uow_spec.yaml was not present."
+    }
+  ],
+  "notes": "This log is the per-UOW copy of the software-engineer session record."
+}

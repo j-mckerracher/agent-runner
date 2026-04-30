@@ -1,0 +1,239 @@
+{
+  "evaluation_id": "eval_TEST-MEDIUM-001_1_20260421T154014",
+  "artifact_evaluated": "tasks.yaml",
+  "attempt_number": 1,
+  "overall_result": "fail",
+  "score": 20,
+  "programmatic_gates": {
+    "schema_valid": false,
+    "ac_coverage_complete": false,
+    "dependency_graph_valid": false,
+    "task_count_in_range": true,
+    "all_gates_passed": false,
+    "gate_failure_details": {
+      "schema_validator": {
+        "status": "fail",
+        "artifact_type": "tasks",
+        "artifact_path": "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/TEST-MEDIUM-001/planning/tasks.yaml",
+        "issues": [
+          {
+            "path": "tasks[0].id",
+            "issue": "Required field 'id' is missing",
+            "severity": "critical"
+          },
+          {
+            "path": "tasks[0].ac_mapping",
+            "issue": "Required field 'ac_mapping' is missing",
+            "severity": "critical"
+          },
+          {
+            "path": "tasks[1].id",
+            "issue": "Required field 'id' is missing",
+            "severity": "critical"
+          },
+          {
+            "path": "tasks[1].ac_mapping",
+            "issue": "Required field 'ac_mapping' is missing",
+            "severity": "critical"
+          },
+          {
+            "path": "tasks[2].id",
+            "issue": "Required field 'id' is missing",
+            "severity": "critical"
+          },
+          {
+            "path": "tasks[2].ac_mapping",
+            "issue": "Required field 'ac_mapping' is missing",
+            "severity": "critical"
+          },
+          {
+            "path": "tasks[3].id",
+            "issue": "Required field 'id' is missing",
+            "severity": "critical"
+          },
+          {
+            "path": "tasks[3].ac_mapping",
+            "issue": "Required field 'ac_mapping' is missing",
+            "severity": "critical"
+          },
+          {
+            "path": "tasks[4].id",
+            "issue": "Required field 'id' is missing",
+            "severity": "critical"
+          },
+          {
+            "path": "tasks[4].ac_mapping",
+            "issue": "Required field 'ac_mapping' is missing",
+            "severity": "critical"
+          }
+        ]
+      },
+      "ac_coverage": {
+        "status": "fail",
+        "total_acs": 3,
+        "total_tasks": 5,
+        "unmapped_acs": [
+          "AC1",
+          "AC2",
+          "AC3"
+        ],
+        "tasks_with_no_ac_mapping": ["", "", "", "", ""],
+        "ac_coverage_map": {"AC1": [], "AC2": [], "AC3": []}
+      },
+      "dependency_checker": "Error: failed to parse artifact – 'id'"
+    }
+  },
+  "rubric_results": {
+    "ac_coverage": {
+      "result": "fail",
+      "details": "AC coverage script reported unmapped acceptance criteria (see programmatic_gates.gate_failure_details.ac_coverage)",
+      "missing_acs": ["AC1", "AC2", "AC3"]
+    },
+    "dependency_correctness": {
+      "result": "fail",
+      "details": "Dependency checker could not parse tasks.yaml due to missing 'id' fields; unable to determine cycles or ordering",
+      "cycles_detected": [],
+      "ordering_issues": []
+    },
+    "granularity": {
+      "result": "pass",
+      "details": "5 tasks spanning discovery, implementation, UI wiring, success-flow, and QA — matches expected granularity",
+      "task_count": 5,
+      "micro_step_violations": []
+    },
+    "clarity": {
+      "result": "warn",
+      "details": "Task titles and descriptions are generally clear, but nonstandard field names ('task_id', 'acceptance_criteria_mapped') reduce machine-readability",
+      "vague_tasks": []
+    }
+  },
+  "issues": [
+    {
+      "issue_id": "ISSUE-1-schema-mismatch",
+      "severity": "critical",
+      "category": "ac_coverage",
+      "description": "tasks.yaml uses nonstandard task fields ('task_id' and 'acceptance_criteria_mapped') instead of the validator's expected 'id' and 'ac_mapping', causing schema validation to fail.",
+      "location": "planning/tasks.yaml",
+      "actionable_fix": "Rename each task's 'task_id' to 'id' and rename 'acceptance_criteria_mapped' to 'ac_mapping' (list of AC ids, e.g. ['AC1']). Example patch for T2: change 'task_id: \"T2\"' -> 'id: \"T2\"' and 'acceptance_criteria_mapped: [\"AC1\",\"AC2\"]' -> 'ac_mapping: [\"AC1\", \"AC2\"]'. After editing, run: python3 .claude/scripts/validate-artifact-schema.py --type tasks <path-to-tasks.yaml>'",
+      "raw_evidence": {
+        "code_lines": [
+          {
+            "file": "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/TEST-MEDIUM-001/planning/tasks.yaml",
+            "lines": "29-41",
+            "content": "- task_id: \"T1\"\n  title: \"Discovery: Locate PrimeNG error pattern and sendouts UI project\"\n  description: \"Identify the PrimeNG form error display component/pattern used by sendouts/shared UI, locate the NX project/path for the sendouts UI, and confirm canonical data-test-id naming conventions, i18n guidance, accessibility expectations, and whether server acknowledgement is required before clearing input. This is discovery-only and must not change code.\"\n  acceptance_criteria_mapped: []\n  dependencies: []\n  priority: \"high\"\n  estimated_complexity: \"simple\"\n  definition_of_done:\n    - \"PrimeNG error pattern component/path located and file path recorded\"\n    - \"NX project name/path for sendouts UI identified\"\n    - \"Canonical data-test-id naming convention found or recommended\"\n    - \"Answers captured for clarifying questions (character set, success semantics, Enter/paste behavior, duplicate handling, i18n, accessibility)\""
+          },
+          {
+            "file": "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/TEST-MEDIUM-001/planning/tasks.yaml",
+            "lines": "42-56",
+            "content": "- task_id: \"T2\"\n  title: \"Implement client-side synchronous barcode validator and inline error display\"\n  description: \"Implement a synchronous per-keystroke validator (default: 8–16 ASCII alphanumeric characters) scoped to local component state. Render the inline error message using the identified PrimeNG error pattern. Do not persist validation state to NgRx Signals or change server API contracts.\"\n  acceptance_criteria_mapped: [\"AC1\",\"AC2\"]\n  dependencies: [\"T1\"]\n  priority: \"high\"\n  estimated_complexity: \"moderate\"\n  definition_of_done:\n    - \"Synchronous validator implemented and attached to barcode input\"\n    - \"Inline error displays 'Invalid barcode format' beneath the barcode input for invalid values\"\n    - \"Add Specimen button is disabled when input is empty or format-invalid\"\n    - \"Jest unit tests for validator logic covering valid/invalid boundary cases\"\n    - \"Cypress component test covering AC1 behaviors (invalid/valid inputs)\"\n    - \"Component test harness updated with required data-test-id selectors\""
+          },
+          {
+            "file": "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/TEST-MEDIUM-001/planning/tasks.yaml",
+            "lines": "57-69",
+            "content": "- task_id: \"T3\"\n  title: \"Wire disabled state, add data-test-id attributes, and implement accessibility\"\n  description: \"Wire the disabled state of the existing Add Specimen button to the validator state; add or confirm data-test-id attributes for barcode input, Add button, and inline error element; apply ARIA attributes (aria-describedby/role='alert') per repo accessibility conventions.\"\n  acceptance_criteria_mapped: [\"AC2\",\"AC1\"]\n  dependencies: [\"T1\",\"T2\"]\n  priority: \"medium\"\n  estimated_complexity: \"simple\"\n  definition_of_done:\n    - \"Add button disabled state wired to validation status without introducing a new button\"\n    - \"Data-test-id attributes added or confirmed for input, button, and error element\"\n    - \"ARIA attributes applied for the inline error per accessibility guidelines\"\n    - \"Cypress component tests assert presence of data-test-ids and accessibility attributes\""
+          },
+          {
+            "file": "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/TEST-MEDIUM-001/planning/tasks.yaml",
+            "lines": "70-82",
+            "content": "- task_id: \"T4\"\n  title: \"Implement success-flow: clear input and reset validation after successful add\"\n  description: \"On successful add of a valid barcode, clear the barcode input and reset validation state so the form is ready for the next entry. Clarify whether 'successful' requires server acknowledgement; implement per discovery outcome (clear on server ack or agreed optimistic semantics with rollback on failure). Ensure no validation state is persisted to NgRx Signals.\"\n  acceptance_criteria_mapped: [\"AC3\"]\n  dependencies: [\"T2\",\"T3\"]\n  priority: \"medium\"\n  estimated_complexity: \"moderate\"\n  definition_of_done:\n    - \"Input clears and validation state resets after confirmed successful add (or per agreed optimistic update semantics)\"\n    - \"No validation state is persisted into NgRx Signals or saved manifest data\"\n    - \"Edge-case behaviors (duplicate barcodes, Enter/paste) implemented per clarifications or documented for follow-up\"\n    - \"Cypress component tests cover the successful-add clearing behavior\""
+          },
+          {
+            "file": "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/TEST-MEDIUM-001/planning/tasks.yaml",
+            "lines": "83-95",
+            "content": "- task_id: \"T5\"\n  title: \"QA: Cypress component tests and nx component-test verification\"\n  description: \"Write comprehensive Cypress component tests covering AC1, AC2, and AC3; update the test harness and run nx component-test to ensure no failures. Ensure tests are included in the same task DoD for any Angular template changes.\"\n  acceptance_criteria_mapped: [\"AC1\",\"AC2\",\"AC3\"]\n  dependencies: [\"T2\",\"T3\",\"T4\"]\n  priority: \"high\"\n  estimated_complexity: \"moderate\"\n  definition_of_done:\n    - \"Cypress component tests cover valid input, invalid input, empty input, and successful add clearing behavior\"\n    - \"Test harness updated with required data-test-id selectors\"\n    - \"nx component-test <project> --browser=chrome passes with no failures\"\n    - \"If Angular template changes were made, component tests are present and included in this task's DoD\""
+          }
+        ],
+        "schema_paths": [
+          "tasks[0].id",
+          "tasks[0].ac_mapping",
+          "tasks[1].id",
+          "tasks[1].ac_mapping",
+          "tasks[2].id",
+          "tasks[2].ac_mapping",
+          "tasks[3].id",
+          "tasks[3].ac_mapping",
+          "tasks[4].id",
+          "tasks[4].ac_mapping"
+        ]
+      },
+      "root_cause_hypothesis": {
+        "category": "ignored_constraints",
+        "explanation": "The Task Generator produced a tasks.yaml that uses nonstandard field names ('task_id' and 'acceptance_criteria_mapped') instead of the repository's canonical schema ('id' and 'ac_mapping'), causing automated validators to fail.",
+        "confidence": "high"
+      }
+    },
+    {
+      "issue_id": "ISSUE-2-ac-coverage",
+      "severity": "critical",
+      "category": "ac_coverage",
+      "description": "Automated AC coverage check reports all ACs (AC1, AC2, AC3) unmapped because the tasks use 'acceptance_criteria_mapped' instead of the expected 'ac_mapping' field.",
+      "location": "planning/tasks.yaml",
+      "actionable_fix": "Populate each task's 'ac_mapping' array with correct AC ids per the provided ac_coverage_matrix (e.g., for T2 set ac_mapping: ['AC1','AC2'], for T4 set ac_mapping: ['AC3']). Then re-run: python3 .claude/scripts/check-ac-coverage.py <story.yaml> <tasks.yaml>",
+      "raw_evidence": {
+        "code_lines": [
+          {
+            "file": "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/TEST-MEDIUM-001/planning/tasks.yaml",
+            "lines": "96-99",
+            "content": "ac_coverage_matrix:\n  AC1: [\"T2\",\"T5\"]\n  AC2: [\"T2\",\"T3\",\"T5\"]\n  AC3: [\"T4\",\"T5\"]"
+          }
+        ],
+        "schema_paths": ["intake.story.acceptance_criteria","tasks[*].ac_mapping"]
+      },
+      "root_cause_hypothesis": {
+        "category": "ignored_constraints",
+        "explanation": "The plan encodes AC mappings in a separate 'ac_coverage_matrix' and uses a nonstandard field name for per-task AC mappings, so automated coverage tooling cannot find the mappings.",
+        "confidence": "high"
+      }
+    },
+    {
+      "issue_id": "ISSUE-3-dependency-parse",
+      "severity": "high",
+      "category": "dependency",
+      "description": "Dependency checker failed to parse tasks.yaml because tasks do not have an 'id' field; parser expected tasks[].id and tasks[].dependencies to build the graph.",
+      "location": "planning/tasks.yaml",
+      "actionable_fix": "Ensure each task has 'id' (string) matching referenced dependency ids, e.g., add 'id: \"T2\"' to task objects (or rename existing 'task_id' to 'id'). After fixing, re-run: python3 .claude/scripts/check-dependency-cycles.py <tasks.yaml>",
+      "raw_evidence": {
+        "code_lines": [
+          {
+            "file": "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/TEST-MEDIUM-001/planning/tasks.yaml",
+            "lines": "42-56",
+            "content": "- task_id: \"T2\"\n  ...\n  dependencies: [\"T1\"]"
+          },
+          {
+            "file": "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/TEST-MEDIUM-001/planning/tasks.yaml",
+            "lines": "61-88",
+            "content": "- task_id: \"T3\"\n  ...\n  dependencies: [\"T1\",\"T2\"]\n...\n- task_id: \"T5\"\n  dependencies: [\"T2\",\"T3\",\"T4\"]"
+          }
+        ],
+        "schema_paths": ["tasks[*].id","tasks[*].dependencies"]
+      },
+      "root_cause_hypothesis": {
+        "category": "ignored_constraints",
+        "explanation": "Task plan author used 'task_id' field naming rather than the 'id' field expected by the dependency-check tool, causing parse failure.",
+        "confidence": "high"
+      }
+    }
+  ],
+  "actionable_fixes_summary": [
+    "Rename 'task_id' -> 'id' for each task in planning/tasks.yaml",
+    "Rename 'acceptance_criteria_mapped' -> 'ac_mapping' and ensure values are lists of AC ids (e.g., ['AC1']). Use ac_coverage_matrix to populate if needed.",
+    "Re-run schema validator: python3 .claude/scripts/validate-artifact-schema.py --type tasks <path-to-tasks.yaml>",
+    "Once schema passes, re-run dependency and AC-coverage checks and update any dangling dependencies; then request re-evaluation"
+  ],
+  "escalation_recommendation": "If Task Generator cannot be updated, run a one-time transformation script to convert field names to the canonical schema and update the Task Generator template. Escalate to the 'agent-runner-testing' owner if this recurs.",
+  "notes": "Plan contents are otherwise well-scoped (5 tasks) and map logically to the 3 ACs, but automation is blocked by schema mismatch. There's an explicit ac_coverage_matrix that can be used to populate ac_mapping.",
+  "metacognitive_context": {
+    "decision_rationale": "Followed mandated programmatic-first gating: schema validation, AC coverage, dependency checks. Stopped subjective rubric because schema failed — deterministic gate failure takes precedence.",
+    "alternatives_discarded": [
+      {"approach": "Attempt automatic mapping from ac_coverage_matrix to ac_mapping and proceed with rubric", "reason_rejected": "Would violate 'Stop on Unrecoverable Input' rule; must fail fast so Task Generator can correct source artifact."},
+      {"approach": "Assume 'task_id' equals 'id' and rewrite only in-memory for checks", "reason_rejected": "Would mask root cause and produce misleading evaluation; better to request canonical artifact."}
+    ],
+    "knowledge_gaps": [
+      "No explicit attempt_number found in artifact — defaulted to 1",
+      "Ambiguity whether task generator should produce 'ac_mapping' vs 'acceptance_criteria_mapped'"
+    ],
+    "tool_anomalies": [
+      {"tool": "OpenViking (ov find)", "anomaly": "API rate-limit prevented lesson retrieval; discovery task added to re-run when available"}
+    ]
+  }
+}

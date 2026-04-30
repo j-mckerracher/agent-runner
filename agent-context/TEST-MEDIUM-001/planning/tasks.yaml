@@ -1,0 +1,118 @@
+story_id: "TEST-MEDIUM-001"
+
+librarian_queries:
+  - query: "Read intake/story.yaml and constraints.md"
+    confidence_received: "full"
+    answer_summary: "Intake contains story 'Barcode Input Validation for Send-Out Manifest Specimens' with 3 ACs, constraints, and NFRs; open questions recorded in constraints.md."
+  - query: "Find existing task plan examples"
+    confidence_received: "full"
+    answer_summary: "Found agent-context/WI-5035632/planning/tasks.yaml as a pattern for tasks.yaml structure."
+  - query: "Find lessons for Task Generator"
+    confidence_received: "partial"
+    answer_summary: "OpenViking find hit a rate-limit; no stored lessons retrieved. Applied intake constraints as mandatory prevention rules."
+  - query: "Search for Cypress/NX DoD patterns"
+    confidence_received: "high"
+    answer_summary: "Repo skill docs indicate nx component-test usage and DoD enforcement for Cypress component tests."
+
+librarian_exploration_summaries:
+  - query: "Read intake files"
+    summary_received: "Intake defines 3 ACs: AC1 inline 'Invalid barcode format' error (8-16 alphanumeric, no special chars); AC2 Add button disabled when empty/invalid; AC3 clear input and reset validation after successful add. Non-functional: synchronous per-keystroke validation, follow PrimeNG error pattern, add data-test-ids."
+    file_locations:
+      - "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/TEST-MEDIUM-001/intake/story.yaml"
+      - "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/TEST-MEDIUM-001/intake/constraints.md"
+  - query: "Find planning examples"
+    summary_received: "Found example planning/tasks.yaml at agent-context/WI-5035632/planning/tasks.yaml to emulate structure and DoD patterns."
+    file_locations:
+      - "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/WI-5035632/planning/tasks.yaml"
+
+tasks:
+  - task_id: "T1"
+    title: "Discovery: Locate PrimeNG error pattern and sendouts UI project"
+    description: "Identify the PrimeNG form error display component/pattern used by sendouts/shared UI, locate the NX project/path for the sendouts UI, and confirm canonical data-test-id naming conventions, i18n guidance, accessibility expectations, and whether server acknowledgement is required before clearing input. This is discovery-only and must not change code."
+    acceptance_criteria_mapped: []
+    dependencies: []
+    priority: "high"
+    estimated_complexity: "simple"
+    definition_of_done:
+      - "PrimeNG error pattern component/path located and file path recorded"
+      - "NX project name/path for sendouts UI identified"
+      - "Canonical data-test-id naming convention found or recommended"
+      - "Answers captured for clarifying questions (character set, success semantics, Enter/paste behavior, duplicate handling, i18n, accessibility)"
+
+  - task_id: "T2"
+    title: "Implement client-side synchronous barcode validator and inline error display"
+    description: "Implement a synchronous per-keystroke validator (default: 8–16 ASCII alphanumeric characters) scoped to local component state. Render the inline error message using the identified PrimeNG error pattern. Do not persist validation state to NgRx Signals or change server API contracts."
+    acceptance_criteria_mapped: ["AC1","AC2"]
+    dependencies: ["T1"]
+    priority: "high"
+    estimated_complexity: "moderate"
+    definition_of_done:
+      - "Synchronous validator implemented and attached to barcode input"
+      - "Inline error displays 'Invalid barcode format' beneath the barcode input for invalid values"
+      - "Add Specimen button is disabled when input is empty or format-invalid"
+      - "Jest unit tests for validator logic covering valid/invalid boundary cases"
+      - "Cypress component test covering AC1 behaviors (invalid/valid inputs)"
+      - "Component test harness updated with required data-test-id selectors"
+
+  - task_id: "T3"
+    title: "Wire disabled state, add data-test-id attributes, and implement accessibility"
+    description: "Wire the disabled state of the existing Add Specimen button to the validator state; add or confirm data-test-id attributes for barcode input, Add button, and inline error element; apply ARIA attributes (aria-describedby/role='alert') per repo accessibility conventions."
+    acceptance_criteria_mapped: ["AC2","AC1"]
+    dependencies: ["T1","T2"]
+    priority: "medium"
+    estimated_complexity: "simple"
+    definition_of_done:
+      - "Add button disabled state wired to validation status without introducing a new button"
+      - "Data-test-id attributes added or confirmed for input, button, and error element"
+      - "ARIA attributes applied for the inline error per accessibility guidelines"
+      - "Cypress component tests assert presence of data-test-ids and accessibility attributes"
+
+  - task_id: "T4"
+    title: "Implement success-flow: clear input and reset validation after successful add"
+    description: "On successful add of a valid barcode, clear the barcode input and reset validation state so the form is ready for the next entry. Clarify whether 'successful' requires server acknowledgement; implement per discovery outcome (clear on server ack or agreed optimistic semantics with rollback on failure). Ensure no validation state is persisted to NgRx Signals."
+    acceptance_criteria_mapped: ["AC3"]
+    dependencies: ["T2","T3"]
+    priority: "medium"
+    estimated_complexity: "moderate"
+    definition_of_done:
+      - "Input clears and validation state resets after confirmed successful add (or per agreed optimistic update semantics)"
+      - "No validation state is persisted into NgRx Signals or saved manifest data"
+      - "Edge-case behaviors (duplicate barcodes, Enter/paste) implemented per clarifications or documented for follow-up"
+      - "Cypress component tests cover the successful-add clearing behavior"
+
+  - task_id: "T5"
+    title: "QA: Cypress component tests and nx component-test verification"
+    description: "Write comprehensive Cypress component tests covering AC1, AC2, and AC3; update the test harness and run nx component-test to ensure no failures. Ensure tests are included in the same task DoD for any Angular template changes."
+    acceptance_criteria_mapped: ["AC1","AC2","AC3"]
+    dependencies: ["T2","T3","T4"]
+    priority: "high"
+    estimated_complexity: "moderate"
+    definition_of_done:
+      - "Cypress component tests cover valid input, invalid input, empty input, and successful add clearing behavior"
+      - "Test harness updated with required data-test-id selectors"
+      - "nx component-test <project> --browser=chrome passes with no failures"
+      - "If Angular template changes were made, component tests are present and included in this task's DoD"
+
+ac_coverage_matrix:
+  AC1: ["T2","T5"]
+  AC2: ["T2","T3","T5"]
+  AC3: ["T4","T5"]
+
+notes: "Discovery task required to locate PrimeNG pattern and NX project. OpenViking lesson retrieval experienced a rate-limit; discovery should re-run lesson lookup when available. All tasks must respect prevention rules: client-side-only validation, no NgRx persistence, synchronous validation, and data-test-id exposure for Cypress tests."
+
+metacognitive_context:
+  decision_rationale: "Chose 5 broad tasks separating discovery, implementation, UI wiring, success-flow, and QA to de-risk implementation and ensure tests are bundled with component changes per repository enforcement."
+  alternatives_discarded:
+    - approach: "Single monolithic task covering discovery, implementation, wiring, and tests"
+      reason_rejected: "Would blur discovery dependencies and risk implementing against unknown patterns; harder to ensure reuse of existing PrimeNG patterns."
+    - approach: "Separate tests into an independent task"
+      reason_rejected: "Repository policy requires Cypress component tests be part of the same task that modifies Angular components; separating tests would violate enforcement gates."
+  knowledge_gaps:
+    - "Exact ASCII vs Unicode alphanumeric definition and normalization rules (trim/uppercase)"
+    - "Whether 'successful add' requires server acknowledgement or optimistic UI semantics"
+    - "Canonical data-test-id naming conventions or namespace/prefix"
+    - "Accessibility ARIA specifics for inline error components in sendouts UI"
+  tool_anomalies:
+    - tool: "OpenViking (ov find)"
+      anomaly: "API rate-limit prevented retrieval of stored lessons"
+      mitigation: "Included discovery task to re-run lesson lookup or consult product owner when rate-limit clears."

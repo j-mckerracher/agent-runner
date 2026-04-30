@@ -1,0 +1,114 @@
+story_id: "EVAL-003"
+
+librarian_queries:
+  - query: "Read intake/story.yaml and intake/constraints.md"
+    confidence_received: "full"
+    answer_summary: "Story and constraints read; AC1..AC5 extracted; gaps: TestModel location, CSS scoping, code_repo mapping."
+
+librarian_exploration_summaries:
+  - query: "Search repo examples for tasks.yaml patterns and Cypress harness conventions"
+    summary_received: "Found EVAL-001 and EVAL-002 planning examples; Cypress harness and data-test-id conventions documented in repo examples."
+
+tasks:
+  - id: "T1"
+    task_id: "T1"
+    title: "Preconditions: Verify target files, types, and repo mapping"
+    description: "Confirm existence of all target files named in ACs, locate TestModel type and exact import path, verify CSS scoping convention, and resolve runner code_repo mapping to concrete filesystem path. If any file or type is missing, emit a blocked implementation report and stop further implementation tasks."
+    acceptance_criteria: ["AC1","AC2","AC3","AC4","AC5"]
+    dependencies: []
+    priority: "high"
+    estimated_complexity: "simple"
+    definition_of_done:
+      - "All target files exist at the paths specified in ACs (or a clear mapping to external repo is recorded)."
+      - "Exact TestModel type file path and export identified and recorded."
+      - "CSS scoping convention for test-pill components recorded."
+      - "Runner code_repo mapping resolved and documented."
+
+  - id: "T2"
+    task_id: "T2"
+    title: "Implement getSpecimenCountState helper method"
+    description: "Add a static method getSpecimenCountState(TestModel) to test-pill-helper.ts returning {count, isOverflow, isEmpty} following AC1 semantics (count = test.specimens?.length ?? 0; isOverflow when count > preferredNumOfSpecimens; isEmpty when count === 0). Ensure correct TestModel import and TypeScript typings."
+    acceptance_criteria: ["AC1"]
+    dependencies: ["T1"]
+    priority: "high"
+    estimated_complexity: "simple"
+    definition_of_done:
+      - "getSpecimenCountState implemented in the exact file and exported as static method."
+      - "Type imports use the located TestModel path."
+      - "Unit tests (Jest) for edge cases: undefined specimens, 0 specimens, overflow condition."
+
+  - id: "T3"
+    task_id: "T3"
+    title: "Wire computed signal and template badge in test-pill component"
+    description: "Add specimenCountState computed signal in test-pill.component.ts that calls getSpecimenCountState with current test input. Modify test-pill.component.html to include a badge element with data-test-id=\"tp-specimen-count\" that renders the count and conditionally applies CSS classes specimen-count-overflow and specimen-count-empty per AC2. Follow component CSS scoping conventions discovered in T1."
+    acceptance_criteria: ["AC2"]
+    dependencies: ["T2"]
+    priority: "high"
+    estimated_complexity: "moderate"
+    definition_of_done:
+      - "Computed signal specimenCountState present and used in template."
+      - "Badge uses data-test-id=\"tp-specimen-count\" and displays the numeric count."
+      - "CSS classes applied conditionally and scoped per project conventions."
+      - "Component builds successfully (nx build specimen-accessioning-orders-ui)."
+
+  - id: "T4"
+    task_id: "T4"
+    title: "Add locator and test harness assertions"
+    description: "Add specimenCountBadge locator entry to test-pill.locators.ts using selectByDataTestId. Extend test-pill.component.test-harness.ts with getSpecimenCountBadge(), shouldShowSpecimenOverflow(), and shouldShowSpecimenEmpty() methods that use harness assertions mirroring existing patterns."
+    acceptance_criteria: ["AC3"]
+    dependencies: ["T3"]
+    priority: "medium"
+    estimated_complexity: "moderate"
+    definition_of_done:
+      - "Locator entry added with exact data-test-id string."
+      - "Harness methods added and composed into provideHarnessAssertions."
+      - "Harness unit-level checks demonstrate selecting badge and asserting classes."
+
+  - id: "T5"
+    task_id: "T5"
+    title: "Add Cypress component tests for badge behavior"
+    description: "Add three Cypress component test cases to test-pill.component.cy.ts with exact titles: 'should display specimen count badge', 'should show overflow when specimens exceed preferred', and 'should show empty state with no specimens'. Configure mocks to cover normal, overflow, and empty scenarios (overflow: specimens length > preferredNumOfSpecimens). Use getMountOptionsCurry and existing harness factories."
+    acceptance_criteria: ["AC4"]
+    dependencies: ["T4"]
+    priority: "high"
+    estimated_complexity: "complex"
+    definition_of_done:
+      - "Three Cypress component tests added with exact titles."
+      - "Tests use harness methods and locators; assertions check displayed count and CSS class presence."
+      - "nx component-test specimen-accessioning-orders-ui --browser=chrome --skip-nx-cache exits with code 0 locally."
+
+  - id: "T6"
+    task_id: "T6"
+    title: "Build verification and cleanup"
+    description: "Run nx build specimen-accessioning-orders-ui --skip-nx-cache and fix any type or build issues introduced. Ensure CI-local parity and remove any debug artifacts."
+    acceptance_criteria: ["AC5"]
+    dependencies: ["T3","T5"]
+    priority: "medium"
+    estimated_complexity: "simple"
+    definition_of_done:
+      - "nx build specimen-accessioning-orders-ui --skip-nx-cache completes with exit code 0."
+      - "All new and existing tests pass locally as part of the component-test run."
+
+ac_coverage_matrix:
+  AC1: ["T1","T2"]
+  AC2: ["T1","T3"]
+  AC3: ["T1","T4"]
+  AC4: ["T1","T5"]
+  AC5: ["T1","T5","T6"]
+
+notes: "T1 enforces a precondition check to prevent wasted edits if target files are in a different repo. Keep exact symbol names, data-test-id, and Cypress titles per constraints. Do not add new npm dependencies."
+
+metacognitive_context:
+  decision_rationale: "Separated precondition verification to avoid repo-mapping mistakes; tasks grouped by helper, component wiring, harness/locator, tests, and build verification to keep granularity appropriate."
+  alternatives_discarded:
+    - approach: "Inline precondition checks inside each task and proceed optimistically."
+      reason_rejected: "Risked performing edits in the wrong repo and producing invalid artifacts."
+    - approach: "Create many micro-tasks for each file edit and test assertion."
+      reason_rejected: "Would exceed recommended granularity and fragment DoD requirements."
+  knowledge_gaps:
+    - "Exact TestModel TypeScript definition and import path (T1 must find)."
+    - "Exact file locations under the runner-resolved code_repo (T1 must verify)."
+    - "CSS scoping conventions in target component (T1 must verify)."
+  tool_anomalies:
+    - tool: "OpenViking (ov)"
+      anomaly: "ov semantic search returned auth error when attempted; used local repository examples as fallback."

@@ -1,0 +1,53 @@
+uow_id: "UOW-003"
+source_task_id: "T3"
+story_id: "PR-468504"
+title: "Extend the shutdown-aware cancellation pattern to remaining scoped endpoint chains"
+assigned_role: "software-engineer"
+target_repo: "/Users/mckerracher.joshua/Code/rls-orders-cnsmr-api"
+dependencies:
+  - "UOW-002"
+acceptance_criteria:
+  - "AC1"
+  - "AC2"
+  - "AC5"
+summary: >-
+  Extend the graceful-shutdown cancellation pattern into the remaining in-scope
+  secondary endpoint families for rls-orders-cnsmr-api: Accounts, Labels,
+  Documents, and Reports.
+definition_of_done:
+  - "Secondary controller and service chains in scope follow the same shutdown-aware cancellation pattern established in the core paths."
+  - "Shared abstractions that block token propagation are either updated in scope or clearly captured as implementation risks."
+  - "No scoped endpoint path is left bypassing the selected graceful-shutdown strategy."
+  - "Regression-focused automated coverage is updated for the additional changed paths."
+implementation_hints:
+  - "Propagate CancellationToken from AccountsController, LabelsController, DocumentsController, and ReportsController through their service contracts."
+  - "Carry the token to DataverseService, LabelService, DocumentService, ReportService, DataverseRepository, DocgenRepository, and the OrdersRepository call used by ReportService."
+  - "Where shared helpers do not expose CancellationToken overloads, use cooperative cancellation checks and cancellation-aware waits at the repository boundary."
+  - "Keep changes scoped to rls-orders-cnsmr-api; out-of-scope follow-up APIs remain for UOW-004 documentation."
+files_in_scope:
+  - "src/Mayo.MCS.RLS.OrdersConsumer.Api/Controllers/AccountsController.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.Api/Controllers/LabelsController.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.Api/Controllers/DocumentsController.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.Api/Controllers/ReportsController.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.BLL/DataverseService.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.BLL/LabelService.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.BLL/DocumentService.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.BLL/ReportService.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.DAL/Repositories/DataverseRepository.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.DAL/Repositories/DocgenRepository.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.DAL/Repositories/OrdersRepository.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.Tests/_Api/AccountsControllerTests.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.Tests/_Api/LabelsControllerTests.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.Tests/_Api/DocumentsControllerTests.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.Tests/_Api/ReportsControllerTests.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.Tests/_Bll/DataverseServiceTests.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.Tests/_Bll/LabelServiceTests.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.Tests/_Bll/DocumentServiceTests.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.Tests/_Bll/ReportServiceTests.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.Tests/_Dal/DataverseRepositoryTests.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.Tests/_Dal/DocgenRepositoryTests.cs"
+  - "src/Mayo.MCS.RLS.OrdersConsumer.Tests/_Dal/OrdersRepositoryTest.cs"
+risks_to_watch:
+  - "IHttpClientHelper does not expose explicit CancellationToken overloads in this repo; repository boundaries must use cooperative cancellation."
+  - "IGoogleCloudStorageService signing remains synchronous, so cancellation can only be checked before that call."
+  - "Cloud Run termination budget remains unspecified in intake artifacts."

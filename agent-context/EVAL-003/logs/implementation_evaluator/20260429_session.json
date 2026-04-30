@@ -1,0 +1,16 @@
+{
+  "uow_id": "UOW-003",
+  "attempt": 1,
+  "phase_executed": 1,
+  "phase2_triggered": false,
+  "heuristic_evolved": null,
+  "self_edit_performed": false,
+  "files_modified_count": 2,
+  "tests_written_count": 0,
+  "execution_blockers": [
+    {"blocker": "missing_uow_spec", "resolution": "created placeholder uow_spec.yaml"},
+    {"blocker": "missing_impl_report", "resolution": "created placeholder impl_report.yaml"},
+    {"blocker": "invalid_repo_path", "resolution": "documented in impl_report; requested correction"}
+  ],
+  "context_confidence_score": 3
+}

@@ -1,0 +1,132 @@
+---
+change_id: EVAL-001
+story_title: Add specimen count badge to manifest header
+story_id: EVAL-001
+
+tasks:
+  T1:
+    title: Add specimenCount computed signal to manifest-header component
+    description: |
+      Add a computed signal named `specimenCount` to manifest-header.component.ts
+      that derives the count from manifestStore.manifest().specimens.length,
+      following the existing computed signal pattern used in ManifestSpecimensComponent.
+    acceptance_criteria:
+      - Computed signal is named `specimenCount`
+      - Derives value from `manifestStore.manifest().specimens.length`
+      - Follows existing pattern in ManifestSpecimensComponent
+    dependencies: []
+    files_to_modify:
+      - libs/pearls/sendouts/ui/manifest-ui/src/lib/components/manifest-header/manifest-header.component.ts
+    priority: 1
+    risk: medium
+    risk_reason: "Requires understanding of ManifestStore API and signal patterns"
+
+  T2:
+    title: Add p-badge element to manifest-header template
+    description: |
+      Add a PrimeNG Badge (p-badge directive) element to manifest-header.component.html
+      adjacent to the manifest number field. The badge must display the specimenCount
+      value and have data-test-id="specimen-count-badge".
+    acceptance_criteria:
+      - p-badge element is present adjacent to manifest number field
+      - Badge displays {{specimenCount}} or equivalent binding
+      - Badge has data-test-id="specimen-count-badge"
+    dependencies:
+      - T1
+    files_to_modify:
+      - libs/pearls/sendouts/ui/manifest-ui/src/lib/components/manifest-header/manifest-header.component.html
+    priority: 2
+    risk: low
+    risk_reason: "Template change is straightforward; depends on T1 completion"
+
+  T3:
+    title: Add specimenCountBadge locator to manifestCreateEdit.locators.ts
+    description: |
+      Add a locator named `specimenCountBadge` to manifestCreateEdit.locators.ts
+      that targets the element with data-test-id="specimen-count-badge" using
+      the existing selectByDataTestId() pattern.
+    acceptance_criteria:
+      - Locator is named `specimenCountBadge`
+      - Uses selectByDataTestId("specimen-count-badge")
+      - Follows existing locator pattern in file
+    dependencies: []
+    files_to_modify:
+      - libs/pearls/sendouts/ui/manifest-ui/src/lib/test-data/manifestCreateEdit.locators.ts
+    priority: 1
+    risk: low
+    risk_reason: "Straightforward locator addition following existing pattern"
+
+  T4:
+    title: Add shouldDisplaySpecimenCount assertion to test harness
+    description: |
+      Add a shouldDisplaySpecimenCount assertion method to
+      manifest-header.component.test-harness.ts that uses the specimenCountBadge
+      locator to verify the badge displays the expected count.
+    acceptance_criteria:
+      - Method named `shouldDisplaySpecimenCount` is exported
+      - Uses specimenCountBadge locator from T3
+      - Returns an assertion result or page navigation
+    dependencies:
+      - T3
+    files_to_modify:
+      - libs/pearls/sendouts/ui/manifest-ui/src/lib/components/manifest-header/manifest-header.component.test-harness.ts
+    priority: 2
+    risk: medium
+    risk_reason: "Requires understanding of test harness pattern; depends on T3"
+
+  T5:
+    title: Add test case to manifest-header Cypress spec
+    description: |
+      Add a test case to the manifest-header Cypress spec that verifies the
+      specimen count badge displays correctly and updates reactively.
+      Test description must include the string "specimen count".
+    acceptance_criteria:
+      - Test case is present in manifest-header Cypress spec
+      - Test description includes "specimen count"
+      - Test uses shouldDisplaySpecimenCount from test harness (not raw cy.get)
+    dependencies:
+      - T4
+    files_to_modify:
+      - libs/pearls/sendouts/ui/manifest-ui/src/lib/components/manifest-header/manifest-header.component.spec.ts
+    priority: 2
+    risk: medium
+    risk_reason: "Requires understanding of Cypress pattern; depends on T4"
+
+  T6:
+    title: Verify build passes
+    description: |
+      Run `nx build rls-sendouts-ui-manifest-ui` and verify exit code 0.
+      This validates that all component changes compile successfully and
+      no TypeScript or build errors were introduced.
+    acceptance_criteria:
+      - nx build rls-sendouts-ui-manifest-ui exits with code 0
+      - No TypeScript errors
+      - No linting errors in manifest-ui component files
+    dependencies:
+      - T1
+      - T2
+      - T3
+      - T4
+      - T5
+    files_to_modify: []
+    priority: 3
+    risk: low
+    risk_reason: "Validation task; depends on all implementation tasks"
+
+metacognitive_context:
+  assumption_rationale: |
+    tasks.yaml was not provided. This task breakdown was inferred from the story.yaml
+    and constraints.md files using the acceptance criteria, constraints, and file
+    locations indicated in the story.
+  task_structure_rationale: |
+    Tasks are ordered by dependency and risk:
+    - T1 (signal) and T3 (locator) have no dependencies and low/medium risk
+    - T2 (template) depends on T1 completion
+    - T4 (test harness) depends on T3 locator
+    - T5 (Cypress spec) depends on T4 test harness
+    - T6 (build) depends on all implementation tasks
+    This creates a critical path: T1→T2, T3→T4→T5, with T6 as final validation.
+  inferred_file_locations: |
+    Based on the fixture's domain reference to:
+    `libs/pearls/sendouts/ui/manifest-ui/src/lib/components/manifest-header/`
+    Files are assumed to follow the existing project structure.

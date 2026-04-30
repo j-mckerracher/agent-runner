@@ -1,0 +1,14 @@
+{
+  "uow_id": "UOW-003",
+  "attempt_number": 1,
+  "phase_executed": 1,
+  "phase2_triggered": false,
+  "heuristic_evolved": null,
+  "self_edit_performed": false,
+  "files_modified_count": 0,
+  "tests_written_count": 0,
+  "execution_blockers": [
+    { "blocker": "missing_uow_spec", "resolution": "awaiting uow_spec.yaml in agent-context/EVAL-002/execution/UOW-003" }
+  ],
+  "context_confidence_score": 1
+}

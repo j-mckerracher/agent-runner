@@ -1,0 +1,33 @@
+{
+  "change_id": "EVAL-001",
+  "title": "Add specimen count badge to manifest header",
+  "description": "The manifest header currently shows batch code, reference lab, manifest number, and manifest date. Add a PrimeNG Badge component next to the manifest number that displays the current count of specimens in the manifest. The count must update reactively when specimens are added or removed. The badge must be testable through the project's Cypress test harness pattern.",
+  "acceptance_criteria": [
+    "AC1: The manifest header displays the current specimen count using a PrimeNG Badge (p-badge directive or Badge component) adjacent to the manifest number field. The badge element has data-test-id=\"specimen-count-badge\". The specimen count is derived from manifestStore.manifest().specimens.length via a computed signal named specimenCount in the component class.",
+    "AC2: The project builds successfully — nx build rls-sendouts-ui-manifest-ui exits with code 0.",
+    "AC3: The specimenCountBadge locator is added to manifestCreateEdit.locators.ts targeting data-test-id specimen-count-badge. The manifest-header test harness exports a shouldDisplaySpecimenCount assertion method using that locator. The manifest-header Cypress spec contains a test case whose description includes the string 'specimen count'."
+  ],
+  "examples": [
+    "When the manifest has 3 specimens, the badge shows '3'.",
+    "When the manifest has 0 specimens, the badge shows '0'.",
+    "After adding a specimen, the badge count increments without page refresh."
+  ],
+  "constraints": [
+    "Use the existing PrimeNG Badge component — do not create a custom badge.",
+    "Follow the existing computed signal pattern used in ManifestSpecimensComponent (manifest().specimens?.length).",
+    "Follow the existing test harness pattern in manifest-header.component.test-harness.ts.",
+    "Follow the existing locator pattern in manifestCreateEdit.locators.ts using selectByDataTestId().",
+    "Do not modify the ManifestStore or data-access layer."
+  ],
+  "non_functional_requirements": [
+    "The badge element must have data-test-id='specimen-count-badge'.",
+    "The Cypress test must use the test harness, not raw cy.get() selectors."
+  ],
+  "raw_input_notes": {
+    "purpose": "Evaluation framework calibration story — exercises component modification, store wiring, and test infrastructure pattern compliance",
+    "domain": "Mayo Collaborative Services — RLS Send-Outs manifest header (libs/pearls/sendouts/ui/manifest-ui/src/lib/components/manifest-header/)",
+    "owner": "agent-runner-eval",
+    "difficulty": "medium",
+    "difficulty_rationale": "Requires discovery of ManifestStore API (manifestStore.manifest().specimens), PrimeNG Badge usage, and compliance with 3 testing patterns (locators file, test harness, Cypress spec). The component change itself is small but pattern compliance across 5 files is where agents typically fail."
+  }
+}

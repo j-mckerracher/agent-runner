@@ -1,0 +1,56 @@
+change_id: TEST-MEDIUM-001
+title: Barcode Input Validation for Send-Out Manifest Specimens
+description: >
+  Lab technicians add specimens to send-out manifests by typing barcodes into
+  an input field and pressing an Add button. Currently there is no client-side
+  validation — invalid barcodes are not caught until a server-side rejection,
+  causing friction and re-entry errors. This story adds synchronous inline
+  validation that catches format errors before submission, disables the Add
+  button on invalid input, and resets the field after a successful add.
+
+acceptance_criteria:
+  AC1: |
+    When a barcode is entered that does not match the expected format (8–16
+    alphanumeric characters, no special characters), an inline validation error
+    message reading 'Invalid barcode format' is displayed beneath the barcode
+    input field and remains visible until the user corrects the input.
+  AC2: |
+    The Add Specimen button is disabled when the barcode input field is empty
+    or contains a format-invalid value, preventing submission of barcodes that
+    would fail server-side validation.
+  AC3: |
+    After a valid barcode is successfully added to the manifest specimen list,
+    the barcode input field is cleared and any validation error state is reset,
+    returning the form to a ready state for the next barcode entry.
+
+examples:
+  - Entering 'ABC12345' (8 alphanumeric chars) is valid: no error shown, Add button enabled.
+  - "Entering 'AB12-CD56' (contains hyphen) is invalid: 'Invalid barcode format' error shown beneath input, Add button disabled."
+  - "Entering 'AB1' (only 3 chars) is invalid: error shown, Add button disabled."
+  - "Leaving the field empty: Add button is disabled but no error message is shown (field not yet touched)."
+  - "After adding a valid barcode: input field clears, validation resets, technician can immediately enter the next barcode."
+
+constraints:
+  - Validation must be client-side only — do not modify any HTTP service calls, API contracts, or server-side behavior.
+  - Validation error display must follow the existing PrimeNG form error pattern used elsewhere in the sendouts or shared UI library.
+  - Do not add a new button — wire the disabled state to the existing Add Specimen button.
+  - Validation state must not persist into the NgRx Signals store or affect saved manifest data.
+  - Scope is limited to the barcode entry sub-form within the send-out manifest specimens section.
+
+non_functional_requirements:
+  - Validation must run synchronously on each keystroke (no async validators) to avoid UI flicker or delayed feedback.
+  - The inline error message element must carry an appropriate data-test-id attribute and be exposed through the Cypress test harness so it can be asserted in component tests.
+  - The barcode input and Add button must each have data-test-id attributes if they do not already — add them as part of this story.
+
+raw_input:
+  source: synthetic_story_medium.json (local test fixture)
+  purpose: Medium-complexity agent-runner test story — exercises multi-task decomposition, codebase discovery, and Angular signal patterns
+  domain: Mayo Collaborative Services — RLS Send-Outs feature (libs/pearls/sendouts/)
+  owner: agent-runner-testing
+  difficulty: medium
+  difficulty_rationale: Requires the task-generator to identify 2-3 subtasks with a clear dependency boundary (validation logic before UI wiring), requires the software-engineer-hyperagent to locate the correct component and store in an unfamiliar codebase, and requires the QA agent to verify both the happy path and the invalid-input path. Scope is bounded and reversible.
+
+metacognitive_context: |
+  This is a synthetic test fixture used for agent-runner workflow validation.
+  Not a live Azure DevOps work item. Acceptance criteria are well-defined with
+  clear examples and explicit scope boundaries. No ADO metadata provided.

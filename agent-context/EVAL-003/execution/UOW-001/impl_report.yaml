@@ -1,0 +1,32 @@
+uow_id: "UOW-001"
+status: "blocked"
+implementation_summary: "Blocked: execution/UOW-001/uow_spec.yaml not found. Implementation cannot proceed. intake/story.yaml is present but protocol requires execution/uow_spec.yaml."
+librarian_queries: []
+librarian_exploration_summaries: []
+files_modified: []
+definition_of_done_status: {}
+commands_executed: []
+risks_identified:
+  - type: "blocking_issue"
+    description: "Missing uow_spec.yaml under agent-context/EVAL-003/execution/UOW-001 prevents safe, machine-verifiable implementation."
+    mitigation: "Request canonical uow_spec.yaml to proceed or allow use of intake/story.yaml as the authoritative spec."
+    requires_escalation: false
+notes: "Per repository prevention rules, implementation is blocked until execution/uow_spec.yaml is provided. intake/story.yaml was inspected and attached as evidence."
+metacognitive_context:
+  decision_rationale: "Protocol and agent lessons require an execution-scoped uow_spec.yaml for authoritative DoD and to avoid mismatches. intake/story.yaml exists but may not be canonical for execution attempts. Blocking avoids making unreviewable changes."
+  alternatives_discarded:
+    - approach: "Proceed using intake/story.yaml as source of truth and implement changes directly."
+      reason_rejected: "Lessons and scope rules explicitly require execution/uow_spec.yaml; using intake could cause evaluation mismatch and is disallowed without explicit permission."
+  knowledge_gaps:
+    - "No execution-scoped uow_spec.yaml found at agent-context/EVAL-003/execution/UOW-001/uow_spec.yaml"
+  tool_anomalies: []
+replan_request:
+  reason: "missing_uow_spec"
+  discovery: "agent-context/EVAL-003/execution/UOW-001/uow_spec.yaml not present; intake/story.yaml exists at agent-context/EVAL-003/intake/story.yaml"
+  impact: "Cannot begin implementation; DoD and machine-checkable file locations are not authoritative without execution uow_spec."
+  recommended_action: "provide_uow_spec|allow_use_of_intake"
+  suggested_scope_change: "Create execution/UOW-001/uow_spec.yaml mirroring intake/story.yaml or confirm intake/story.yaml as canonical for this UoW."
+revision_history:
+  - attempt: 1
+    feedback_addressed: "none"
+    phase2_analysis: null

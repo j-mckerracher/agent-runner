@@ -1,0 +1,5 @@
+name: reference-librarian
+version: v1
+description: "reference-librarian agent, v1, seeded from .claude/agents/00-reference-librarian.agent.md"
+source: "agent-development/.claude/agents/00-reference-librarian.agent.md"
+claude_code_agent_file: "00-reference-librarian.agent.md"

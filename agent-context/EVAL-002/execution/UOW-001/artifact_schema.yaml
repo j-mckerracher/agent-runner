@@ -1,0 +1,35 @@
+files:
+  - path: "libs/pearls/sendouts/ui/manifest-ui/src/lib/components/manifest-header/manifest-header.component.ts"
+    exists: true
+    required_symbols:
+      - specimenSummaryText
+      - hasSpecimens
+  - path: "libs/pearls/sendouts/ui/manifest-ui/src/lib/components/manifest-header/manifest-header.component.html"
+    exists: true
+    data_test_ids:
+      - manifest-specimen-summary
+      - manifest-specimen-status
+    empty_state_class_token_found: "is-empty"
+  - path: "libs/pearls/sendouts/common/src/testing/locators/manifestCreateEdit.locators.ts"
+    exists: true
+    locator_symbols:
+      - manifestSpecimenSummary
+      - manifestSpecimenStatus
+  - path: "libs/pearls/sendouts/ui/manifest-ui/src/lib/components/manifest-header/manifest-header.component.test-harness.ts"
+    exists: true
+    harness_helpers:
+      - shouldDisplaySpecimenSummary
+      - shouldShowEmptyState
+  - path: "libs/pearls/sendouts/ui/manifest-ui/src/lib/components/manifest-header/manifest-header.component.cy.ts"
+    exists: true
+    test_titles:
+      - "should display specimen summary text"
+      - "should show empty specimen state"
+
+repo_path_used: "/Users/mckerracher.joshua/Code/mcs-products-mono-ui"
+repo_path_resolution: "expanded (tilde resolved to home)"
+verification_timestamp: "2026-04-29T15:00:00-06:00"
+notes: |
+  - All required files were found at the resolved repository path and include the exact symbols/data-test-ids/test titles referenced in the acceptance criteria.
+  - The empty-state class token 'is-empty' was present in the template and used by harness assertions.
+  - No file creation or modification performed in T1; this UoW only performs verification and artifact schema production.

@@ -1,0 +1,55 @@
+{
+  "log_type": "intake",
+  "timestamp": "2026-04-21T19:21:00Z",
+  "change_id": "TEST-MEDIUM-001",
+  "iteration": 1,
+  "agent_name": "intake",
+  "session_summary": {
+    "input_artifacts_read": [
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/test-fixtures/synthetic_story_medium.json"
+    ],
+    "output_artifacts_written": [
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/TEST-MEDIUM-001/intake/story.yaml",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/TEST-MEDIUM-001/intake/config.yaml",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/TEST-MEDIUM-001/intake/constraints.md"
+    ],
+    "artifacts_refreshed": true,
+    "prior_artifacts_deleted": true
+  },
+  "context": {
+    "project_type": "angular-nx-typescript",
+    "code_repo": "/Users/mckerracher.joshua/Code/mcs-products-mono-ui",
+    "acceptance_criteria_count": 3,
+    "planning_docs_ingested": 0,
+    "open_questions_count": 4,
+    "context_confidence_score": 0.95,
+    "execution_blockers": "none"
+  },
+  "decisions_made": [
+    {
+      "decision": "Normalize acceptance criteria from array (AC1, AC2, AC3) into keyed map",
+      "rationale": "Fixture provided array format; normalized to canonical AC-numbered format for downstream stages"
+    },
+    {
+      "decision": "Do not populate ado_provenance section",
+      "rationale": "Fixture is synthetic/local test context with no Azure DevOps metadata"
+    },
+    {
+      "decision": "Record fixture source in metacognitive_context",
+      "rationale": "Downstream stages should know this is synthetic test context, not live ADO work item"
+    },
+    {
+      "decision": "Capture 4 open questions about component location, server validation rules, test harness, and PrimeNG patterns",
+      "rationale": "Fixture is well-defined but requires codebase discovery; questions will inform task decomposition phase"
+    }
+  ],
+  "notes": "Synthetic fixture for agent-runner medium-complexity test scenario. Fixture clearly defined with 3 ACs, 5 examples, 5 constraints, and 3 NFRs. No ambiguities in story itself; open questions pertain to implementation discovery phase. Intake complete and ready for task-generator stage.",
+  "artifact_validation": {
+    "story_yaml_created": true,
+    "config_yaml_created": true,
+    "constraints_md_created": true,
+    "acceptance_criteria_numbered": true,
+    "raw_input_preserved": true,
+    "ado_metadata_populated": false
+  }
+}

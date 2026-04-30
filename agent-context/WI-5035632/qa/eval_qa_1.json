@@ -1,0 +1,237 @@
+{
+  "evaluation_id": "eval-qa-WI-5035632-attempt-1",
+  "artifact_evaluated": "qa_report.yaml",
+  "story_id": "WI-5035632",
+  "attempt_number": 1,
+  "overall_result": "fail",
+  "score": 62,
+  "programmatic_gates": {
+    "schema_valid": false,
+    "all_acs_have_validation": true,
+    "all_gates_passed": false,
+    "gate_failure_details": {
+      "script": "validate-artifact-schema.py --type qa_report",
+      "exit_code": 1,
+      "issues": [
+        {
+          "path": ".change_id",
+          "issue": "Required field 'change_id' is missing (report uses 'story_id' instead)",
+          "severity": "critical"
+        },
+        {
+          "path": ".overall_status",
+          "issue": "Required field 'overall_status' is missing (report uses 'qa_status' instead; allowed values: pass|fail|conditional_pass)",
+          "severity": "critical"
+        },
+        {
+          "path": ".ac_validations",
+          "issue": "Required field 'ac_validations' is missing (report uses 'acceptance_criteria_validation' dict keyed by AC ID; schema requires a list of dicts with ac_id/status/evidence fields)",
+          "severity": "critical"
+        },
+        {
+          "path": "release_notes",
+          "issue": "Expected str or list, got dict (report uses a structured dict with summary/user_facing_changes/breaking_changes/known_limitations sub-keys)",
+          "severity": "critical"
+        }
+      ]
+    }
+  },
+  "rubric_results": {
+    "ac_validation_completeness": {
+      "result": "pass",
+      "details": "Story has exactly one AC (AC1). Despite the schema field name mismatch, the report's 'acceptance_criteria_validation' section contains a complete, richly evidenced validation entry for AC1. All three dialog action paths (save, discard, cancel) are covered by automated tests. Route registration, template placement, and guard flow are verified by code inspection.",
+      "ac_status": {
+        "AC1": {
+          "validated": true,
+          "evidence_quality": "strong"
+        }
+      },
+      "gaps": []
+    },
+    "evidence_quality": {
+      "result": "pass",
+      "details": "Evidence is specific, traceable, and multi-layered: (1) Jest test file paths and exact pass counts with timing (14/14, 12/12); (2) Cypress command invocations and browser spec results (10/10, 519ms); (3) Code inspection references to named files and specific line numbers (app.routes.ts canDeactivate entries, orders-feat.component.html line 87, guard switchMap flow). The only gap—live browser smoke test—is explicitly acknowledged as a condition of approval, which is appropriate given agent context constraints.",
+      "weak_evidence": []
+    },
+    "regression_risk_assessment": {
+      "result": "pass",
+      "details": "Five risk areas assessed with rationale and mitigation for each: OrdersStore dirty-state signal (additive spec only), route registration (fast-path verified), template change (PrimeNG p-dialog with visible=false), SaveMiddleware addition (additive method only), and pre-existing PrimeNG TDZ failures (correctly attributed as pre-existing, not introduced). Overall low-risk classification is accurate.",
+      "risk_assessment_accurate": true,
+      "missing_risk_areas": []
+    },
+    "release_notes_quality": {
+      "result": "warn",
+      "details": "Release notes content is clear, accurate, and appropriately scoped: user-facing change describes all three dialog outcomes, no breaking changes, known limitations for saveForNavigation() skip and manual smoke-test requirement. However, the field is a structured YAML dict rather than the schema-required str or list. The content would pass if serialized to string or list form.",
+      "improvements_needed": [
+        "Convert 'release_notes' from dict to a plain string or list of strings to satisfy schema"
+      ]
+    }
+  },
+  "issues": [
+    {
+      "issue_id": "SCHEMA-001",
+      "severity": "critical",
+      "category": "ac_validation",
+      "description": "Top-level field 'change_id' is absent; report uses 'story_id' instead. Schema validator requires 'change_id' as a string.",
+      "location": "qa_report.yaml, line 1: 'story_id: \"WI-5035632\"'",
+      "actionable_fix": "Rename the top-level key from 'story_id' to 'change_id' in qa_report.yaml.",
+      "raw_evidence": {
+        "code_lines": [
+          {
+            "file": "agent-context/WI-5035632/qa/qa_report.yaml",
+            "lines": [1],
+            "content": "story_id: \"WI-5035632\""
+          }
+        ],
+        "schema_paths": [".change_id"]
+      },
+      "root_cause_hypothesis": {
+        "category": "ignored_constraints",
+        "explanation": "The QA agent used the field name 'story_id' which appears in the qa_report prompt template example, but the actual schema validator requires 'change_id'. The agent did not verify its output against the programmatic schema validator before finalizing the report.",
+        "confidence": "high"
+      }
+    },
+    {
+      "issue_id": "SCHEMA-002",
+      "severity": "critical",
+      "category": "ac_validation",
+      "description": "Top-level field 'overall_status' is absent; report uses 'qa_status' instead. Schema allows values: pass | fail | conditional_pass.",
+      "location": "qa_report.yaml, line 2: 'qa_status: pass'",
+      "actionable_fix": "Rename 'qa_status' to 'overall_status'. The value 'pass' is within the allowed enum — but the actual recommendation is 'approve_with_conditions' (line 176), suggesting 'conditional_pass' is the correct value.",
+      "raw_evidence": {
+        "code_lines": [
+          {
+            "file": "agent-context/WI-5035632/qa/qa_report.yaml",
+            "lines": [2],
+            "content": "qa_status: pass"
+          },
+          {
+            "file": "agent-context/WI-5035632/qa/qa_report.yaml",
+            "lines": [176],
+            "content": "final_recommendation: approve_with_conditions"
+          }
+        ],
+        "schema_paths": [".overall_status"]
+      },
+      "root_cause_hypothesis": {
+        "category": "ignored_constraints",
+        "explanation": "The QA agent used 'qa_status' (non-schema field) and set it to 'pass' while the final_recommendation is 'approve_with_conditions' — creating an internal inconsistency. The correct schema field is 'overall_status' and the correct value is 'conditional_pass' given the manual smoke-test condition.",
+        "confidence": "high"
+      }
+    },
+    {
+      "issue_id": "SCHEMA-003",
+      "severity": "critical",
+      "category": "ac_validation",
+      "description": "Required field 'ac_validations' (list of dicts) is absent. Report uses 'acceptance_criteria_validation' (dict keyed by AC ID). Schema expects a list of dicts with mandatory keys: ac_id (str), status (str), evidence (str or list).",
+      "location": "qa_report.yaml, lines 35-88: 'acceptance_criteria_validation: AC1: ...'",
+      "actionable_fix": "Convert 'acceptance_criteria_validation' dict to 'ac_validations' list. For AC1, produce a list entry: [{ac_id: 'AC1', status: 'pass', evidence: '<summary string or list of evidence strings>'}]. The full detail can remain in other fields.",
+      "raw_evidence": {
+        "code_lines": [
+          {
+            "file": "agent-context/WI-5035632/qa/qa_report.yaml",
+            "lines": [35, 36, 37],
+            "content": "acceptance_criteria_validation:\n  AC1:\n    status: pass"
+          }
+        ],
+        "schema_paths": [".ac_validations"]
+      },
+      "root_cause_hypothesis": {
+        "category": "ignored_constraints",
+        "explanation": "The QA agent structured acceptance criteria as a dict keyed by AC ID (a natural data-modelling choice) rather than the schema-required list-of-dicts with explicit ac_id, status, and evidence string/list fields. The agent likely followed a mental model from prior pipeline stages rather than the documented qa_report schema.",
+        "confidence": "high"
+      }
+    },
+    {
+      "issue_id": "SCHEMA-004",
+      "severity": "critical",
+      "category": "release_notes",
+      "description": "'release_notes' is a YAML dict (with sub-keys: summary, user_facing_changes, breaking_changes, known_limitations). Schema requires str or list.",
+      "location": "qa_report.yaml, lines 142-165: 'release_notes: summary: > ...'",
+      "actionable_fix": "Convert 'release_notes' to a plain string (the summary text) or to a list of strings (one per user-facing change). Move the structured sub-fields to a separate non-schema key if their detail needs to be preserved.",
+      "raw_evidence": {
+        "code_lines": [
+          {
+            "file": "agent-context/WI-5035632/qa/qa_report.yaml",
+            "lines": [142, 143, 144],
+            "content": "release_notes:\n  summary: >\n    Implements the unsaved-changes navigation guard..."
+          }
+        ],
+        "schema_paths": ["release_notes"]
+      },
+      "root_cause_hypothesis": {
+        "category": "ignored_constraints",
+        "explanation": "The QA agent authored a richly structured release_notes object for readability, but the schema only supports a string or list. The agent prioritised content richness over schema conformance without validating the output.",
+        "confidence": "high"
+      }
+    }
+  ],
+  "failure_classification": [
+    {
+      "issue_id": "SCHEMA-001",
+      "failure_type": "bug",
+      "routing": "software-engineer",
+      "remediation_plan": "QA agent must regenerate qa_report.yaml using the correct schema field name 'change_id' in place of 'story_id'.",
+      "return_to_stage": "execution"
+    },
+    {
+      "issue_id": "SCHEMA-002",
+      "failure_type": "bug",
+      "routing": "software-engineer",
+      "remediation_plan": "QA agent must rename 'qa_status' to 'overall_status' and align the value: use 'conditional_pass' (not 'pass') to match the final_recommendation of 'approve_with_conditions'.",
+      "return_to_stage": "execution"
+    },
+    {
+      "issue_id": "SCHEMA-003",
+      "failure_type": "bug",
+      "routing": "software-engineer",
+      "remediation_plan": "QA agent must restructure acceptance criteria as 'ac_validations: [{ac_id: \"AC1\", status: \"pass\", evidence: \"...\"}]'. Evidence should be a string summary or list of evidence strings.",
+      "return_to_stage": "execution"
+    },
+    {
+      "issue_id": "SCHEMA-004",
+      "failure_type": "bug",
+      "routing": "software-engineer",
+      "remediation_plan": "QA agent must convert 'release_notes' from a dict to a string or list. Suggested: use the summary string value or a list with one string per user-facing change.",
+      "return_to_stage": "execution"
+    }
+  ],
+  "actionable_fixes_summary": [
+    "SCHEMA-001: Rename 'story_id' → 'change_id' at top level of qa_report.yaml.",
+    "SCHEMA-002: Rename 'qa_status' → 'overall_status' and change value from 'pass' to 'conditional_pass' to match the approve_with_conditions final recommendation.",
+    "SCHEMA-003: Replace 'acceptance_criteria_validation' dict with 'ac_validations' list: [{ac_id: 'AC1', status: 'pass', evidence: '<string or list>'}].",
+    "SCHEMA-004: Convert 'release_notes' from a structured dict to a plain string (the summary) or a list of strings (one per user-facing change).",
+    "NOTE: All substantive QA content (evidence, risk assessment, conditions) is high-quality and correct — only schema field names and types need correction."
+  ],
+  "final_verdict": {
+    "ready_for_release": false,
+    "blocking_issues": ["SCHEMA-001", "SCHEMA-002", "SCHEMA-003", "SCHEMA-004"],
+    "conditions_for_approval": [
+      "Regenerate qa_report.yaml with schema-conformant field names and types (change_id, overall_status: conditional_pass, ac_validations list, release_notes as string/list).",
+      "Re-run schema validation gate to confirm zero issues.",
+      "Substantive QA content (AC1 evidence, risk assessment, release notes content) is already adequate — no re-testing required; only structural reformatting of the YAML."
+    ]
+  },
+  "escalation_recommendation": {
+    "required": false,
+    "reason": null
+  },
+  "notes": "The substantive quality of this QA report is high. AC1 is thoroughly validated with 36 automated tests across three frameworks (Jest unit, Cypress component) covering all dialog action paths plus fast-path, and code inspection of all integration points. Regression risk assessment is accurate and complete. The only defects are schema field naming/type mismatches — all four are mechanical reformatting fixes that do not require re-running any tests or re-inspecting the implementation. The QA agent's approach, evidence gathering, and conditional approval recommendation (manual smoke-test required before production) are all sound.",
+  "metacognitive_context": {
+    "decision_rationale": "Schema validation was run first as a hard gate per protocol. Despite 4 gate failures, the rubric evaluation proceeded on the substantive content to provide complete, actionable feedback and distinguish schema-format issues from genuine QA coverage gaps. This avoids a misleading 'fail' that might cause the QA agent to re-test when only reformatting is needed.",
+    "alternatives_discarded": [
+      {
+        "approach": "Short-circuit evaluation at schema gate failure without rubric assessment",
+        "reason_rejected": "Would not distinguish between 'QA agent did not cover the AC' (serious) and 'QA agent used wrong field names' (mechanical fix). The latter is much cheaper to remediate and the distinction matters for routing and estimated scope."
+      },
+      {
+        "approach": "Treat schema field mismatches as spec_ambiguity and escalate to human",
+        "reason_rejected": "The schema is defined in the validation script with unambiguous field names and types. There is no ambiguity — the QA agent simply did not follow the schema. Bug/software-engineer routing is correct."
+      }
+    ],
+    "knowledge_gaps": [
+      "Whether the qa_report schema was documented in a prompt or template visible to the QA agent — if not, the root cause may be 'missing_librarian_knowledge' rather than 'ignored_constraints'. Evaluated as 'ignored_constraints' because the schema validator script exists in the workflow assets and the QA agent is expected to run it."
+    ],
+    "tool_anomalies": []
+  }
+}

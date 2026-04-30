@@ -1,0 +1,5 @@
+name: qa
+version: v1
+description: "qa agent, v1, seeded from .claude/agents/05-qa.agent.md"
+source: "agent-development/.claude/agents/05-qa.agent.md"
+claude_code_agent_file: "05-qa.agent.md"

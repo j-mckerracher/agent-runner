@@ -1,0 +1,75 @@
+{
+  "evaluation_id": "eval-qa-WI-5035632-attempt-2",
+  "artifact_evaluated": "qa_report.yaml",
+  "story_id": "WI-5035632",
+  "attempt_number": 2,
+  "overall_result": "pass",
+  "score": 95,
+  "programmatic_gates": {
+    "schema_valid": true,
+    "all_acs_have_validation": true,
+    "all_gates_passed": true
+  },
+  "rubric_results": {
+    "ac_validation_completeness": {
+      "result": "pass",
+      "details": "Story contains exactly one AC (AC1). The report provides a comprehensive, multi-layer validation entry: 14/14 Jest tests for dirty-state signal behaviour, 12/12 Jest tests for all guard paths (fast-path, cancel, discard, save-success, save-error), 10/10 Cypress component tests for dialog layout and button actions, plus code inspection of app.routes.ts (canDeactivate applied to all three OrdersFeatComponent routes), orders-feat.component.html line 87 (dialog placement), and unsaved-changes.guard.ts switchMap flow. All three dialog action paths are individually covered by automated tests. Manual smoke-test is deferred as an explicit approval condition — appropriate given agent context constraints.",
+      "ac_status": {
+        "AC1": {
+          "validated": true,
+          "evidence_quality": "strong"
+        }
+      },
+      "gaps": []
+    },
+    "evidence_quality": {
+      "result": "pass",
+      "details": "Evidence is specific, traceable, and reproducible across three test frameworks. Jest invocations include exact nx commands, spec file paths, pass counts, and wall-clock timings. Cypress invocation includes browser flag and spec glob. Code inspection references named files with precise line numbers. The only acknowledged gap — live browser smoke test — is documented as a condition of approval, not suppressed. No weak evidence items remain.",
+      "weak_evidence": []
+    },
+    "regression_risk_assessment": {
+      "result": "pass",
+      "details": "Five distinct risk areas are assessed: (1) OrdersStore dirty-state signal — additive spec only, no store modification; (2) Angular Router route registration — guard fast-path returns true immediately for clean state, verified by spec; (3) OrdersFeatComponent template — PrimeNG p-dialog with visible=false, no visual regression; (4) SaveMiddleware saveForNavigation() addition — additive method, existing flows unchanged, guard spec covers save-success and save-error; (5) pre-existing PrimeNG CascadeSelect TDZ failures — correctly attributed as pre-existing, not introduced by this story. Overall low-risk classification is accurate and well-supported.",
+      "risk_assessment_accurate": true,
+      "missing_risk_areas": []
+    },
+    "release_notes_quality": {
+      "result": "pass",
+      "details": "Release notes are now a schema-compliant list of strings (corrected from attempt 1 dict structure). Content is clear and user-facing: describes the guard trigger, all three dialog action paths (Save & Continue, Discard & Continue, Cancel), unaffected clean-navigation behaviour, and two known limitations (saveForNavigation AOE/label skip, manual smoke-test requirement). Accurate and complete.",
+      "improvements_needed": []
+    }
+  },
+  "issues": [],
+  "failure_classification": [],
+  "actionable_fixes_summary": [
+    "No actionable fixes required. All four schema defects identified in eval_qa_1.json have been resolved: 'change_id' (was 'story_id'), 'overall_status: conditional_pass' (was 'qa_status: pass'), 'ac_validations' list (was 'acceptance_criteria_validation' dict), and 'release_notes' as list-of-strings (was structured dict).",
+    "Manual smoke-test in a live dev environment remains an approval condition per the QA report — this is appropriate, not a defect."
+  ],
+  "final_verdict": {
+    "ready_for_release": true,
+    "blocking_issues": [],
+    "conditions_for_approval": [
+      "Manual smoke-test required before production release per qa_report.yaml conditions: (1) dirty order + menu navigation triggers Unsaved Changes dialog; (2) Cancel keeps user on page; (3) Discard & Continue discards changes and navigates; (4) Save & Continue saves and navigates; (5) clean navigation does NOT trigger dialog."
+    ]
+  },
+  "escalation_recommendation": {
+    "required": false,
+    "reason": null
+  },
+  "notes": "All four schema defects from attempt 1 are resolved. The substantive QA content — which was already rated high-quality in attempt 1 — is unchanged and remains strong: 36 automated tests (14 Jest dirty-state, 12 Jest guard, 10 Cypress component) with full path coverage across all three dialog actions, comprehensive regression risk assessment covering all touched code areas, and well-documented known limitations. The conditional_pass / approve_with_conditions posture (manual smoke-test required before production) is the correct and appropriate recommendation given agent context constraints.",
+  "metacognitive_context": {
+    "decision_rationale": "Ran schema validation gate first as a hard programmatic check before rubric assessment. Gate passed (exit 0, zero issues) confirming all structural defects from attempt 1 were fixed. Proceeded to rubric evaluation on substantive content, which was already strong in attempt 1 and is unchanged in attempt 2. No re-running of tests was warranted — only structural reformatting was needed per attempt 1 analysis, and that is confirmed complete.",
+    "alternatives_discarded": [
+      {
+        "approach": "Re-run all test suites from qa_report to independently verify test pass counts",
+        "reason_rejected": "QA report provides specific nx commands, file paths, and pass counts that are verifiable against the codebase structure. Re-executing test suites is outside the QA evaluator scope (read-only artifact evaluation) and would duplicate the QA agent's work without adding evaluation value."
+      },
+      {
+        "approach": "Downgrade to conditional pass at evaluator level due to missing manual smoke test",
+        "reason_rejected": "The manual smoke-test gap is already captured as an approval condition in the QA report itself. The evaluator's role is to assess whether the QA report is complete and accurate, not to re-impose conditions the QA agent already correctly identified. The qa_report's conditional_pass posture is appropriate and correctly reflected in the evaluation."
+      }
+    ],
+    "knowledge_gaps": [],
+    "tool_anomalies": []
+  }
+}

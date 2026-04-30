@@ -1,0 +1,37 @@
+uow_id: "UOW-002"
+source_task_id: "T2"
+title: "Menu Navigation Interceptor"
+story_id: "WI-5035632"
+assigned_role: "software-engineer"
+batch_id: 2
+
+definition_of_done:
+  - "Menu navigation is intercepted when dirty state is true"
+  - "Menu navigation proceeds unimpeded when dirty state is false"
+  - "Intercept strategy matches the menu's underlying navigation mechanism (router vs. handler)"
+  - "Jest unit tests cover guard logic: dirty true blocks, dirty false allows"
+
+dependencies:
+  - "UOW-001"
+
+implementation_hints:
+  code_repo: "/Users/mckerracher.joshua/Code/mcs-products-mono-ui"
+  primary_library: "libs/pearls/specimen-accessioning/ui/orders-ui"
+  key_files:
+    - "libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/guards/unsaved-changes.guard.ts"
+    - "libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/guards/unsaved-changes.guard.spec.ts"
+    - "apps/pearls/rls-specimen-accessioning/src/app/app.routes.ts"
+    - "libs/pearls/specimen-accessioning/ui/orders-ui/src/index.ts"
+
+discovery_unknowns:
+  - "Menu navigation technology (routerLink vs programmatic) — resolved: routerLink via PrimeNG p-menu"
+  - "Whether existing CanDeactivate guard exists — resolved: none, created from scratch"
+
+ac_mapping:
+  - "AC1"
+
+notes: >
+  Discovery confirmed menu uses Angular Router routerLink (via PrimeNG p-menu with buildMenuItem()),
+  making CanDeactivate guard the correct intercept strategy. Guard injects OrdersStore.hasChanged()
+  from UOW-001. Routes applied to 3 OrdersFeatComponent routes in app.routes.ts. UOW-004 will
+  extend the guard to show the unsaved-changes dialog (UOW-003) instead of immediate false return.

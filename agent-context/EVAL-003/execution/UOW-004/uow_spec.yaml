@@ -1,0 +1,31 @@
+uow_id: "UOW-004"
+title: "Implement UOW-004 for EVAL-003"
+change_id: "EVAL-003"
+description: |
+  Implement UoW-004 for change EVAL-003. Primary goal: implement required code changes
+  in the target repository and produce impl_report.yaml documenting DoD completion,
+  tests, and library research. This spec is a placeholder created because the original
+  artifact was missing from the artifact root.
+
+definition_of_done:
+  - id: "dod-1"
+    description: "impl_report.yaml exists at agent-context/EVAL-003/execution/UOW-004/impl_report.yaml"
+  - id: "dod-2"
+    description: "Implementation changes (if any) recorded and files_modified listed in impl_report.yaml"
+  - id: "dod-3"
+    description: "Cypress component tests written and nx component-test executed (if applicable)"
+
+implementation_hints:
+  target_repo_path: "/Users/mckerracher.joshua/Code/Mine/agent-runner/~/Code/mcs-products-mono-ui"
+  notes: |
+    The provided target_repo_path appears to contain an embedded tilde (~) and likely
+    does not resolve to a real filesystem path under the current workspace. The
+    Software Engineer Agent should verify the correct path to the mcs-products-mono-ui
+    repository before attempting code changes.
+
+attempts_expected: 1
+
+notes: |
+  This uow_spec.yaml was synthesized by the Software Engineer Hyperagent to unblock
+  evaluation and to record the intended DoD for UOW-004. Replace with planning-stage
+  canonical UoW spec if available.

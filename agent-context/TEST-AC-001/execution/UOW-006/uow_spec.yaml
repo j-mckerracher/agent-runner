@@ -1,0 +1,66 @@
+uow_id: "UOW-006"
+story_id: "TEST-AC-001"
+source_task_id: "T6"
+title: "Document synthetic workflow usage and behavior"
+
+description: |
+  Create or update documentation to explain:
+  1. How to run the workflow with synthetic fixtures (--story-file argument)
+  2. Default behavior when no args are provided (uses bundled TEST-AC-001)
+  3. How synthetic mode differs from ADO mode (no external API calls, local execution)
+  4. How to create custom synthetic fixtures for local testing
+  5. Expected artifact structure for synthetic fixtures
+  6. Error messages and troubleshooting for common fixture issues
+
+  This supports the constraint "Keep any code changes minimal and easy to verify" by making
+  the workflow behavior clear and obvious. It documents the behavior verified by T1-T5,
+  ensuring downstream teams understand how to use the synthetic workflow.
+
+acceptance_criteria_mapped:
+  - AC1: "The workflow can start from a local synthetic story fixture (--story-file or bundled default)"
+  - AC3: "ADO-specific actions are skipped when processing synthetic fixtures"
+
+dependencies:
+  - T2
+  - T3
+
+implementation_hints:
+  - "file: README.md or CONTRIBUTING.md — update with synthetic fixture usage section"
+  - "Add --help documentation to run.py explaining --story-file argument"
+  - "Include example fixture structure and required fields (title, description, acceptance_criteria)"
+  - "Document differences between synthetic and ADO modes (local vs external, field mappings)"
+  - "Include troubleshooting section covering common fixture validation errors"
+  - "Reference actual code paths and function names for clarity"
+  - "Provide step-by-step instructions for running with custom synthetic fixture"
+
+definition_of_done:
+  - "README or CONTRIBUTING.md updated with synthetic fixture usage example"
+  - "Documentation explains --story-file argument and default behavior (references run.py --help)"
+  - "Documentation contrasts synthetic vs. ADO modes clearly (local vs. external, required fields, etc.)"
+  - "Example fixture structure provided for custom fixture creation (JSON schema reference)"
+  - "All code references in documentation verified against actual codebase (file paths, function names)"
+  - "Documentation includes error handling section (what errors mean, how to fix them)"
+  - "Fixture validation requirements documented (required fields, acceptance_criteria formats)"
+
+priority: "low"
+complexity: "simple"
+
+notes: |
+  Context from prior UoWs:
+  - UOW-001: Fixture validation verified and documented
+  - UOW-002: Workflow routing fixed and tested (run.py routing logic works correctly)
+  - UOW-003: Intake agent confirmed to create canonical artifacts
+  - UOW-004: Downstream stages verified to detect synthetic mode and skip ADO operations
+  - UOW-005: Integration test confirms full workflow works end-to-end in synthetic mode
+
+  This UoW is a documentation task that summarizes and explains the synthetic workflow
+  functionality verified in UOW-001 through UOW-005. It supports the constraint
+  "Keep any code changes minimal and easy to verify" by making the workflow usage clear.
+
+  Documentation should cover:
+  - Quick start: run.py --story-file <path> or run.py (with default)
+  - Fixture format: required fields, optional fields, validation rules
+  - Mode selection logic: how synthetic vs ADO mode is determined
+  - Artifact output: where artifacts are written, expected structure
+  - Error handling: common validation errors and how to fix them
+  - Advanced: how to create custom synthetic fixtures for local testing

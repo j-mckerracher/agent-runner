@@ -1,0 +1,15 @@
+{
+  "session": "session",
+  "created_at": "2026-04-29T14:12:44-06:00",
+  "project_type": "nx-monorepo (inferred)",
+  "acceptance_criteria_count": 4,
+  "planning_docs_ingested": 0,
+  "planning_docs_paths": [],
+  "open_questions_count": 2,
+  "open_questions": [
+    "Runner-provided code_repo path contains embedded '~' segment; unclear whether literal.",
+    "Boundary of allowable refactor into story-dispatch for EVAL-001 is unspecified."
+  ],
+  "context_confidence_score": 0.7,
+  "execution_blockers": []
+}

@@ -1,0 +1,98 @@
+{
+  "evaluation_id": "eval-impl-WI-5035632-UOW-001-attempt-1",
+  "artifact_evaluated": "impl_report.yaml",
+  "uow_id": "UOW-001",
+  "attempt_number": 1,
+  "overall_result": "pass",
+  "score": 98,
+  "rubric_results": {
+    "dod_completion": {
+      "result": "pass",
+      "details": "All 4 DoD items are met with concrete, verifiable evidence. Tests confirmed passing via live re-run (14 passed, 0 failed).",
+      "dod_item_status": {
+        "Dirty-state detection mechanism identified (reuse existing) or created (new service/flag)": {
+          "met": true,
+          "evidence": "OrdersStore.hasChanged signal identified in orders.store.ts. Existing mechanism reused — no new service or flag created. Mechanism driven by watchForOrderChanges effect comparing order vs initialOrder via validateSaveEnablement(). Confirmed by reading impl_report.yaml librarian_queries section and reviewing spec file structure."
+        },
+        "Signal set correctly when page content is modified": {
+          "met": true,
+          "evidence": "Tests 'should set hasChanged to true when the current order differs from the initial order' and 'should keep hasChanged true when multiple fields are modified' both pass (verified by live test run). setOrder() with a modified value → effect fires → validateSaveEnablement returns true → hasChanged = true."
+        },
+        "Signal cleared correctly after successful save": {
+          "met": true,
+          "evidence": "Tests 'should clear hasChanged to false after setActiveOrder (Save & Retain path)' and 'should clear hasChanged to false after setActiveOrder even when order has tests' both pass. setActiveOrder() aligns initialOrder with order, causing effect to compute hasChanged = false. Discard path tested via clearOrder() tests — also pass."
+        },
+        "Jest unit tests cover set/clear behavior for the dirty-state mechanism": {
+          "met": true,
+          "evidence": "14 Jest tests written in orders.store.dirty-state.spec.ts. Live re-run result: '14 passed, 0 failed. Test Suites: 1 passed, 1 total. Time: 3.261s'. Coverage: initialization (2), SET behavior (4), CLEAR via save/setActiveOrder (3), CLEAR via discard/clearOrder (2), guard consumer contract (3)."
+        }
+      }
+    },
+    "scope_control": {
+      "result": "pass",
+      "details": "Only one file was created: the new test spec. No production code was modified. No unrelated refactors, formatting changes, or dependency updates were made. Scope is tightly bounded to the DoD requirement.",
+      "out_of_scope_changes": []
+    },
+    "breaking_change_risk": {
+      "result": "none",
+      "details": "No production code was modified. A test-only file was created. There are no API, contract, or behavior changes of any kind.",
+      "breaking_changes": []
+    },
+    "code_quality": {
+      "result": "pass",
+      "details": "Spec file is well-structured with clear describe/it hierarchy, thorough Arrange-Act-Assert comments, AC1 citation in the file header, and appropriate test doubles. The jest.mock('primeng/cascadeselect') workaround is correctly placed before imports, consistent with the established team workaround pattern. The guard consumer contract describe block proactively documents the downstream API for UOW-002/003, which is valuable. No hacks or overly complex designs observed.",
+      "concerns": []
+    },
+    "documentation_first": {
+      "result": "pass",
+      "details": "Two librarian queries are documented with confidence_received='full'. The existing OrdersStore.hasChanged mechanism was reused rather than recreating a custom dirty-state service. The DoD explicitly required checking for existing mechanisms first, and the implementation correctly did so.",
+      "library_research_present": true,
+      "missed_library_features": []
+    }
+  },
+  "programmatic_gates": {
+    "nx_build_passed": true,
+    "nx_build_note": "N/A — specimen-accessioning-orders-ui is a library with no 'build' target (only test, lint, component-test). Gate treated as non-applicable and passing. Confirmed via project.json targets inspection.",
+    "cypress_component_tests_passed": true,
+    "cypress_tests_written": true,
+    "cypress_note": "No Angular component files were modified — only a Jest spec file was created. Cypress component test gate does not apply. Existing .cy.ts files in the library are unaffected.",
+    "test_harnesses_present": true,
+    "test_harness_note": "check-test-harnesses.py returned status='pass', components_checked=0 — correct, as no component files were modified.",
+    "schema_valid": true,
+    "schema_note": "validate-artifact-schema.py returned status='pass' with no issues.",
+    "all_dod_items_met": true,
+    "all_gates_passed": true,
+    "jest_tests_passed": true,
+    "jest_test_detail": "14 passed, 0 failed. Live re-run confirmed via: npx nx test specimen-accessioning-orders-ui --testFile=orders.store.dirty-state.spec.ts --skip-nx-cache"
+  },
+  "issues": [],
+  "actionable_fixes_summary": [],
+  "escalation_recommendation": {
+    "required": false,
+    "reason": null,
+    "blocking": false
+  },
+  "notes": "Clean implementation. The UoW scope was narrow (test-only, no production code changes) which reduces risk to zero. The guard consumer contract describe block in the spec is a proactive, value-adding documentation of the downstream API that UOW-002 and UOW-003 will consume. The 41 pre-existing PrimeNG CascadeSelect TDZ failures in the library are pre-existing tech debt, not introduced by this UoW. The jest.mock workaround applied in the new spec file is consistent with the team's established pattern. Score deducted 2 points: the library's lack of a build target means build verification relied on inference from project.json rather than a passing nx build exit 0.",
+  "metacognitive_context": {
+    "decision_rationale": "Evaluated gates sequentially: schema validation first (fast, automated), then live Jest re-run to confirm test claims in impl_report, then scope/DoD analysis against spec. The build gate was investigated rather than assumed failed — project.json confirms no build target exists for this library type, so the gate is non-applicable rather than failing.",
+    "alternatives_discarded": [
+      {
+        "approach": "Fail the evaluation due to nx build returning non-zero",
+        "reason_rejected": "The build failure is 'Cannot find configuration for task specimen-accessioning-orders-ui:build' — the library has no build target, which is by design for this project structure. This is not a regression introduced by UOW-001. Treating it as a gate failure would produce a false negative."
+      },
+      {
+        "approach": "Require Cypress component tests for the new spec file",
+        "reason_rejected": "The Cypress gate only applies when Angular components are modified. The sole deliverable of UOW-001 is a Jest spec file (.spec.ts), not a component. The gate is explicitly conditional on component modifications."
+      }
+    ],
+    "knowledge_gaps": [
+      "Whether the team has a policy for adding nx build targets to library projects — not critical for this evaluation."
+    ],
+    "tool_anomalies": [
+      {
+        "tool": "nx build",
+        "anomaly": "Returns 'Cannot find configuration for task specimen-accessioning-orders-ui:build' — library intentionally has no build target. Not a regression."
+      }
+    ]
+  }
+}

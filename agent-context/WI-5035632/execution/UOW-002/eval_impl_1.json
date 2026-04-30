@@ -1,0 +1,128 @@
+{
+  "evaluation_id": "eval-WI-5035632-UOW-002-attempt-1",
+  "artifact_evaluated": "impl_report.yaml",
+  "uow_id": "UOW-002",
+  "attempt_number": 1,
+  "overall_result": "pass",
+  "score": 97,
+  "programmatic_gates": {
+    "nx_build_passed": true,
+    "cypress_component_tests_passed": true,
+    "cypress_tests_written": true,
+    "test_harnesses_present": true,
+    "schema_valid": true,
+    "all_dod_items_met": true,
+    "all_gates_passed": true,
+    "gate_notes": [
+      "nx build: specimen-accessioning-orders-ui is a library with no build target; lint+test gates substitute (both pass). rls-specimen-accessioning lint passes.",
+      "Cypress component-test gate: N/A — UOW-002 created a guard, not Angular components. No .cy.ts tests required.",
+      "Test harness gate: N/A — check-test-harnesses.py returned components_checked=0; guard files are not Angular components.",
+      "Schema validation: validate-artifact-schema.py exited 0 with status=pass.",
+      "Jest gate: 6/6 tests pass in unsaved-changes.guard.spec.ts (nx test specimen-accessioning-orders-ui --testFile=...guard.spec.ts --skip-nx-cache).",
+      "Lint gate: nx lint specimen-accessioning-orders-ui → All files pass linting (0 errors, 0 warnings). nx lint rls-specimen-accessioning → All files pass linting (0 errors, 0 warnings)."
+    ]
+  },
+  "rubric_results": {
+    "dod_completion": {
+      "result": "pass",
+      "details": "All 4 DoD items are met with concrete code evidence and passing tests.",
+      "dod_item_status": {
+        "Menu navigation is intercepted when dirty state is true": {
+          "met": true,
+          "evidence": "unsavedChangesGuard returns !store.hasChanged() — when hasChanged() is true this yields false, causing Angular Router to cancel navigation. Guard registered via canDeactivate: [unsavedChangesGuard] on all three OrdersFeatComponent routes (order/new, order/:orderUid, ''). Test 'should return false to block menu-driven navigation' passes (app.routes.ts line 17, 31, 50; guard.ts line 26)."
+        },
+        "Menu navigation proceeds unimpeded when dirty state is false": {
+          "met": true,
+          "evidence": "Guard returns true when hasChanged() is false. Test 'should return true to allow menu-driven navigation' passes. Test 'should allow navigation when hasChanged is false by default' also passes (guard.spec.ts lines 67-76, 80-90)."
+        },
+        "Intercept strategy matches the menu's underlying navigation mechanism (router vs. handler)": {
+          "met": true,
+          "evidence": "Discovery confirmed PrimeNG <p-menu> uses routerLink for internal links via buildMenuItem() in libs/shared/core/src/lib/utils/header-utils.ts. CanDeactivateFn<unknown> is the canonical Angular hook fired by Router before routerLink navigation completes. Guard registered as canDeactivate on correct routes — the CanDeactivate hook will fire on every menu-triggered route change away from OrdersFeatComponent."
+        },
+        "Jest unit tests cover guard logic: dirty true blocks, dirty false allows": {
+          "met": true,
+          "evidence": "6 tests pass in unsaved-changes.guard.spec.ts: 'should return false to block menu-driven navigation', 'should return true to allow menu-driven navigation', 'should allow navigation when hasChanged is false by default', 'should read hasChanged() from the injected OrdersStore', 'should return false (negate) when hasChanged() returns true', 'should return true (negate) when hasChanged() returns false'. Test run output: Test Suites: 1 passed, Tests: 6 passed."
+        }
+      }
+    },
+    "scope_control": {
+      "result": "pass",
+      "details": "Four of five modified files are directly listed in uow_spec.yaml key_files. One minor out-of-scope change (pre-existing lint fix) is justified by lint gate necessity.",
+      "out_of_scope_changes": [
+        {
+          "file": "libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/state/orders.store.dirty-state.spec.ts",
+          "change": "Removed unused OrderModel import to fix pre-existing lint warning from UOW-001",
+          "severity": "minor",
+          "assessment": "Justified — lint gate enforces max-warnings:0; without this fix the specimen-accessioning-orders-ui lint target fails, blocking gate passage for UOW-002. The fix itself is a one-line import removal with no behavioral impact."
+        }
+      ]
+    },
+    "breaking_change_risk": {
+      "result": "low",
+      "details": "The canDeactivate registration changes runtime navigation behavior intentionally (AC requirement). The guard's immediate-false-on-dirty behavior is a documented interim state pending UOW-004. No API signatures, public contracts, or data structures are broken.",
+      "breaking_changes": [
+        {
+          "type": "behavior_change",
+          "location": "apps/pearls/rls-specimen-accessioning/src/app/app.routes.ts — canDeactivate on order/new, order/:orderUid, ''",
+          "impact": "Users with dirty OrdersStore state cannot navigate away from order pages until UOW-004 replaces immediate false with the dialog Observable. Navigation is permanently blocked (not dialog-mediated) in this interim state. Documented as tech_debt risk in impl_report.",
+          "requires_escalation": false
+        }
+      ]
+    },
+    "code_quality": {
+      "result": "pass",
+      "details": "Implementation is minimal, correct, and follows established Angular 14+ patterns. Work-item citation (WI-5035632 UOW-002) present in guard JSDoc. PrimeNG TDZ workaround correctly applied per pattern from UOW-001. TestBed loop re-configuration bug was identified and properly fixed by splitting parameterized test into discrete it() blocks.",
+      "concerns": [
+        {
+          "concern": "The guard's immediate synchronous false return when dirty is a usability blocker until UOW-004 is delivered. This is known and documented, not a code quality defect.",
+          "severity": "informational"
+        }
+      ]
+    },
+    "documentation_first": {
+      "result": "pass",
+      "details": "library_research section present via librarian_queries. Discovery leveraged Reference Librarian to confirm navigation mechanism before choosing strategy. Used Angular built-in CanDeactivateFn (not a custom solution). Used existing OrdersStore.hasChanged() signal from UOW-001 (not reinvented).",
+      "library_research_present": true,
+      "missed_library_features": []
+    }
+  },
+  "issues": [
+    {
+      "issue_id": "ISS-001",
+      "severity": "low",
+      "category": "scope",
+      "description": "orders.store.dirty-state.spec.ts was modified to remove a pre-existing unused import (OrderModel) from UOW-001. This file is not listed in UOW-002's key_files.",
+      "location": "libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/state/orders.store.dirty-state.spec.ts",
+      "actionable_fix": "No action required. The fix is necessary to pass the lint gate and has no behavioral impact. If strict scope isolation is desired in future UoWs, lint fixes for prior UoW files should be captured as a separate micro-task.",
+      "raw_evidence": {
+        "code_lines": [],
+        "schema_paths": ["files_modified[4].path"]
+      },
+      "root_cause_hypothesis": {
+        "category": "ignored_constraints",
+        "explanation": "The SE recognized the lint would fail without removing the import and correctly chose to fix it rather than leave a broken lint gate. This was a pragmatic decision, not an oversight. The pre-existing nature is documented in impl_report.",
+        "confidence": "high"
+      }
+    }
+  ],
+  "actionable_fixes_summary": [
+    "ISS-001 (low/scope): No action required — pre-existing lint fix is justified and documented."
+  ],
+  "escalation_recommendation": {
+    "required": false,
+    "reason": null,
+    "blocking": false
+  },
+  "notes": "UOW-002 is a clean, minimal implementation. The guard correctly intercepts Angular Router navigation, is wired to the three OrdersFeatComponent routes, is exported from the library barrel, and is covered by 6 passing Jest tests with clear semantic test names. The interim behavior (immediate false return when dirty) is by design and clearly documented as a UOW-004 dependency. Both affected Nx lint targets pass with zero warnings.",
+  "metacognitive_context": {
+    "decision_rationale": "Direct artifact + code read + parallel gate execution chosen. Memory observations provided sufficient pre-context on the implementation; full file reads confirmed code quality. Running lint and tests live (not trusting impl_report command outputs alone) provides authoritative gate evidence.",
+    "alternatives_discarded": [
+      {
+        "approach": "Trust impl_report command_executed outputs without re-running",
+        "reason_rejected": "Evaluator role requires independent gate verification; re-running confirms current state, not stale cached results."
+      }
+    ],
+    "knowledge_gaps": [],
+    "tool_anomalies": []
+  }
+}

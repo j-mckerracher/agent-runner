@@ -1,0 +1,97 @@
+change_id: PR-468504
+title: Update api to have graceful shutdown
+description: |-
+  Update all APIs to have a graceful shutdown.
+acceptance_criteria:
+  AC1: rls-orders-cnsmr-api and rls-docgen-system-api implement graceful shutdown behavior appropriate for the Cloud Run container lifecycle on .NET 8/alpine.
+  AC2: When the container receives SIGTERM, each API uses host lifetime shutdown handling to stop taking new work and allow in-flight requests or processing to complete or cancel cleanly before process exit.
+  AC3: Each API flushes Serilog sinks during shutdown and the shutdown path completes without introducing unhandled exceptions or abrupt process termination.
+  AC4: The work item or implementation notes clearly identify any additional APIs that still need the same graceful shutdown pattern, including the currently out-of-scope follow-up for rls-orders-orch-api and rls-orders-data-api.
+  AC5: No regressions introduced.
+examples:
+  - source: user_additional_context
+    summary: Propagate the cancellation token in rls-orders-cnsmr-api to the same depth as the completed pattern in rls-docgen-system-api PR 468504.
+  - source: referenced_pull_request
+    repository: rls-docgen-system-api
+    pull_request_id: 468504
+    title: Graceful Shutdown
+    pattern_details:
+      - pass CancellationToken from DocumentsController into DocumentBll
+      - propagate cancellation through validator and composer calls
+      - thread cancellation through document components and BarcodeHelper without changing QuestPDF framework signatures
+      - add cooperative cancellation checks at key composition boundaries
+constraints:
+  - Brownfield change against existing APIs; the target code repository for this workflow is /Users/mckerracher.joshua/Code/rls-orders-cnsmr-api.
+  - The source work item spans multiple APIs, but this intake is scoped to the runner-supplied target repo while preserving the linked rls-docgen-system-api PR as an implementation example.
+  - Out-of-scope follow-up remains for rls-orders-orch-api and rls-orders-data-api, as explicitly called out in AC4.
+  - The shutdown path must avoid unhandled exceptions and abrupt termination while preserving Serilog flushing behavior.
+non_functional_requirements:
+  - Appropriate for the Cloud Run container lifecycle on .NET 8/alpine.
+  - Stop taking new work on SIGTERM.
+  - Allow in-flight requests or processing to complete or cancel cleanly before process exit.
+  - Flush Serilog sinks during shutdown.
+  - No regressions introduced.
+raw_input:
+  source_type: azure_devops_work_item
+  story_link: https://dev.azure.com/mclm/Mayo%20Collaborative%20Services/_workitems/edit/5043919
+  work_item:
+    id: 5043919
+    work_item_type: Support Request
+    state: Active
+    title: Update api to have graceful shutdown
+    description_html: |-
+      <div>Update all APIs to have a graceful shutdown. </div>
+    acceptance_criteria_html: |-
+      <ul><li><code>rls-orders-cnsmr-api</code> and <code>rls-docgen-system-api</code> implement graceful shutdown behavior appropriate for the Cloud Run container lifecycle on .NET 8/alpine. </li><li>When the container receives <code>SIGTERM</code>, each API uses host lifetime shutdown handling to stop taking new work and allow in-flight requests or processing to complete or cancel cleanly before process exit. </li><li>Each API flushes Serilog sinks during shutdown and the shutdown path completes without introducing unhandled exceptions or abrupt process termination. </li><li>The work item or implementation notes clearly identify any additional APIs that still need the same graceful shutdown pattern, including the currently out-of-scope follow-up for <code>rls-orders-orch-api</code> and <code>rls-orders-data-api</code> </li><li><code>No regressions introduced.</code> </li> </ul>
+    area_path: Mayo Collaborative Services\PEaRLS\Portal - Operations\Specimen Accessioning
+    iteration_path: Mayo Collaborative Services\2026 Q2\Sprint 3
+    tags: 2026 Q2\Sprint 3
+    parent_id: 4950599
+    child_work_item_ids:
+      - 5053587
+      - 5049616
+      - 5049617
+      - 5053639
+      - 5053405
+      - 5053628
+  linked_artifacts:
+    pull_request:
+      repository: rls-docgen-system-api
+      pull_request_id: 468504
+      title: Graceful Shutdown
+      status: completed
+      source_branch: refs/heads/feature/5043919-graceful-shutdown
+      target_branch: refs/heads/develop
+      description: |-
+        Adds deep cancellation propagation for document generation so graceful shutdown can stop work earlier across the request pipeline.
+
+        Changes included:
+        - pass CancellationToken from DocumentsController into DocumentBll
+        - propagate cancellation through validator and composer calls
+        - thread cancellation through document components and BarcodeHelper without changing QuestPDF framework signatures
+        - add cooperative cancellation checks at key composition boundaries
+        - expand unit coverage for token propagation and cancellation behavior in controller, BLL, composer, component, and helper tests
+    fixed_commit:
+      commit_id: a76ca1f20220a37e67ddf6925dc48a8370029b90
+  user_additional_context:
+    - the cancellation token must be propagated to the same level as was done here https://dev.azure.com/mclm/Mayo%20Collaborative%20Services/_git/rls-docgen-system-api/pullrequest/468504?_a=overview
+ado_provenance:
+  organization: https://dev.azure.com/mclm
+  project: Mayo Collaborative Services
+  work_item_id: 5043919
+  work_item_type: Support Request
+  work_item_url: https://dev.azure.com/mclm/f25fdc8e-bb30-470e-b590-3b9d0576193f/_apis/wit/workItems/5043919
+  linked_pull_request_id: 468504
+  linked_pull_request_repository: rls-docgen-system-api
+metacognitive_context:
+  source_mode: live_ado_story
+  project_shape: brownfield
+  rationale: Preserve the live ADO story as a brownfield graceful-shutdown intake for the runner-supplied target repo and carry the referenced docgen PR as explicit cancellation-propagation guidance.
+  known_gaps:
+    - The work item does not state the exact Cloud Run shutdown timeout or termination budget that the implementation should optimize for.
+    - The work item and user note do not identify the exact rls-orders-cnsmr-api layers that correspond to the controller/BLL/validator/composer/component/helper depth used in the referenced docgen PR.
+  librarian_queries:
+    - query: Retrieve scoped lessons for intake normalization of Azure DevOps work item 5043919 into PR-468504 intake artifacts.
+      confidence_received: full
+      answer_summary: No intake-stage lessons matched; the only located lesson targeted execution-stage software-engineer work.
+  applied_lessons: []

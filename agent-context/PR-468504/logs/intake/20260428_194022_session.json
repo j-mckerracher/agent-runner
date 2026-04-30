@@ -1,0 +1,53 @@
+{
+  "log_type": "intake",
+  "timestamp": "2026-04-28T19:40:22Z",
+  "change_id": "PR-468504",
+  "iteration": 1,
+  "session_summary": {
+    "input_artifacts_read": [
+      "Azure DevOps work item 5043919 via az boards work-item show",
+      "Azure DevOps PR 468504 via az repos pr show",
+      "Reference Librarian scoped-lessons response for intake stage"
+    ],
+    "output_artifacts_written": [
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/intake/story.yaml",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/intake/config.yaml",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/intake/constraints.md",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/PR-468504/logs/intake/20260428_194022_session.json"
+    ],
+    "project_type": "brownfield",
+    "acceptance_criteria_count": 5,
+    "planning_docs_ingested": [],
+    "open_questions_count": 2,
+    "context_confidence_score": 0.89,
+    "execution_blockers": []
+  },
+  "reference_librarian_queries": [
+    {
+      "query": "Retrieve scoped lessons for intake normalization of Azure DevOps work item 5043919 into PR-468504 intake artifacts.",
+      "confidence": "full",
+      "used_in": "Confirmed that no intake-specific lessons applied before normalizing the artifacts."
+    }
+  ],
+  "decisions_made": [
+    {
+      "decision": "Normalize the story as a brownfield intake for the runner-supplied target repo only.",
+      "rationale": "The work item spans multiple APIs, but the runner explicitly scoped this intake to /Users/mckerracher.joshua/Code/rls-orders-cnsmr-api."
+    },
+    {
+      "decision": "Preserve the linked rls-docgen-system-api PR as the canonical example for cancellation-token propagation depth.",
+      "rationale": "The user explicitly directed that cancellation propagation should reach the same level as the completed work in PR 468504."
+    },
+    {
+      "decision": "Record missing shutdown-budget and layer-mapping details as open questions instead of inferring them.",
+      "rationale": "The intake contract requires unresolved ambiguities to be captured explicitly rather than improvised."
+    }
+  ],
+  "issues_encountered": [
+    {
+      "issue": "Azure DevOps CLI work-item and pull-request show commands rejected an explicit --project argument.",
+      "resolution": "Retried the commands with --org only after confirming the configured project defaults via az devops configure --list."
+    }
+  ],
+  "notes": "No planning documents were explicitly referenced by the work item, linked PR metadata, or user-supplied context."
+}

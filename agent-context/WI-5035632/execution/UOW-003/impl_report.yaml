@@ -1,0 +1,195 @@
+uow_id: "UOW-003"
+status: "complete"
+implementation_summary: >
+  Created the UnsavedChangesDialogComponent and UnsavedChangesDialogService for
+  WI-5035632 (T3 — Unsaved Changes Dialog Component). The service exposes an
+  Observable-based async API (`open(): Observable<UnsavedChangesDialogAction>`)
+  that the navigation guard (UOW-004) will call to await the user's decision.
+  The component renders a PrimeNG p-dialog with three buttons — Save & Continue,
+  Discard & Continue, and Cancel — and delegates all state management to the
+  service. Ten Cypress component tests cover all three action paths plus layout
+  and visibility. Lint passes with zero errors.
+
+librarian_queries:
+  - query: "Does an existing unsaved-changes dialog component exist in the codebase?"
+    confidence_received: "none"
+    answer_summary: >
+      No librarian response available. Codebase discovery confirmed via direct
+      search: no UnsavedChanges dialog component exists — implementation is new.
+  - query: "What PrimeNG dialog patterns are used in the orders-ui library?"
+    confidence_received: "none"
+    answer_summary: >
+      Discovered via direct codebase read. PaperworkLabelDialogComponent uses
+      p-dialog with headless template; SessionTimeoutWarningModalComponent uses
+      p-dialog with pTemplate="header" and pTemplate="footer" — the latter was
+      chosen as the model for the simpler confirmation dialog pattern.
+
+librarian_exploration_summaries:
+  - query: "Where do existing dialog components live in the specimen-accessioning library?"
+    summary_received: >
+      Found at libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/components/dialogs/.
+      Only one existing dialog: paperwork-label-dialog. No unsaved-changes dialog present.
+
+files_modified:
+  - path: "libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/components/dialogs/unsaved-changes-dialog/unsaved-changes-dialog.service.ts"
+    change_type: "created"
+    change_summary: >
+      Injectable service (providedIn: root) that manages dialog visibility via a
+      WritableSignal and exposes open() → Observable<UnsavedChangesDialogAction>
+      (single-emission via Subject + take(1)) and resolve(action) for button callbacks.
+  - path: "libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/components/dialogs/unsaved-changes-dialog/unsaved-changes-dialog.component.ts"
+    change_type: "created"
+    change_summary: >
+      Standalone Angular component (OnPush, ViewEncapsulation.None) that injects
+      UnsavedChangesDialogService, binds visible() to p-dialog [visible], and
+      delegates save/discard/cancel button clicks to service.resolve().
+  - path: "libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/components/dialogs/unsaved-changes-dialog/unsaved-changes-dialog.component.html"
+    change_type: "created"
+    change_summary: >
+      PrimeNG p-dialog template with pTemplate="header" (title) and pTemplate="footer"
+      (three buttons). All interactive elements have data-test-id attributes.
+  - path: "libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/components/dialogs/unsaved-changes-dialog/unsaved-changes-dialog.component.scss"
+    change_type: "created"
+    change_summary: >
+      Minimal SCSS — only a flexbox footer layout rule. No bespoke design-system
+      divergence; inherits PrimeNG dialog styling.
+  - path: "libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/components/dialogs/unsaved-changes-dialog/unsaved-changes-dialog.component.test-harness.ts"
+    change_type: "created"
+    change_summary: >
+      Test harness with data-test-id selectors for all three buttons (save, discard,
+      cancel), dialog panel, title, and message. Exposes shouldBeVisible(),
+      shouldNotBeVisible(), clickSave/Discard/Cancel() helpers.
+  - path: "libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/components/dialogs/unsaved-changes-dialog/unsaved-changes-dialog.component.cy.ts"
+    change_type: "created"
+    change_summary: >
+      Cypress component test with 10 test cases across layout (6), visibility (1),
+      and actions (3 — one per button). Uses cy.stub(mockDialogService, 'resolve')
+      pattern to assert each button emits the correct action.
+  - path: "libs/pearls/specimen-accessioning/ui/orders-ui/src/index.ts"
+    change_type: "modified"
+    change_summary: >
+      Added exports for UnsavedChangesDialogComponent and UnsavedChangesDialogService.
+  - path: "libs/pearls/specimen-accessioning/ui/orders-ui/src/testing.ts"
+    change_type: "modified"
+    change_summary: >
+      Added export for unsavedChangesDialogTestHarness and UnsavedChangesDialogTestHarness type.
+
+definition_of_done_status:
+  - item: "Dialog renders with Save & Continue, Discard & Continue, and Cancel actions"
+    met: true
+    evidence: >
+      Three p-button elements rendered in pTemplate='footer' with data-test-id
+      unsaved-changes-save-button, unsaved-changes-discard-button,
+      unsaved-changes-cancel-button. Cypress layout tests confirm each button is
+      visible and contains the correct label text.
+  - item: "Dialog integrates with application design system (no bespoke styling divergence)"
+    met: true
+    evidence: >
+      Component uses DialogModule and ButtonModule from primeng (same as existing
+      dialogs). Only custom SCSS is a flexbox footer layout rule — no overrides of
+      design system tokens or component internals. ViewEncapsulation.None to match
+      existing dialog pattern.
+  - item: "Dialog exposes an async API that resolves to the user's chosen action"
+    met: true
+    evidence: >
+      UnsavedChangesDialogService.open() returns Observable<UnsavedChangesDialogAction>
+      (take(1) from Subject). UOW-004 guard calls open() and subscribes; the
+      Observable emits once when resolve() is called from a button click then completes.
+  - item: "Cypress component test written covering all three action outcomes"
+    met: true
+    evidence: >
+      Three 'actions' describe-block tests: 'should resolve with "save" when Save &
+      Continue is clicked', 'should resolve with "discard" when Discard & Continue
+      is clicked', 'should resolve with "cancel" when Cancel is clicked'. All pass.
+  - item: "Test harness created/updated with data-test-id selectors for all three buttons"
+    met: true
+    evidence: >
+      unsaved-changes-dialog.component.test-harness.ts exposes saveButton(),
+      discardButton(), cancelButton(), clickSave(), clickDiscard(), clickCancel(),
+      plus dialog-level selectors. Exported from testing.ts barrel.
+  - item: "nx component-test passes with no failures"
+    met: true
+    evidence: >
+      nx component-test specimen-accessioning-orders-ui --browser=chrome
+      (scoped to unsaved-changes-dialog): 10 passing, 0 failing. All specs passed.
+
+commands_executed:
+  - command: "npx nx component-test specimen-accessioning-orders-ui --browser=chrome --spec='**/unsaved-changes-dialog/**/*.cy.ts'"
+    result: "pass"
+    output_summary: "10 passing (508ms) — UnsavedChangesDialogComponent: 10/10 tests pass across layout, visibility, and actions describe blocks."
+  - command: "npx nx lint specimen-accessioning-orders-ui --skip-nx-cache"
+    result: "pass"
+    output_summary: "All files pass linting (0 errors, 0 warnings). Used eslint-disable comment for the required empty mock function in the cy.ts file."
+
+tests_written:
+  - path: "libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/components/dialogs/unsaved-changes-dialog/unsaved-changes-dialog.component.cy.ts"
+    type: "cypress_component"
+    cases_count: 10
+    harness_path: "libs/pearls/specimen-accessioning/ui/orders-ui/src/lib/components/dialogs/unsaved-changes-dialog/unsaved-changes-dialog.component.test-harness.ts"
+
+risks_identified:
+  - type: "tech_debt"
+    description: >
+      The UnsavedChangesDialogComponent must be placed in the OrdersFeatComponent
+      template (or app shell) so it is in the DOM when any order route is active.
+      This placement is deferred to UOW-004 (integration). Until then, the dialog
+      component is implemented but not yet rendered anywhere in the app.
+    mitigation: >
+      UOW-004 specification already accounts for this — it wires guard + dialog +
+      save/discard outcomes. The component and service are ready for consumption.
+    requires_escalation: false
+
+notes: >
+  Implementation follows the session-timeout-warning-modal pattern (p-dialog with
+  pTemplate="header"/"footer", service-driven visibility signal). The service
+  pattern (Subject + take(1)) is canonical for single-use async dialog decisions.
+
+  No existing unsaved-changes dialog was found in the codebase — implementation
+  is wholly new.
+
+  Downstream API contract for UOW-004:
+    1. Inject UnsavedChangesDialogService in the unsavedChangesGuard.
+    2. Replace `return !store.hasChanged()` with:
+         return unsavedChangesDialogService.open().pipe(
+           switchMap(action => {
+             if (action === 'save') { /* trigger save, return observable of nav decision */ }
+             if (action === 'discard') { store.clearOrder(); return of(true); }
+             return of(false); // cancel
+           })
+         );
+    3. Add <lib-unsaved-changes-dialog /> to the OrdersFeatComponent template.
+    4. No changes needed to canDeactivate route registration in app.routes.ts —
+       the guard function signature stays the same; only the return type changes
+       from boolean to Observable<boolean>.
+
+metacognitive_context:
+  decision_rationale: >
+    Service + component pattern chosen over a pure output-event component because
+    the navigation guard (UOW-004) needs to receive the dialog result as an
+    Observable it can await — a direct component output would require wiring through
+    the feature component host, adding unnecessary coupling. The service decouples
+    the guard from the component's DOM placement. Subject + take(1) provides a
+    clean single-emission Observable that auto-completes, preventing memory leaks.
+  alternatives_discarded:
+    - approach: "Pure component with @output events for each action"
+      reason_rejected: >
+        The navigation guard cannot easily subscribe to component output events —
+        it would require the feature component to expose a callback or use a shared
+        subject anyway. Service pattern is cleaner.
+    - approach: "PrimeNG ConfirmDialog / ConfirmationService"
+      reason_rejected: >
+        ConfirmationService only supports 2-action confirm/reject pattern; our dialog
+        needs three distinct actions. Custom component was necessary.
+    - approach: "headless p-dialog template (matching paperwork-label-dialog)"
+      reason_rejected: >
+        Headless template requires more custom CSS to replicate the standard p-dialog
+        header/footer structure. The standard pTemplate="header"/"footer" approach
+        (matching session-timeout-warning-modal) inherits more design-system styling
+        and requires no bespoke layout overrides.
+  knowledge_gaps:
+    - "Whether UOW-004 should place <lib-unsaved-changes-dialog> in the app shell or OrdersFeatComponent — left as a UOW-004 decision."
+  tool_anomalies: []
+
+revision_history:
+  - attempt: 1
+    feedback_addressed: "N/A — first attempt"

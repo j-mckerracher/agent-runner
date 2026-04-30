@@ -1,0 +1,61 @@
+{
+  "log_type": "reference_librarian",
+  "timestamp": "2026-04-30T17:59:07.490611Z",
+  "change_id": "5035632",
+  "iteration": 1,
+  "knowledge_mode": "openviking",
+  "requesting_agent": "software-engineer-hyperagent",
+  "query": "Capture implementation findings for original query: implementation locations and patterns for unsaved-order menu navigation contract.",
+  "session_summary": {
+    "input_artifacts_read": [
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/knowledge/accumulated-knowledge.md",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/knowledge/learnings.json",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/knowledge/information-index.json"
+    ],
+    "output_artifacts_written": [
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/knowledge/accumulated-knowledge.md",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/knowledge/learnings.json",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/knowledge/information-index.json",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/5035632/logs/reference_librarian/20260430_175907_query.json"
+    ]
+  },
+  "response_summary": {
+    "confidence": "full",
+    "knowledge_sources_consulted": [
+      "viking://resources/knowledge/accumulated/unsaved-order-menu-navigation-contract/ (attempted)",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/knowledge/accumulated-knowledge.md",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/knowledge/learnings.json",
+      "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/knowledge/information-index.json"
+    ],
+    "search_queries_executed": [
+      "duplicate check for Unsaved Order Menu Navigation / UOW-001 / pending navigation / 5035632"
+    ],
+    "tiers_loaded": [],
+    "requires_exploration": false,
+    "explorer_invoked": false,
+    "waited_for_explorer_response": false
+  },
+  "knowledge_updates": [
+    "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/knowledge/accumulated-knowledge.md#Change-5035632-UOW-001-unsaved-order-menu-navigation-implementation-findings",
+    "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/knowledge/learnings.json#LRN-008",
+    "/Users/mckerracher.joshua/Code/Mine/agent-runner/agent-context/knowledge/information-index.json#change-5035632-uow-001-unsaved-order-menu-navigation"
+  ],
+  "execution_blockers": [
+    {
+      "blocker": "OpenViking add-resource failed after health check with HTTP request failure to http://127.0.0.1:1933/api/v1/resources.",
+      "resolution": "Used permitted flat-file recovery for accumulated knowledge, structured learning, and information index entries; preserved knowledge_mode as openviking per protocol."
+    }
+  ],
+  "context_confidence_score": 9,
+  "decisions_made": [
+    {
+      "decision": "Captured the report as durable implementation knowledge because it records reusable locations, middleware contract pattern, verification outcomes, and known unrelated failures.",
+      "rationale": "Future agents can retrieve the pending navigation contract without re-exploring the orders-ui implementation."
+    }
+  ],
+  "issues_encountered": [
+    "OpenViking health succeeded but add-resource returned a network error for the resources endpoint.",
+    "Local shell did not have rg executable available during bash validation; used JSON validation and tool-based ripgrep instead."
+  ],
+  "notes": "No Information Explorer invocation was needed because the user supplied the complete findings to accumulate."
+}

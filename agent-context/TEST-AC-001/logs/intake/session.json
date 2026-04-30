@@ -1,0 +1,33 @@
+{
+  "session_id": "intake-session-TEST-AC-001",
+  "agent": "IntakeAgent",
+  "stage": "intake",
+  "change_id": "TEST-AC-001",
+  "timestamp": "2026-04-21T23:06:00Z",
+  "status": "completed",
+  "project_type": "synthetic-fixture",
+  "acceptance_criteria_count": 3,
+  "acceptance_criteria": [
+    "The workflow can start from a local synthetic story fixture instead of a live Azure DevOps work item link.",
+    "The intake stage preserves the raw synthetic story input and normalizes acceptance criteria into the canonical intake artifacts consumed by downstream stages.",
+    "ADO-specific actions are skipped when the synthetic story does not provide Azure DevOps metadata."
+  ],
+  "planning_docs_ingested": 0,
+  "planning_docs_paths": [],
+  "open_questions_count": 0,
+  "context_confidence_score": 95,
+  "execution_blockers": [],
+  "artifacts_created": [
+    "intake/story.yaml",
+    "intake/config.yaml",
+    "intake/constraints.md"
+  ],
+  "normalization_details": {
+    "source_type": "synthetic_fixture",
+    "source_path": "agent-context/test-fixtures/synthetic_story.json",
+    "acceptance_criteria_normalization": "list→keyed (AC1, AC2, AC3)",
+    "ado_metadata_present": false,
+    "fixture_validation": "passed"
+  },
+  "summary": "Synthetic fixture TEST-AC-001 normalized successfully. All three intake artifacts created. Acceptance criteria converted from list to keyed format. No Azure DevOps metadata detected—ADO-specific handling disabled per fixture design. Ready for downstream stages (task-plan, assignment, implementation, QA)."
+}

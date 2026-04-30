@@ -1,0 +1,154 @@
+{
+  "story_id": "5035632",
+  "execution_schedule": [
+    {
+      "batch": 1,
+      "uows": [
+        {
+          "uow_id": "UOW-001",
+          "source_task_id": "T1",
+          "assigned_role": "software-engineer",
+          "priority_in_batch": 1,
+          "dependencies": [],
+          "rationale": "No task dependencies; establishes the dirty-state/menu interception contract and confirms the existing Order Changed modal integration seam before implementation."
+        }
+      ],
+      "parallel_execution": false,
+      "batch_rationale": "Foundational contract work must complete before any implementation can safely wire menu navigation behavior."
+    },
+    {
+      "batch": 2,
+      "uows": [
+        {
+          "uow_id": "UOW-002",
+          "source_task_id": "T2",
+          "assigned_role": "software-engineer",
+          "priority_in_batch": 1,
+          "dependencies": ["UOW-001"],
+          "rationale": "Implements the shared dirty-page menu navigation behavior after the contract is established; highest implementation risk because it touches shared menu navigation and existing pending-change middleware/dialog behavior."
+        }
+      ],
+      "parallel_execution": false,
+      "batch_rationale": "Shared behavior must be implemented before destination-specific menu items can be validated against it."
+    },
+    {
+      "batch": 3,
+      "uows": [
+        {
+          "uow_id": "UOW-003",
+          "source_task_id": "T3",
+          "assigned_role": "software-engineer",
+          "priority_in_batch": 1,
+          "dependencies": ["UOW-002"],
+          "rationale": "Adds Triage Worklist-specific coverage and behavior verification after the generic dirty-page menu interception exists."
+        }
+      ],
+      "parallel_execution": false,
+      "batch_rationale": "Kept separate from the Specimen Accessioning destination work because both are likely to touch shared menu configuration, dialog harnesses, and component-test support."
+    },
+    {
+      "batch": 4,
+      "uows": [
+        {
+          "uow_id": "UOW-004",
+          "source_task_id": "T4",
+          "assigned_role": "software-engineer",
+          "priority_in_batch": 1,
+          "dependencies": ["UOW-002"],
+          "rationale": "Adds Specimen Accessioning-specific coverage and behavior verification after the generic dirty-page menu interception exists, while preserving the existing menu destination configuration."
+        }
+      ],
+      "parallel_execution": false,
+      "batch_rationale": "Sequential ordering avoids likely overlap with UOW-003 in shared menu/header configuration and test harness selectors."
+    },
+    {
+      "batch": 5,
+      "uows": [
+        {
+          "uow_id": "UOW-005",
+          "source_task_id": "T5",
+          "assigned_role": "software-engineer",
+          "priority_in_batch": 1,
+          "dependencies": ["UOW-003", "UOW-004"],
+          "rationale": "Adds app-level regression coverage only after both named destination flows are implemented and component-covered."
+        }
+      ],
+      "parallel_execution": false,
+      "batch_rationale": "Regression coverage depends on both destination-specific flows and should validate the completed integrated behavior."
+    }
+  ],
+  "critical_path": ["UOW-001", "UOW-002", "UOW-003", "UOW-004", "UOW-005"],
+  "risk_ordered_items": [
+    {
+      "uow_id": "UOW-001",
+      "risk_reason": "Defines the contract between altered/unsaved order state, shared menu navigation, pending destination handling, and the existing Order Changed modal flow.",
+      "early_placement": true
+    },
+    {
+      "uow_id": "UOW-002",
+      "risk_reason": "Complex shared implementation that may affect normal menu navigation and existing dirty-state middleware/dialog behavior across PEaRLS apps.",
+      "early_placement": true
+    },
+    {
+      "uow_id": "UOW-003",
+      "risk_reason": "Destination-specific validation for Triage Worklist may expose gaps in shared menu URL/configuration handling.",
+      "early_placement": false
+    },
+    {
+      "uow_id": "UOW-004",
+      "risk_reason": "Destination-specific validation for Specimen Accessioning may expose gaps in app-shell menu routing behavior.",
+      "early_placement": false
+    },
+    {
+      "uow_id": "UOW-005",
+      "risk_reason": "End-to-end regression coverage depends on the completed generic and destination-specific behaviors; early execution would be blocked by missing implementation.",
+      "early_placement": false
+    }
+  ],
+  "estimated_total_batches": 5,
+  "parallelization_opportunities": {
+    "none": {
+      "uows": [],
+      "safety_rationale": "No UoWs were marked parallel-safe. T3 and T4 both depend on T2 and appear superficially parallel, but they likely modify shared menu/header configuration, dialog test harness selectors, and related component tests, making sequential execution safer with lower merge-conflict risk."
+    }
+  },
+  "librarian_queries": [
+    {
+      "query": "Scoped lessons and scheduling knowledge for assignment-agent creating execution schedule for change 5035632.",
+      "confidence_received": "full",
+      "answer_summary": "No assignment-agent lessons applied. Librarian guidance emphasized serial dependency ordering, avoiding unsafe phase-boundary parallelism, preserving scope guardrails, and recording the full-confidence query in the output artifact."
+    }
+  ],
+  "librarian_exploration_summaries": [],
+  "applied_lessons": [],
+  "metacognitive_context": {
+    "decision_rationale": "A five-batch serial schedule was chosen because T1 defines the implementation contract, T2 implements shared dirty-page menu interception, T3 and T4 validate named destination paths that likely share files and test support, and T5 depends on both destination-specific flows for app-level regression coverage. This approach favors dependency correctness and merge safety over speculative parallelism.",
+    "alternatives_discarded": [
+      {
+        "approach": "Parallelize UOW-003 and UOW-004 after UOW-002.",
+        "reason_rejected": "Although their task dependencies both point only to T2, both destination tasks likely touch the same shared menu/header configuration, dialog selectors, and component test harnesses, so parallel execution would create avoidable merge and logic-integration risk."
+      },
+      {
+        "approach": "Move UOW-005 earlier as a test-first regression task.",
+        "reason_rejected": "The workflow does not include a separate automated test-writing stage, and T5 explicitly depends on T3 and T4 being complete."
+      },
+      {
+        "approach": "Collapse destination-specific work into a single implementation UoW.",
+        "reason_rejected": "The assignment stage must schedule only the UoWs present in tasks.yaml and preserve task-to-UoW traceability."
+      }
+    ],
+    "knowledge_gaps": [
+      "The runner-supplied target repo path contains a literal '~/'; intake identified /Users/mckerracher.joshua/Code/mcs-products-mono-ui as the likely resolved repository path, but implementation agents should confirm before editing source.",
+      "The story image for the Order Changed modal was preserved as an attachment reference but was not visually transcribed; implementation should rely on the existing in-repo Order Changed modal pattern and explicit story constraint.",
+      "Exact files to be modified by each UoW are not listed in tasks.yaml, so parallel-safety assessment is conservative.",
+      "The librarian scheduling summary referenced T1 through T4, while tasks.yaml contains T1 through T5; this schedule follows the authoritative tasks.yaml scope and includes T5."
+    ],
+    "tool_anomalies": [
+      {
+        "tool": "Reference Librarian",
+        "anomaly": "Returned full-confidence guidance with a serial T1->T4 summary, but the provided tasks.yaml contains T5. The schedule includes all five tasks to preserve complete traceability."
+      }
+    ]
+  },
+  "context_confidence_score": 9
+}
