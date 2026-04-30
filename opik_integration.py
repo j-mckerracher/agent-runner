@@ -37,6 +37,22 @@ logger = logging.getLogger(__name__)
 
 RUNNER_ROOT = Path(__file__).resolve().parent
 
+_MODEL_PRICING: dict[str, tuple[float, float]] = {
+    "claude-sonnet-4-6": (3.0, 15.0),
+    "claude-haiku-4-5-20251001": (0.80, 4.0),
+}
+_DEFAULT_PRICING = (3.0, 15.0)  # Sonnet 4.6 long-session rate
+
+
+def _emit_event(type: str, **fields) -> None:
+    if not os.environ.get("AGENT_RUNNER_EVENT_LOG"):
+        return
+    try:
+        from server.events import emit
+        emit(type, **fields)
+    except Exception:
+        pass
+
 # Set project name default before any Opik decorator fires.
 os.environ.setdefault("OPIK_PROJECT_NAME", "agent-runner")
 logger.debug("opik_integration: OPIK_PROJECT_NAME=%s", os.environ.get("OPIK_PROJECT_NAME"))
@@ -184,7 +200,7 @@ def call_evaluator_sdk(
                 logger.warning("call_evaluator_sdk: candidate extraction failed for agent=%s; returning empty", agent_name)
                 text = ""
         logger.debug("call_evaluator_sdk: Gemini response length=%d for agent=%s", len(text or ""), agent_name)
-        _attach_usage_metadata(response, provider="gemini")
+        _attach_usage_metadata(response, provider="gemini", model=gemini_model)
         return text
 
     logger.info("call_evaluator_sdk: using Anthropic API model=%s agent=%s", model, agent_name)
@@ -206,11 +222,11 @@ def call_evaluator_sdk(
     )
     text = response.content[0].text
     logger.info("call_evaluator_sdk: Anthropic call succeeded agent=%s response_len=%d", agent_name, len(text or ""))
-    _attach_usage_metadata(response, provider="anthropic")
+    _attach_usage_metadata(response, provider="anthropic", model=model)
     return text
 
 
-def _attach_usage_metadata(response, *, provider: str) -> None:
+def _attach_usage_metadata(response, *, provider: str, model: str = "") -> None:
     """
     Attach token usage to the current Opik span when the response carries it.
 
@@ -251,6 +267,11 @@ def _attach_usage_metadata(response, *, provider: str) -> None:
         if usage_payload:
             logger.debug("_attach_usage_metadata: provider=%s %s", provider, usage_payload)
             opik_context.update_current_span(usage=usage_payload)
+            ti = usage_payload.get("prompt_tokens", 0)
+            to = usage_payload.get("completion_tokens", 0)
+            in_rate, out_rate = _MODEL_PRICING.get(model, _DEFAULT_PRICING)
+            cost = round((ti / 1_000_000 * in_rate) + (to / 1_000_000 * out_rate), 6)
+            _emit_event("metrics", tokens_in=ti, tokens_out=to, cost_usd=cost)
     except Exception as exc:
         # Never let observability errors propagate.
         logger.debug("_attach_usage_metadata: swallowed error: %s", exc)

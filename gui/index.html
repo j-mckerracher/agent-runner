@@ -201,7 +201,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
             <div class="alert-meta" id="run-alert-meta"></div>
           </div>
           <div class="term" id="term"><div class="empty">No run selected.</div></div>
-          <div class="metrics" id="metrics"><span>tokens in <b id="m-ti">—</b></span><span>tokens out <b id="m-to">—</b></span><span>cost <b id="m-cost">—</b></span><span>stage <b id="m-stage">—</b></span></div>
+          <div class="metrics" id="metrics"><span>tokens in <b id="m-ti">—</b></span><span>tokens out <b id="m-to">—</b></span><span>total <b id="m-total">—</b></span><span>cost <b id="m-cost">—</b></span><span>stage <b id="m-stage">—</b></span></div>
         </div>
       </div>
     </section>
@@ -255,7 +255,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
         <div>
           <div class="section-label">Opik evaluation workspace</div>
           <h2>Use Opik for the deep evaluation view.</h2>
-          <p>The local summary below is a quick health check from Agent Runner history. Open Opik for experiments, trace drill-down, online evaluation, annotation queues, and richer regression analysis.</p>
+          <p>The local summary below is a quick health check from Agent Workbench history. Open Opik for experiments, trace drill-down, online evaluation, annotation queues, and richer regression analysis.</p>
         </div>
         <div class="eval-actions">
           <a class="btn link-btn" id="eval-opik-link" href="#" target="_blank" rel="noreferrer" style="display:none">Open Opik evaluation workspace</a>
@@ -279,7 +279,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
           <div class="alert-meta" id="eval-run-alert-meta"></div>
         </div>
         <div class="term" id="eval-term"><div class="empty">Start an evaluation run to see logs here.</div></div>
-        <div class="metrics" id="eval-metrics"><span>tokens in <b id="eval-m-ti">—</b></span><span>tokens out <b id="eval-m-to">—</b></span><span>cost <b id="eval-m-cost">—</b></span><span>stage <b id="eval-m-stage">—</b></span></div>
+        <div class="metrics" id="eval-metrics"><span>tokens in <b id="eval-m-ti">—</b></span><span>tokens out <b id="eval-m-to">—</b></span><span>total <b id="eval-m-total">—</b></span><span>cost <b id="eval-m-cost">—</b></span><span>stage <b id="eval-m-stage">—</b></span></div>
       </div>
     </section>
 
@@ -384,7 +384,7 @@ function runSurface(surface="runs"){
       opikLink:"#eval-run-opik-link",
       opikHint:"#eval-opik-hint",
       cancel:"#eval-cancel-btn",
-      metrics:["eval-m-ti","eval-m-to","eval-m-cost","eval-m-stage"],
+      metrics:["eval-m-ti","eval-m-to","eval-m-cost","eval-m-stage","eval-m-total"],
       stage:"#eval-m-stage",
     };
   }
@@ -398,7 +398,7 @@ function runSurface(surface="runs"){
     opikLink:"#opik-link",
     opikHint:"#opik-hint",
     cancel:"#cancel-btn",
-    metrics:["m-ti","m-to","m-cost","m-stage"],
+    metrics:["m-ti","m-to","m-cost","m-stage","m-total"],
     stage:"#m-stage",
   };
 }
@@ -718,6 +718,7 @@ function describeEvent(ev, surface="runs"){
     if(ev.tokens_in!=null) $("#"+ui.metrics[0]).textContent = ev.tokens_in;
     if(ev.tokens_out!=null) $("#"+ui.metrics[1]).textContent = ev.tokens_out;
     if(ev.cost_usd!=null) $("#"+ui.metrics[2]).textContent = "$"+Number(ev.cost_usd).toFixed(4);
+    if(ev.tokens_in!=null||ev.tokens_out!=null) $("#"+ui.metrics[4]).textContent = (ev.tokens_in||0)+(ev.tokens_out||0);
     return null;
   }
   return {cls, tag, msg};
@@ -825,6 +826,7 @@ async function selectJob(id, surface="runs"){
     $("#"+ui.metrics[1]).textContent = job.tokens_out||0;
     $("#"+ui.metrics[2]).textContent = "$"+Number(job.cost_usd||0).toFixed(4);
     $("#"+ui.metrics[3]).textContent = job.current_stage || "—";
+    $("#"+ui.metrics[4]).textContent = (job.tokens_in||0)+(job.tokens_out||0);
     // Replay past events then attach stream
     const events = await api(`/runs/${id}/events`);
     updateRunFeedback(job, events, surface);
