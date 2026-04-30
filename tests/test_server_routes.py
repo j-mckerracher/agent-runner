@@ -61,6 +61,42 @@ class ServerRoutesTests(unittest.TestCase):
         r = self.client.put("/settings", json={"api": {"port": 0}})
         self.assertEqual(r.status_code, 422)
 
+    def test_medium__settings_returns_agent_model_defaults(self):
+        s = self.client.get("/settings").json()
+        self.assertIn("agent_model_defaults", s)
+        self.assertIsInstance(s["agent_model_defaults"], dict)
+
+    def test_medium__settings_put_sets_agent_model_defaults(self):
+        defaults = {
+            "intake": {"claude": "claude-sonnet-4-6"},
+            "task-generator": {"copilot": "gpt-5.5"},
+        }
+        r = self.client.put("/settings", json={"agent_model_defaults": defaults})
+        self.assertEqual(r.status_code, 200)
+        cfg = self.client.get("/settings").json()
+        self.assertEqual(cfg["agent_model_defaults"]["intake"]["claude"], "claude-sonnet-4-6")
+        self.assertEqual(cfg["agent_model_defaults"]["task-generator"]["copilot"], "gpt-5.5")
+
+    def test_medium__settings_put_invalid_runner_in_defaults_rejected(self):
+        r = self.client.put("/settings", json={
+            "agent_model_defaults": {
+                "intake": {"invalid_runner": "some-model"}
+            }
+        })
+        self.assertEqual(r.status_code, 422)
+        errors = r.json().get("detail", {}).get("errors", [])
+        self.assertTrue(any("invalid_runner" in str(e) for e in errors))
+
+    def test_medium__settings_put_invalid_model_for_runner_rejected(self):
+        r = self.client.put("/settings", json={
+            "agent_model_defaults": {
+                "intake": {"claude": "invalid-model-name"}
+            }
+        })
+        self.assertEqual(r.status_code, 422)
+        errors = r.json().get("detail", {}).get("errors", [])
+        self.assertTrue(any("invalid" in str(e).lower() for e in errors))
+
     def test_easy__agents_lists_known_materializable_agents(self):
         r = self.client.get("/agents")
         self.assertEqual(r.status_code, 200)

@@ -306,6 +306,11 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
           <div class="field"><label>Opik project ID</label><input type="text" id="s-opik-project-id"></div></div>
           <div class="field"><label>Opik project name</label><input type="text" id="s-opik-project-name"></div>
           <p style="font-size:11px;color:var(--t3);margin-top:8px">Host/port changes require a server restart.</p>
+          <div style="margin-top:16px;border-top:1px solid var(--t4);padding-top:16px">
+            <label style="font-weight:500">Agent Model Defaults</label>
+            <p style="font-size:12px;color:var(--t3);margin:8px 0">Set default models per agent and runner (empty = use runner default)</p>
+            <div id="agent-defaults-container"></div>
+          </div>
         </div>
       </section>
 
@@ -433,6 +438,73 @@ async function pollHealth(){
 setInterval(pollHealth, 5000); pollHealth();
 
 // Settings (also populates model/effort dropdowns)
+const WORKFLOW_STAGE_AGENTS = [
+  "intake", "task-generator", "task-assigner", "software-engineer-hyperagent",
+  "qa-engineer", "lessons-optimizer-hyperagent",
+  "task-plan-evaluator", "assignment-evaluator", "implementation-evaluator", "qa-evaluator"
+];
+
+function buildAgentDefaultsUI(agentDefaults) {
+  const container = $("#agent-defaults-container");
+  container.innerHTML = "";
+  const runners = Object.keys(RUNNER_MODELS);
+  
+  WORKFLOW_STAGE_AGENTS.forEach(agentName => {
+    const agentDiv = document.createElement("div");
+    agentDiv.style.marginBottom = "12px";
+    agentDiv.style.padding = "8px";
+    agentDiv.style.backgroundColor = "var(--bg2)";
+    agentDiv.style.borderRadius = "4px";
+    
+    const label = document.createElement("div");
+    label.style.fontWeight = "500";
+    label.style.marginBottom = "8px";
+    label.style.fontSize = "12px";
+    label.textContent = agentName;
+    agentDiv.appendChild(label);
+    
+    runners.forEach(runner => {
+      const rowDiv = document.createElement("div");
+      rowDiv.style.display = "flex";
+      rowDiv.style.gap = "8px";
+      rowDiv.style.marginBottom = "4px";
+      rowDiv.style.alignItems = "center";
+      
+      const runnerLabel = document.createElement("label");
+      runnerLabel.style.minWidth = "60px";
+      runnerLabel.style.fontSize = "11px";
+      runnerLabel.textContent = runner;
+      runnerLabel.style.color = "var(--t3)";
+      rowDiv.appendChild(runnerLabel);
+      
+      const select = document.createElement("select");
+      select.id = `agent-model-${agentName}-${runner}`;
+      select.style.flex = "1";
+      
+      const emptyOpt = document.createElement("option");
+      emptyOpt.value = "";
+      emptyOpt.textContent = "(default)";
+      select.appendChild(emptyOpt);
+      
+      const models = RUNNER_MODELS[runner] || [];
+      models.forEach(model => {
+        const opt = document.createElement("option");
+        opt.value = model;
+        opt.textContent = model;
+        select.appendChild(opt);
+      });
+      
+      const currentDefault = agentDefaults?.[agentName]?.[runner] || "";
+      select.value = currentDefault;
+      
+      rowDiv.appendChild(select);
+      agentDiv.appendChild(rowDiv);
+    });
+    
+    container.appendChild(agentDiv);
+  });
+}
+
 async function loadSettings(){
   const cfg = await api("/settings");
   RUNNER_MODELS = cfg.runner_models || RUNNER_MODELS;
@@ -447,10 +519,26 @@ async function loadSettings(){
   $("#s-opik-workspace").value = cfg.opik?.workspace_name || "";
   $("#s-opik-project-id").value = cfg.opik?.project_id || "";
   $("#s-opik-project-name").value = cfg.opik?.project_name || "";
+  buildAgentDefaultsUI(cfg.agent_model_defaults || {});
   syncRunConfigSelects();
 }
 $("#settings-save").addEventListener("click", async ()=>{
   try{
+    const agentDefaults = {};
+    WORKFLOW_STAGE_AGENTS.forEach(agentName => {
+      agentDefaults[agentName] = {};
+      Object.keys(RUNNER_MODELS).forEach(runner => {
+        const select = $(`#agent-model-${agentName}-${runner}`);
+        const value = select?.value || "";
+        if(value) {
+          agentDefaults[agentName][runner] = value;
+        }
+      });
+      if(Object.keys(agentDefaults[agentName]).length === 0) {
+        delete agentDefaults[agentName];
+      }
+    });
+    
     await api("/settings", {method:"PUT", headers:{"content-type":"application/json"}, body:JSON.stringify({
       api:{host:$("#s-host").value, port:parseInt($("#s-port").value,10)},
       defaults:{runner:$("#s-runner").value, mode:$("#s-mode").value},
@@ -462,6 +550,7 @@ $("#settings-save").addEventListener("click", async ()=>{
         project_id:$("#s-opik-project-id").value.trim(),
         project_name:$("#s-opik-project-name").value.trim(),
       },
+      agent_model_defaults: agentDefaults,
     })});
     toast("Settings saved");
   }catch(e){ toast(e.message, true); }

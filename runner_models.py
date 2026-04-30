@@ -53,3 +53,46 @@ RUNNER_DEFAULT_MODELS: dict[str, str] = {
     "copilot": DEFAULT_COPILOT_MODEL,
     "gemini":  DEFAULT_GEMINI_MODEL,
 }
+
+
+def resolve_agent_model(
+    agent_name: str,
+    runner: str,
+    explicit_model: str | None = None,
+    config: dict | None = None,
+) -> str:
+    """
+    Resolve the model for a given agent and runner.
+
+    Precedence:
+    1. Explicit model provided by caller
+    2. Per-agent + per-runner configured default (from config.agent_model_defaults)
+    3. Built-in runner default from RUNNER_DEFAULT_MODELS
+
+    Args:
+        agent_name:     Name of the agent (e.g., "task-plan-evaluator", "intake").
+        runner:         Runner to use ("claude", "copilot", "gemini").
+        explicit_model: If provided, this takes highest precedence.
+        config:         Optional config dict with agent_model_defaults structure.
+                        Expected format: {"agent_model_defaults": {agent_name: {runner: model}}}
+
+    Returns:
+        The resolved model string to use.
+
+    Raises:
+        ValueError if runner is unknown.
+    """
+    if explicit_model is not None:
+        return explicit_model
+
+    if config is not None:
+        agent_defaults = config.get("agent_model_defaults", {})
+        if agent_name in agent_defaults:
+            runner_defaults = agent_defaults[agent_name]
+            if runner in runner_defaults:
+                return runner_defaults[runner]
+
+    if runner not in RUNNER_DEFAULT_MODELS:
+        raise ValueError(f"Unknown runner: {runner!r}. Must be one of {list(RUNNER_DEFAULT_MODELS.keys())}")
+
+    return RUNNER_DEFAULT_MODELS[runner]
