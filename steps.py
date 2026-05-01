@@ -7,7 +7,7 @@ from pathlib import Path
 from opik import opik_context
 from run_cmds import run_claude_cmd, run_agent_cmd
 from opik_integration import call_evaluator_sdk
-from runner_models import DEFAULT_GEMINI_MODEL, resolve_agent_model
+from runner_models import DEFAULT_GEMINI_MODEL
 from ui_trace_bridge import track_with_ui
 
 logger = logging.getLogger(__name__)
@@ -232,13 +232,12 @@ def step_intake(
     )
     logger.debug("step_intake: prompt length=%d for change_id=%s", len(prompt), change_id)
     extra_skills = None
-    resolved_model = resolve_agent_model("intake", runner, runner_model)
     result = run_agent_cmd(
         runner=runner,
         prompt=prompt,
         agent="intake",
         extra_skills=extra_skills,
-        **_agent_runner_kwargs(resolved_model, copilot_effort),
+        **_agent_runner_kwargs(runner_model, copilot_effort),
     )
     logger.info("step_intake: completed change_id=%s output_len=%d", change_id, len(result or ""))
     return result
@@ -262,12 +261,11 @@ def step_task_gen_producer(
     change_id = _extract_change_id(context)
     logger.info("step_task_gen_producer: change_id=%s runner=%s", change_id, runner)
     _annotate_trace(stage="task-gen-producer", runner=runner, change_id=change_id)
-    resolved_model = resolve_agent_model("task-generator", runner, runner_model)
     result = run_agent_cmd(
         runner=runner,
         prompt=context,
         agent="task-generator",
-        **_agent_runner_kwargs(resolved_model, copilot_effort),
+        **_agent_runner_kwargs(runner_model, copilot_effort),
     )
     logger.info("step_task_gen_producer: completed change_id=%s output_len=%d", change_id, len(result or ""))
     return result
@@ -291,8 +289,7 @@ def step_task_gen_evaluator(
     change_id = _extract_change_id(context)
     logger.info("step_task_gen_evaluator: change_id=%s runner=%s", change_id, runner)
     _annotate_trace(stage="task-gen-evaluator", runner=runner, change_id=change_id)
-    resolved_model = resolve_agent_model("task-plan-evaluator", runner, runner_model)
-    result = call_evaluator_sdk(context, "task-plan-evaluator", model=resolved_model, runner=runner, copilot_effort=copilot_effort)
+    result = call_evaluator_sdk(context, "task-plan-evaluator", runner=runner, runner_model=runner_model)
     passed = "PASS" in result
     logger.info("step_task_gen_evaluator: change_id=%s passed=%s", change_id, passed)
     try:
@@ -323,12 +320,11 @@ def step_task_assigner(
     change_id = _extract_change_id(context)
     logger.info("step_task_assigner: change_id=%s runner=%s", change_id, runner)
     _annotate_trace(stage="task-assigner", runner=runner, change_id=change_id)
-    resolved_model = resolve_agent_model("task-assigner", runner, runner_model)
     result = run_agent_cmd(
         runner=runner,
         prompt=context,
         agent="task-assigner",
-        **_agent_runner_kwargs(resolved_model, copilot_effort),
+        **_agent_runner_kwargs(runner_model, copilot_effort),
     )
     logger.info("step_task_assigner: completed change_id=%s output_len=%d", change_id, len(result or ""))
     return result
@@ -352,8 +348,7 @@ def step_assignment_evaluator(
     change_id = _extract_change_id(context)
     logger.info("step_assignment_evaluator: change_id=%s runner=%s", change_id, runner)
     _annotate_trace(stage="assignment-evaluator", runner=runner, change_id=change_id)
-    resolved_model = resolve_agent_model("assignment-evaluator", runner, runner_model)
-    result = call_evaluator_sdk(context, "assignment-evaluator", model=resolved_model, runner=runner, copilot_effort=copilot_effort)
+    result = call_evaluator_sdk(context, "assignment-evaluator", runner=runner, runner_model=runner_model)
     passed = "PASS" in result
     logger.info("step_assignment_evaluator: change_id=%s passed=%s", change_id, passed)
     try:
@@ -407,12 +402,11 @@ def step_software_engineer(
             f"\n\n## Evaluator Issues to Fix:\n{evaluator_feedback}\n\n"
             f"Address every issue listed above. Do not ask questions — act immediately."
         )
-    resolved_model = resolve_agent_model("software-engineer-hyperagent", runner, runner_model)
     result = run_agent_cmd(
         runner=runner,
         prompt=prompt,
         agent="software-engineer-hyperagent",
-        **_agent_runner_kwargs(resolved_model, copilot_effort),
+        **_agent_runner_kwargs(runner_model, copilot_effort),
     )
     logger.info("step_software_engineer: uow_id=%s completed output_len=%d", uow_id, len(result or ""))
     return result
@@ -449,8 +443,7 @@ def step_software_engineer_evaluator(
         f"Read the UoW spec from {AGENT_CONTEXT_ROOT}/{change_id}/execution/{uow_id}/uow_spec.yaml.\n"
         f"Target repo: {repo}"
     )
-    resolved_model = resolve_agent_model("implementation-evaluator", runner, runner_model)
-    result = call_evaluator_sdk(context, "implementation-evaluator", model=resolved_model, runner=runner, copilot_effort=copilot_effort)
+    result = call_evaluator_sdk(context, "implementation-evaluator", runner=runner, runner_model=runner_model)
     passed = "PASS" in result
     logger.info("step_software_engineer_evaluator: uow_id=%s passed=%s", uow_id, passed)
     try:
@@ -481,12 +474,11 @@ def step_qa_engineer(
     change_id = _extract_change_id(context)
     logger.info("step_qa_engineer: change_id=%s runner=%s", change_id, runner)
     _annotate_trace(stage="qa", runner=runner, change_id=change_id)
-    resolved_model = resolve_agent_model("qa-engineer", runner, runner_model)
     result = run_agent_cmd(
         runner=runner,
         prompt=context,
         agent="qa-engineer",
-        **_agent_runner_kwargs(resolved_model, copilot_effort),
+        **_agent_runner_kwargs(runner_model, copilot_effort),
     )
     logger.info("step_qa_engineer: completed change_id=%s output_len=%d", change_id, len(result or ""))
     return result
@@ -510,8 +502,7 @@ def step_qa_evaluator(
     change_id = _extract_change_id(context)
     logger.info("step_qa_evaluator: change_id=%s runner=%s", change_id, runner)
     _annotate_trace(stage="qa-evaluator", runner=runner, change_id=change_id)
-    resolved_model = resolve_agent_model("qa-evaluator", runner, runner_model)
-    result = call_evaluator_sdk(context, "qa-evaluator", model=resolved_model, runner=runner, copilot_effort=copilot_effort)
+    result = call_evaluator_sdk(context, "qa-evaluator", runner=runner, runner_model=runner_model)
     passed = "PASS" in result
     logger.info("step_qa_evaluator: change_id=%s passed=%s", change_id, passed)
     try:
@@ -550,12 +541,11 @@ def step_lessons_optimizer(
         f"Write your report to {AGENT_CONTEXT_ROOT}/{change_id}/summary/lessons_optimizer_report.yaml.\n"
         f"Act immediately. Do not ask questions."
     )
-    resolved_model = resolve_agent_model("lessons-optimizer-hyperagent", runner, runner_model)
     result = run_agent_cmd(
         runner=runner,
         prompt=prompt,
         agent="lessons-optimizer-hyperagent",
-        **_agent_runner_kwargs(resolved_model, copilot_effort),
+        **_agent_runner_kwargs(runner_model, copilot_effort),
     )
     logger.info("step_lessons_optimizer: completed change_id=%s output_len=%d", change_id, len(result or ""))
     return result

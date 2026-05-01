@@ -1,9 +1,0 @@
-{
-  "ac_count": 5,
-  "tasks_generated": 6,
-  "reference_librarian_queries": 1,
-  "librarian_exploration_summaries_received": 1,
-  "decisions_made": ["T1 precondition enforcement","compatibility aliases included"],
-  "execution_blockers": [],
-  "context_confidence_score": 8
-}

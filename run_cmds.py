@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import re
@@ -229,29 +228,15 @@ def run_claude_cmd(
     print(f"Starting Claude Code via {agent}...")
     print(f"Prompt: {prompt}")
     print(f"Model: {model}")
-    cmd = ["claude", "-p", prompt, "--agent", agent, "--model", model, "--output-format", "json"]
+    cmd = ["claude", "-p", prompt, "--agent", agent, "--model", model]
     if skip_permissions:
         cmd.append("--dangerously-skip-permissions")
     if extra_flags:
         cmd.extend(extra_flags)
     result = _run_cli(cmd, runner="claude", agent=agent)
-    stdout_raw = result.stdout or ""
-    text_out = stdout_raw
-    try:
-        parsed = json.loads(stdout_raw)
-        ti = int(parsed.get("total_input_tokens") or 0)
-        to = int(parsed.get("total_output_tokens") or 0)
-        cu = float(parsed.get("cost_usd") or 0.0)
-        if cu == 0.0 and (ti > 0 or to > 0):
-            cu = round((ti / 1_000_000 * 3.0) + (to / 1_000_000 * 15.0), 6)
-        if ti > 0 or to > 0:
-            _emit_event("metrics", tokens_in=ti, tokens_out=to, cost_usd=cu)
-        text_out = str(parsed.get("result") or stdout_raw)
-    except (json.JSONDecodeError, ValueError, TypeError):
-        logger.warning("run_claude_cmd: could not parse JSON output for agent=%s", agent)
-    if text_out:
-        logger.debug("run_claude_cmd: stdout length=%d for agent=%s", len(text_out), agent)
-        print(text_out)
+    if result.stdout:
+        logger.debug("run_claude_cmd: stdout length=%d for agent=%s", len(result.stdout), agent)
+        print(result.stdout)
     if result.stderr:
         logger.debug("run_claude_cmd: stderr length=%d for agent=%s", len(result.stderr), agent)
         print(result.stderr)
@@ -259,7 +244,7 @@ def run_claude_cmd(
         logger.error("run_claude_cmd: agent=%s exited %d", agent, result.returncode)
         raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
     logger.info("run_claude_cmd: agent=%s completed OK", agent)
-    return text_out
+    return result.stdout
 
 
 def run_claude(

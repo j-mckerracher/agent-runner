@@ -9,7 +9,6 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .paths import RUNNER_ROOT, config_path, data_dir
-from runner_models import RUNNER_DEFAULT_MODELS, RUNNER_MODEL_CHOICES
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +31,6 @@ DEFAULTS: dict[str, Any] = {
         "copilot_effort": None,
         "skip_materialize": False,
     },
-    "agent_model_defaults": {},
     "paths": {
         "runner_root": str(RUNNER_ROOT),
         "agent_context": str(RUNNER_ROOT / "agent-context"),
@@ -107,29 +105,6 @@ def validate_config(cfg: dict) -> list[str]:
         parsed = urlparse(dashboard_url)
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
             errors.append("opik.dashboard_url must be an absolute http(s) URL")
-
-    agent_defaults = cfg.get("agent_model_defaults") or {}
-    if not isinstance(agent_defaults, dict):
-        errors.append("agent_model_defaults must be a dict")
-    else:
-        valid_runners = set(RUNNER_DEFAULT_MODELS.keys())
-        for agent_name, runner_models in agent_defaults.items():
-            if not isinstance(agent_name, str):
-                errors.append(f"agent_model_defaults key must be a string, got {type(agent_name)}")
-                continue
-            if not isinstance(runner_models, dict):
-                errors.append(f"agent_model_defaults[{agent_name}] must be a dict")
-                continue
-            for runner, model in runner_models.items():
-                if runner not in valid_runners:
-                    errors.append(f"agent_model_defaults[{agent_name}][{runner}] has invalid runner {runner}; must be one of {valid_runners}")
-                elif not isinstance(model, str):
-                    errors.append(f"agent_model_defaults[{agent_name}][{runner}] model must be a string")
-                elif runner in RUNNER_MODEL_CHOICES:
-                    valid_models = RUNNER_MODEL_CHOICES[runner]
-                    if model not in valid_models:
-                        errors.append(f"agent_model_defaults[{agent_name}][{runner}]={model} is not valid for runner={runner}")
-
     if errors:
         logger.warning("validate_config: %d error(s): %s", len(errors), errors)
     else:

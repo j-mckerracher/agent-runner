@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "last_updated": "2026-04-18T00:35:54Z",
+  "last_updated": "2026-04-30T21:48:00Z",
   "sessions": [
     {
       "session_id": "WI-5035632-lessons-optimizer-001",
@@ -25,6 +25,20 @@
       "improved": true,
       "rules_injected": 1,
       "recommendations_added": 0
+    },
+    {
+      "session_id": "5035632-lessons-optimizer-001",
+      "change_id": "5035632",
+      "date": "2026-04-30",
+      "lessons_reviewed": 2,
+      "signatures_extracted": 4,
+      "baseline_repeat_rate": 0.25,
+      "post_iteration_repeat_rate": 0.0,
+      "improved": true,
+      "rules_injected": 2,
+      "recommendations_added": 2,
+      "total_extra_evaluator_iterations_this_session": 4,
+      "cross_agent_failure_chains": 1
     }
   ],
   "signatures": [
@@ -81,18 +95,116 @@
       ],
       "occurrence_count": 1,
       "rule_injected": true,
-      "rule_injection_target": "03-software-engineer-hyperagent.agent.md",
+      "rule_injection_target": "04-software-engineer-hyperagent.agent.md",
       "rule_injection_date": "2026-04-21",
-      "rule_id": "RULE-TEST-001"
+      "rule_id": "RULE-TEST-001",
+      "note": "Prior injection target listed as 03-software-engineer-hyperagent.agent.md (old naming). Correct target is 04-software-engineer-hyperagent.agent.md. RULE-SE-001 supersedes and extends this rule."
+    },
+    {
+      "id": "SIG-5035632-001",
+      "agent": "software-engineer-hyperagent",
+      "mistake_pattern": "impl_report_missing_verbatim_code_evidence",
+      "trigger_context": "impl_report_generation_for_uows_with_source_code_dod_items",
+      "family": "impl_report_evidence_quality",
+      "cross_session_repeat": true,
+      "related_signature": "SIG-TEST-001",
+      "occurrences": [
+        {
+          "session_id": "5035632-lessons-optimizer-001",
+          "change_id": "5035632",
+          "uow_id": "UOW-001",
+          "evidence": "UOW-001 attempt 2: evaluator could not read filesystem, asked for manual artifact pasting. impl_report used 'confirmed by reading X' without embedding code. Attempt 3: evidence cited prior-session runs without suite counts or exit codes.",
+          "iteration_cost": 2
+        },
+        {
+          "session_id": "5035632-lessons-optimizer-001",
+          "change_id": "5035632",
+          "uow_id": "UOW-003",
+          "evidence": "UOW-003 attempt 1: impl_report lacked wall-clock timestamps and verbatim gate output → BLOCKED_AWAITING_ARTIFACTS. 2 wasted evaluator iterations (attempts 2+3 also blocked by separate path issue but evidence quality was the first blocker).",
+          "iteration_cost": 2
+        }
+      ],
+      "occurrence_count": 2,
+      "rule_injected": true,
+      "rule_injection_target": "04-software-engineer-hyperagent.agent.md",
+      "rule_injection_date": "2026-04-30",
+      "rule_id": "RULE-SE-001"
+    },
+    {
+      "id": "SIG-5035632-002",
+      "agent": "task-assigner",
+      "mistake_pattern": "evaluator_invocation_malformed_tilde_path",
+      "trigger_context": "evaluation_invocation_with_literal_tilde_in_absolute_path",
+      "cross_session_repeat": false,
+      "occurrences": [
+        {
+          "session_id": "5035632-lessons-optimizer-001",
+          "change_id": "5035632",
+          "uow_id": "UOW-003",
+          "evidence": "Evaluator invocation passed 'agent-runner/~/Code/mcs-products-mono-ui' as repo path. Both UOW-003 attempts 2 and 3 halted immediately with ARTIFACT ACCESS FAILURE / BLOCKED_AWAITING_ARTIFACTS. No rubric items assessed. 2 completely wasted evaluator iterations.",
+          "iteration_cost": 2
+        }
+      ],
+      "occurrence_count": 1,
+      "rule_injected": false,
+      "rule_injection_target": null,
+      "recommendation_id": "RULE-5035632-REC-001",
+      "note": "Target agent (03-task-assigner.agent.md) lacks EVOLVING PROBLEM-SOLVING block. Added to rule-recommendations.md as high-priority recommendation. Root cause is systemic (invocation config), not software-engineer code quality."
+    },
+    {
+      "id": "SIG-5035632-003",
+      "agent": "software-engineer-hyperagent",
+      "mistake_pattern": "cypress_component_missing_noop_animations_and_mock_config_store",
+      "trigger_context": "cypress_component_test_for_appcomponent_with_primeNG_coreheader_navigation",
+      "cross_session_repeat": false,
+      "occurrences": [
+        {
+          "session_id": "5035632-lessons-optimizer-001",
+          "change_id": "5035632",
+          "uow_id": "UOW-003",
+          "evidence": "NG05105 (synthetic animation listener) fired on PrimeNG overlay menu click — fixed by provideNoopAnimations(). NG04002 (no routes match) fired because new ConfigStore() returns '' for getSpecimenAccessioningUrl() → relative routerLink → Angular Router invoked — fixed by createMockConfigStore('dev') which returns absolute URL.",
+          "iteration_cost": 1
+        }
+      ],
+      "occurrence_count": 1,
+      "rule_injected": true,
+      "rule_injection_target": "04-software-engineer-hyperagent.agent.md",
+      "rule_injection_date": "2026-04-30",
+      "rule_id": "RULE-SE-002"
+    },
+    {
+      "id": "SIG-5035632-004",
+      "agent": "software-engineer-hyperagent",
+      "mistake_pattern": "nx_project_name_assumed_not_discovered",
+      "trigger_context": "nx_cli_command_on_libs_project_without_reading_project_json",
+      "cross_session_repeat": false,
+      "occurrences": [
+        {
+          "session_id": "5035632-lessons-optimizer-001",
+          "change_id": "5035632",
+          "uow_id": "UOW-002",
+          "evidence": "npx nx test shared-core failed — project not found. Actual name is 'core' per libs/shared/core/project.json. Resolved within attempt 1. Minor impact.",
+          "iteration_cost": 0
+        }
+      ],
+      "occurrence_count": 1,
+      "rule_injected": false,
+      "rule_injection_target": null,
+      "recommendation_id": "RULE-5035632-REC-002",
+      "note": "Minor/resolved in-session. Medium confidence recommendation added to rule-recommendations.md."
     }
   ],
   "aggregate_metrics": {
-    "total_sessions": 2,
-    "total_signatures": 3,
-    "total_unique_signatures": 3,
-    "repeated_signatures": 0,
-    "cross_session_repeat_rate": 0.0,
-    "total_extra_iterations_caused": 1,
-    "rules_injected_to_date": 2
+    "total_sessions": 3,
+    "total_signatures": 7,
+    "total_unique_signatures": 7,
+    "repeated_signatures": 1,
+    "cross_session_repeat_rate": 0.143,
+    "total_extra_iterations_caused": 8,
+    "rules_injected_to_date": 4,
+    "session_5035632_baseline_repeat_rate": 0.25,
+    "session_5035632_post_iteration_repeat_rate": 0.0,
+    "dominant_failure_class": "evaluator_blocked_insufficient_impl_report_evidence",
+    "systemic_issue_flagged": "evaluator_invocation_path_not_validated_before_dispatch"
   }
 }
