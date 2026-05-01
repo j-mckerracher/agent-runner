@@ -1,6 +1,7 @@
 """Smoke tests for the local FastAPI server."""
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sqlite3
@@ -61,6 +62,42 @@ class ServerRoutesTests(unittest.TestCase):
         r = self.client.put("/settings", json={"api": {"port": 0}})
         self.assertEqual(r.status_code, 422)
 
+    def test_medium__settings_returns_agent_model_defaults(self):
+        s = self.client.get("/settings").json()
+        self.assertIn("agent_model_defaults", s)
+        self.assertIsInstance(s["agent_model_defaults"], dict)
+
+    def test_medium__settings_put_sets_agent_model_defaults(self):
+        defaults = {
+            "intake": {"claude": "claude-sonnet-4-6"},
+            "task-generator": {"copilot": "gpt-5.5"},
+        }
+        r = self.client.put("/settings", json={"agent_model_defaults": defaults})
+        self.assertEqual(r.status_code, 200)
+        cfg = self.client.get("/settings").json()
+        self.assertEqual(cfg["agent_model_defaults"]["intake"]["claude"], "claude-sonnet-4-6")
+        self.assertEqual(cfg["agent_model_defaults"]["task-generator"]["copilot"], "gpt-5.5")
+
+    def test_medium__settings_put_invalid_runner_in_defaults_rejected(self):
+        r = self.client.put("/settings", json={
+            "agent_model_defaults": {
+                "intake": {"invalid_runner": "some-model"}
+            }
+        })
+        self.assertEqual(r.status_code, 422)
+        errors = r.json().get("detail", {}).get("errors", [])
+        self.assertTrue(any("invalid_runner" in str(e) for e in errors))
+
+    def test_medium__settings_put_invalid_model_for_runner_rejected(self):
+        r = self.client.put("/settings", json={
+            "agent_model_defaults": {
+                "intake": {"claude": "invalid-model-name"}
+            }
+        })
+        self.assertEqual(r.status_code, 422)
+        errors = r.json().get("detail", {}).get("errors", [])
+        self.assertTrue(any("invalid" in str(e).lower() for e in errors))
+
     def test_easy__agents_lists_known_materializable_agents(self):
         r = self.client.get("/agents")
         self.assertEqual(r.status_code, 200)
@@ -84,6 +121,79 @@ class ServerRoutesTests(unittest.TestCase):
     def test_easy__corpus_returns_eval_stories(self):
         r = self.client.get("/corpus").json()
         self.assertGreaterEqual(r["count"], 0)
+
+    def test_medium__corpus_exposes_generated_story_suite_metadata_and_skips_invalid(self):
+        from server import corpus
+
+        original_root = corpus.EVAL_STORIES_ROOT
+        case_root = Path(self.tmpdir) / "generated-corpus"
+        stories_root = case_root / "stories"
+        suites_root = case_root / "suites" / "medium"
+        stories_root.mkdir(parents=True, exist_ok=True)
+        suites_root.mkdir(parents=True, exist_ok=True)
+        story_path = stories_root / "raw_story_001_medium.json"
+        suite_yaml = "suites/medium/raw_story_001_medium.yaml"
+        story_path.write_text(
+            json.dumps({
+                "change_id": "raw_story_001_medium",
+                "title": "Generated medium story",
+                "description": "A generated evaluation story.",
+                "acceptance_criteria": ["Check one", "Check two"],
+                "metadata": {
+                    "eval_story_id": "raw-story-001",
+                    "suite_tier": "medium",
+                    "dataset_id": "dataset-alpha",
+                },
+                "raw_metadata": {
+                    "suite_yaml": suite_yaml,
+                    "raw_story_id": "raw-story-001",
+                    "tier": "medium",
+                    "dataset_id": "dataset-alpha",
+                },
+            }),
+            encoding="utf-8",
+        )
+        (stories_root / "invalid.json").write_text("[]", encoding="utf-8")
+        (suites_root / "suite_manifest.yaml").write_text(
+            "\n".join([
+                "suite_id: dataset-alpha-medium",
+                "suite_tier: medium",
+                "dataset_id: dataset-alpha",
+                "stories:",
+                "  - raw_story_001_medium.yaml",
+                "total_checks: 2",
+                "generated_runner: copilot",
+                "generated_model: gpt-5.5",
+                "compatibility_story_ids:",
+                "  - raw_story_001_medium",
+            ]),
+            encoding="utf-8",
+        )
+        try:
+            corpus.EVAL_STORIES_ROOT = stories_root
+            listing = self.client.get("/corpus")
+            self.assertEqual(listing.status_code, 200)
+            payload = listing.json()
+            self.assertEqual(payload["count"], 1)
+            item = payload["items"][0]
+            self.assertEqual(item["id"], "raw_story_001_medium")
+            self.assertEqual(item["suite_tier"], "medium")
+            self.assertEqual(item["dataset_id"], "dataset-alpha")
+            self.assertEqual(item["acceptance_criteria_count"], 2)
+            self.assertEqual(item["check_count"], 2)
+            self.assertEqual(item["generated_runner"], "copilot")
+            self.assertEqual(item["generated_model"], "gpt-5.5")
+            self.assertTrue(item["story_file"].endswith("raw_story_001_medium.json"))
+            self.assertTrue(item["suite_story_path"].endswith("suites/medium/raw_story_001_medium.yaml"))
+
+            detail = self.client.get("/corpus/raw_story_001_medium")
+            self.assertEqual(detail.status_code, 200)
+            detail_payload = detail.json()
+            self.assertEqual(len(detail_payload["acceptance_criteria"]), 2)
+            self.assertEqual(detail_payload["workflow"], "staged-delivery")
+            self.assertEqual(detail_payload["agent"], "code-reviewer")
+        finally:
+            corpus.EVAL_STORIES_ROOT = original_root
 
     def test_easy__evaluate_summary_returns_200(self):
         r = self.client.get("/evaluate/summary")
@@ -126,6 +236,139 @@ class ServerRoutesTests(unittest.TestCase):
         after_evaluation = self.client.get("/evaluate/summary").json()["total_runs"]
         self.assertEqual(after_evaluation, before + 1)
 
+    def test_medium__evaluate_summary_uses_persisted_weighted_score_when_present(self):
+        from server import corpus, db
+
+        original_root = corpus.EVAL_STORIES_ROOT
+        stories_root = Path(self.tmpdir) / "scored-corpus" / "stories"
+        stories_root.mkdir(parents=True, exist_ok=True)
+        (stories_root / "EVAL-SCORED.json").write_text(
+            json.dumps({
+                "change_id": "EVAL-SCORED",
+                "title": "Scored story",
+                "description": "Story with future persisted metric column.",
+                "acceptance_criteria": ["Check score"],
+            }),
+            encoding="utf-8",
+        )
+        try:
+            corpus.EVAL_STORIES_ROOT = stories_root
+            with db.cursor() as cur:
+                try:
+                    cur.execute("ALTER TABLE jobs ADD COLUMN score_weighted_composite REAL")
+                except sqlite3.OperationalError as exc:
+                    self.assertIn("duplicate column", str(exc).lower())
+            submitted_at = db.now_iso()
+            db.insert_job({
+                "id": "job_eval_scored",
+                "change_id": "EVAL-SCORED",
+                "status": "failed",
+                "run_kind": "evaluation",
+                "mode": "live",
+                "runner": "claude",
+                "repo": str(Path.cwd()),
+                "submitted_at": submitted_at,
+            })
+            db.update_job("job_eval_scored", score_weighted_composite=0.75)
+
+            summary = self.client.get("/evaluate/summary").json()
+            row = next(item for item in summary["rows"] if item["task"] == "EVAL-SCORED")
+            self.assertEqual(row["current"], 75)
+            self.assertEqual(row["baseline"], 75)
+            self.assertEqual(row["score_source"], "score_weighted_composite")
+        finally:
+            corpus.EVAL_STORIES_ROOT = original_root
+
+    def test_medium__evaluate_summary_does_not_mix_scores_with_status_baseline(self):
+        from server import corpus, db
+
+        original_root = corpus.EVAL_STORIES_ROOT
+        stories_root = Path(self.tmpdir) / "mixed-score-corpus" / "stories"
+        stories_root.mkdir(parents=True, exist_ok=True)
+        (stories_root / "EVAL-MIXED.json").write_text(
+            json.dumps({
+                "change_id": "EVAL-MIXED",
+                "title": "Mixed metric story",
+                "description": "Story with scores only on newer runs.",
+                "acceptance_criteria": ["Check metric fallback"],
+            }),
+            encoding="utf-8",
+        )
+        try:
+            corpus.EVAL_STORIES_ROOT = stories_root
+            with db.cursor() as cur:
+                try:
+                    cur.execute("ALTER TABLE jobs ADD COLUMN score_weighted_composite REAL")
+                except sqlite3.OperationalError as exc:
+                    self.assertIn("duplicate column", str(exc).lower())
+            for index, status in enumerate(("succeeded", "succeeded", "failed", "failed"), start=1):
+                job_id = f"job_eval_mixed_{index}"
+                db.insert_job({
+                    "id": job_id,
+                    "change_id": "EVAL-MIXED",
+                    "status": status,
+                    "run_kind": "evaluation",
+                    "mode": "live",
+                    "runner": "claude",
+                    "repo": str(Path.cwd()),
+                    "submitted_at": f"2026-01-01T00:00:0{index}Z",
+                })
+                if index >= 3:
+                    db.update_job(job_id, score_weighted_composite=0.86)
+
+            summary = self.client.get("/evaluate/summary").json()
+            row = next(item for item in summary["rows"] if item["task"] == "EVAL-MIXED")
+            self.assertEqual(row["current"], 50)
+            self.assertEqual(row["baseline"], 100)
+            self.assertEqual(row["score_source"], "job_status")
+        finally:
+            corpus.EVAL_STORIES_ROOT = original_root
+
+    def test_medium__evaluate_summary_uses_status_when_some_short_history_scores_missing(self):
+        from server import corpus, db
+
+        original_root = corpus.EVAL_STORIES_ROOT
+        stories_root = Path(self.tmpdir) / "partial-score-corpus" / "stories"
+        stories_root.mkdir(parents=True, exist_ok=True)
+        (stories_root / "EVAL-PARTIAL.json").write_text(
+            json.dumps({
+                "change_id": "EVAL-PARTIAL",
+                "title": "Partial score story",
+                "description": "Story with scores missing from a short run history.",
+                "acceptance_criteria": ["Check short-history metric fallback"],
+            }),
+            encoding="utf-8",
+        )
+        try:
+            corpus.EVAL_STORIES_ROOT = stories_root
+            with db.cursor() as cur:
+                try:
+                    cur.execute("ALTER TABLE jobs ADD COLUMN score_weighted_composite REAL")
+                except sqlite3.OperationalError as exc:
+                    self.assertIn("duplicate column", str(exc).lower())
+            for index, status in enumerate(("succeeded", "succeeded", "failed"), start=1):
+                job_id = f"job_eval_partial_{index}"
+                db.insert_job({
+                    "id": job_id,
+                    "change_id": "EVAL-PARTIAL",
+                    "status": status,
+                    "run_kind": "evaluation",
+                    "mode": "live",
+                    "runner": "claude",
+                    "repo": str(Path.cwd()),
+                    "submitted_at": f"2026-01-01T00:01:0{index}Z",
+                })
+                if index >= 2:
+                    db.update_job(job_id, score_weighted_composite=0.70)
+
+            summary = self.client.get("/evaluate/summary").json()
+            row = next(item for item in summary["rows"] if item["task"] == "EVAL-PARTIAL")
+            self.assertEqual(row["current"], 67)
+            self.assertEqual(row["baseline"], 67)
+            self.assertEqual(row["score_source"], "job_status")
+        finally:
+            corpus.EVAL_STORIES_ROOT = original_root
+
     def test_medium__submit_run_inserts_queued_job(self):
         r = self.client.post(
             "/runs",
@@ -155,6 +398,51 @@ class ServerRoutesTests(unittest.TestCase):
         self.assertNotIn(jid, [item["id"] for item in listing["items"]])
         eval_listing = self.client.get("/runs?run_kind=evaluation").json()
         self.assertIn(jid, [item["id"] for item in eval_listing["items"]])
+
+    def test_medium__submit_generated_evaluation_story_queues_job_hidden_from_regular_runs(self):
+        from server import corpus
+
+        original_root = corpus.EVAL_STORIES_ROOT
+        stories_root = Path(self.tmpdir) / "generated-run-corpus" / "stories"
+        stories_root.mkdir(parents=True, exist_ok=True)
+        (stories_root / "generated_story_easy.json").write_text(
+            json.dumps({
+                "change_id": "generated_story_easy",
+                "title": "Generated easy story",
+                "description": "A workflow-compatible generated evaluation story.",
+                "acceptance_criteria": ["Generated check"],
+                "metadata": {
+                    "eval_story_id": "generated-story",
+                    "suite_tier": "easy",
+                    "dataset_id": "dataset-beta",
+                },
+                "raw_metadata": {
+                    "suite_yaml": "suites/easy/generated_story_easy.yaml",
+                    "raw_story_id": "generated-story",
+                    "tier": "easy",
+                    "dataset_id": "dataset-beta",
+                },
+            }),
+            encoding="utf-8",
+        )
+        try:
+            corpus.EVAL_STORIES_ROOT = stories_root
+            r = self.client.post(
+                "/evaluate/runs",
+                json={"repo": str(Path.cwd()), "story_id": "generated_story_easy", "runner": "claude", "mode": "live"},
+            )
+            self.assertEqual(r.status_code, 200)
+            jid = r.json()["job_id"]
+            detail = self.client.get(f"/runs/{jid}").json()
+            self.assertEqual(detail["change_id"], "generated_story_easy")
+            self.assertEqual(detail["run_kind"], "evaluation")
+            self.assertTrue(detail["story_file"].endswith("generated_story_easy.json"))
+            regular_listing = self.client.get("/runs").json()
+            self.assertNotIn(jid, [item["id"] for item in regular_listing["items"]])
+            eval_listing = self.client.get("/runs?run_kind=evaluation").json()
+            self.assertIn(jid, [item["id"] for item in eval_listing["items"]])
+        finally:
+            corpus.EVAL_STORIES_ROOT = original_root
 
     def test_medium__submit_run_rejects_invalid_runner(self):
         r = self.client.post(

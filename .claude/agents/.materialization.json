@@ -1,0 +1,68 @@
+{
+  "agents": [
+    {
+      "name": "assignment-evaluator",
+      "version": "v1"
+    },
+    {
+      "name": "implementation-evaluator",
+      "version": "v1"
+    },
+    {
+      "name": "information-explorer",
+      "version": "v1"
+    },
+    {
+      "name": "intake",
+      "version": "v1"
+    },
+    {
+      "name": "lessons-optimizer-hyperagent",
+      "version": "v1"
+    },
+    {
+      "name": "qa",
+      "version": "v1"
+    },
+    {
+      "name": "qa-evaluator",
+      "version": "v1"
+    },
+    {
+      "name": "reference-librarian",
+      "version": "v1"
+    },
+    {
+      "name": "software-engineer-hyperagent",
+      "version": "v1"
+    },
+    {
+      "name": "task-assigner",
+      "version": "v1"
+    },
+    {
+      "name": "task-generator",
+      "version": "v1"
+    },
+    {
+      "name": "task-plan-evaluator",
+      "version": "v1"
+    }
+  ],
+  "target_dir": "/Users/mckerracher.joshua/Code/agent-workbench/.claude/agents",
+  "content_hashes": {
+    "assignment-evaluator@v1": "79964721489e432d41615f825493987ee928496f6cf786b61001e95ce39837ad",
+    "implementation-evaluator@v1": "79dd26836c5daa084b45263c00fca287f39aebaebce34fbe76950b58e1d044f5",
+    "information-explorer@v1": "8dbe45f212c2b40ca99e0ad6d018c38cc4c4e33cfb7bb6992f2e1e3314006ecf",
+    "intake@v1": "621ab2b04d9cfc5f62a6eef0ef4d93ed41ae0712e1f95a319b3389db69c62885",
+    "lessons-optimizer-hyperagent@v1": "c7b315bd3f95c20f8ed2f4be8b2201a4373e9d50d9a28037e3539bf2773da51d",
+    "qa@v1": "08805bd2cae4b6648eb0abaacd9c277674576dc04fc5861d7d2d24bc9b9cd35d",
+    "qa-evaluator@v1": "8d6e6e3619db6252fbfeaa1b05a776fa175b95f02616134bcde29ab3d4bd5786",
+    "reference-librarian@v1": "3301d2d4f5f404fdc06f5683d58a98330cdb166d01ac3daa4f350b4e1cc70114",
+    "software-engineer-hyperagent@v1": "237a98ceae48c67ad0090228ba917d06637ff8171840de37841d9651ca24d9fb",
+    "task-assigner@v1": "9083808212a54b64e2fa33209c50b49072aa0241f09b220564393a3d76fbfa7f",
+    "task-generator@v1": "740f996fb0c29454d43bd1d49771fb3740d87c46a10a5dfea2ca3db68b832eb2",
+    "task-plan-evaluator@v1": "c7f82745a6dfb478931a060d23f559f7318ed64e1127ed7a454caef0a5c117ce"
+  },
+  "materialized_at": "2026-04-30T18:50:29Z"
+}

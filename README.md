@@ -1,18 +1,21 @@
-# agent-runner
+# agent-workbench
 
-**Agent Runner is a local mission-control UI for AI software delivery.** It turns a story, work item, or synthetic fixture into a traceable multi-agent workflow you can launch, watch, evaluate, and inspect without losing the thread.
+**Agent Workbench is a local mission-control UI for AI software delivery.** It turns a story, work item, or synthetic fixture into a traceable multi-agent workflow you can launch, watch, evaluate, and inspect without losing the thread.
 
-The pipeline runs six coordinated stages:
+The pipeline runs six coordinated stages, with implementation enhanced by an **evaluator-optimizer loop** that iterates up to three times per unit of work:
 
 ```text
-intake -> task generation -> assignment -> implementation -> QA -> lessons optimization
+intake → task generation → assignment → implementation ⟳ QA → lessons optimization
+                                              ↑__ evaluator feedback __|
 ```
+
+During implementation each unit of work (UoW) is executed by a software-engineer agent, then immediately scored by an implementation-evaluator agent. If the evaluator returns a **PASS**, the loop exits early; otherwise the evaluator's structured feedback is injected into the next iteration's prompt, giving the producer a chance to self-correct before QA. A generic `run_eval_optimizer_loop` primitive makes the same pattern available to any producer/evaluator agent pair in the pipeline.
 
 It can run fully local synthetic stories for offline iteration or live Azure DevOps work items for integrated delivery.
 
-| Local Agent Runner UI | Opik observability command center |
+| Local Agent Workbench UI | Opik observability command center |
 |---|---|
-| ![Agent Runner Runs view showing a live multi-stage workflow stream](docs/assets/agent-runner-runs.png) | ![Opik project insights dashboard for agent-runner traces](docs/assets/opik-insights.png) |
+| ![Agent Workbench Runs view showing a live multi-stage workflow stream](docs/assets/agent-runner-runs.png) | ![Opik project insights dashboard for agent-workbench traces](docs/assets/opik-insights.png) |
 
 ## What this repository gives you
 
@@ -27,9 +30,9 @@ It can run fully local synthetic stories for offline iteration or live Azure Dev
 
 ## Why Opik?
 
-Agent Runner uses [Opik by Comet](https://github.com/comet-ml/opik) as its observability and evaluation platform. A few things worth knowing:
+Agent Workbench uses [Opik by Comet](https://github.com/comet-ml/opik) as its observability and evaluation platform. A few things worth knowing:
 
-- **Open source.** Opik is fully open source (Apache 2.0), available on [GitHub](https://github.com/comet-ml/opik). You can run it locally via bootstrap or point Agent Runner at Comet's hosted offering.
+- **Open source.** Opik is fully open source (Apache 2.0), available on [GitHub](https://github.com/comet-ml/opik). You can run it locally via bootstrap or point Agent Workbench at Comet's hosted offering.
 - **Zero known vulnerabilities.** The [Veracode SCA package summary for Opik](https://sca.analysiscenter.veracode.com/vulnerability-database/libraries/opik/python/pypi/lid-7718138/summary) currently reports **0 known vulnerabilities** for the PyPI library. This is a point-in-time third-party database signal — re-check the link for the latest status.
 - **Self-hostable.** Bootstrap clones and starts the local Opik Docker stack automatically, so traces and evaluation data stay on your machine.
 
@@ -108,7 +111,7 @@ When a run is selected and Opik is configured, click **Open current run in Opik*
 
 ### Where to find the Opik links
 
-| In Agent Runner | What opens |
+| In Agent Workbench | What opens |
 |---|---|
 | **Runs** -> select any run -> **Open current run in Opik** | The Opik project trace view filtered to that run's `change_id` / `thread_id`. |
 | **Evaluate** -> **Open Opik evaluation workspace** | The Opik project workspace for experiments, evaluation, online scoring, and trace drill-down. |
@@ -351,6 +354,16 @@ The new server tests cover:
 | `Provide either ado_url or story_file, not both` | Both flags passed | Pick one mode |
 | `api.port must be an integer between 1 and 65535` | Invalid Settings value or bad `--port` override | Choose a valid TCP port |
 | Browser shows `API offline` | `server_main.py` is not running or host/port changed | Start the server and open the configured host/port |
+
+---
+
+## Planned Work
+
+| Item | Description |
+|------|-------------|
+| **Meta-evaluation pipeline** | A second-order evaluation loop that assesses the quality of the evaluator agents themselves — checking whether their PASS/FAIL verdicts correlate with actual downstream outcomes. Enables automated tuning of evaluator prompts and scoring rubrics without manual review. |
+| Cassette replay | Execute a full workflow run from a previously recorded cassette without hitting live AI backends. |
+| Streaming token metrics | Real-time token usage and cost display in the metrics bar as each stage completes. |
 
 ---
 

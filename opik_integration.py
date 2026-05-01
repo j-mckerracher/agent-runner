@@ -32,10 +32,27 @@ from opik import opik_context
 from google import genai as google_genai
 from agent_prompts import load_agent_system_prompt
 from ui_trace_bridge import track_with_ui
+from run_cmds import run_copilot_cmd
 
 logger = logging.getLogger(__name__)
 
 RUNNER_ROOT = Path(__file__).resolve().parent
+
+_MODEL_PRICING: dict[str, tuple[float, float]] = {
+    "claude-sonnet-4-6": (3.0, 15.0),
+    "claude-haiku-4-5-20251001": (0.80, 4.0),
+}
+_DEFAULT_PRICING = (3.0, 15.0)  # Sonnet 4.6 long-session rate
+
+
+def _emit_event(type: str, **fields) -> None:
+    if not os.environ.get("AGENT_RUNNER_EVENT_LOG"):
+        return
+    try:
+        from server.events import emit
+        emit(type, **fields)
+    except Exception:
+        pass
 
 # Set project name default before any Opik decorator fires.
 os.environ.setdefault("OPIK_PROJECT_NAME", "agent-runner")
@@ -101,25 +118,29 @@ def call_evaluator_sdk(
     model: str = "claude-haiku-4-5-20251001",
     runner: str = "claude",
     runner_model: str | None = None,
+    copilot_effort: str | None = None,
 ) -> str:
     """
-    Run an evaluator agent via the Anthropic or Gemini Python SDK with Opik tracing.
+    Run an evaluator agent via Copilot CLI, Anthropic SDK, or Gemini SDK with Opik tracing.
 
+    When runner=="copilot", uses Copilot CLI with the selected model.
     When runner=="gemini", uses the Gemini API (GEMINI_API_KEY required).
-    Otherwise, uses the Anthropic API (ANTHROPIC_API_KEY required).
+    When runner=="claude", uses the Anthropic API (ANTHROPIC_API_KEY required).
+    Unknown runners raise ValueError.
 
     1. Loads the agent's system prompt from .claude/agents/*.agent.md
     2. Reads every agent-context file referenced in *context* and appends
-       their contents so the SDK call has the same information the CLI agent
-       would have obtained through its file-reading tools.
+       their contents so the CLI agent has the same information it would
+       have obtained through its file-reading tools.
     3. Calls the LLM — this call is what Opik records as the real LLM span.
 
     Args:
-        context:      The evaluator prompt / instruction string.
-        agent_name:   Slug used to locate the .agent.md file (e.g. "task-plan-evaluator").
-        model:        Model ID (Anthropic or Gemini depending on runner).
-        runner:       "gemini" to use Gemini API; anything else uses Anthropic.
-        runner_model: Explicit Gemini model name to use (overrides *model* when runner=="gemini").
+        context:       The evaluator prompt / instruction string.
+        agent_name:    Slug used to locate the .agent.md file (e.g. "task-plan-evaluator").
+        model:         Model ID (Anthropic, Copilot, or Gemini depending on runner).
+        runner:        One of "copilot", "claude", or "gemini".
+        runner_model:  Explicit model name to use (overrides *model* when runner=="gemini").
+        copilot_effort: Optional effort level for Copilot ("low", "medium", "high").
 
     Returns:
         The raw text response from the model.
@@ -134,7 +155,42 @@ def call_evaluator_sdk(
     )
     logger.debug("call_evaluator_sdk: user_message length=%d agent=%s", len(user_message), agent_name)
 
-    if runner == "gemini":
+    if runner == "copilot":
+        logger.info("call_evaluator_sdk: using Copilot CLI model=%s effort=%s agent=%s", model, copilot_effort, agent_name)
+        text = run_copilot_cmd(
+            prompt=user_message,
+            agent=agent_name,
+            model=model,
+            effort=copilot_effort,
+        )
+        logger.info("call_evaluator_sdk: Copilot CLI call succeeded agent=%s response_len=%d", agent_name, len(text or ""))
+        _attach_usage_metadata(None, provider="copilot", model=model)
+        return text
+
+    elif runner == "claude":
+        logger.info("call_evaluator_sdk: using Anthropic API model=%s agent=%s", model, agent_name)
+        _env_cert = os.environ.get("SSL_CERT_FILE") or os.environ.get("REQUESTS_CA_BUNDLE")
+        if os.environ.get("ANTHROPIC_VERIFY_SSL", "1") == "0":
+            _verify: bool | str = False
+            logger.debug("call_evaluator_sdk: SSL verification disabled (ANTHROPIC_VERIFY_SSL=0)")
+        elif _env_cert:
+            _verify = _env_cert
+            logger.debug("call_evaluator_sdk: using custom SSL cert %s", _env_cert)
+        else:
+            _verify = True
+        client = anthropic.Anthropic(http_client=httpx.Client(verify=_verify))
+        response = client.messages.create(
+            model=model,
+            max_tokens=4096,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}],
+        )
+        text = response.content[0].text
+        logger.info("call_evaluator_sdk: Anthropic call succeeded agent=%s response_len=%d", agent_name, len(text or ""))
+        _attach_usage_metadata(response, provider="anthropic", model=model)
+        return text
+
+    elif runner == "gemini":
         if runner_model and "gemini" in runner_model:
             gemini_model = runner_model
         elif model and "gemini" in model:
@@ -184,33 +240,14 @@ def call_evaluator_sdk(
                 logger.warning("call_evaluator_sdk: candidate extraction failed for agent=%s; returning empty", agent_name)
                 text = ""
         logger.debug("call_evaluator_sdk: Gemini response length=%d for agent=%s", len(text or ""), agent_name)
-        _attach_usage_metadata(response, provider="gemini")
+        _attach_usage_metadata(response, provider="gemini", model=gemini_model)
         return text
 
-    logger.info("call_evaluator_sdk: using Anthropic API model=%s agent=%s", model, agent_name)
-    _env_cert = os.environ.get("SSL_CERT_FILE") or os.environ.get("REQUESTS_CA_BUNDLE")
-    if os.environ.get("ANTHROPIC_VERIFY_SSL", "1") == "0":
-        _verify: bool | str = False
-        logger.debug("call_evaluator_sdk: SSL verification disabled (ANTHROPIC_VERIFY_SSL=0)")
-    elif _env_cert:
-        _verify = _env_cert
-        logger.debug("call_evaluator_sdk: using custom SSL cert %s", _env_cert)
     else:
-        _verify = True
-    client = anthropic.Anthropic(http_client=httpx.Client(verify=_verify))
-    response = client.messages.create(
-        model=model,
-        max_tokens=4096,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_message}],
-    )
-    text = response.content[0].text
-    logger.info("call_evaluator_sdk: Anthropic call succeeded agent=%s response_len=%d", agent_name, len(text or ""))
-    _attach_usage_metadata(response, provider="anthropic")
-    return text
+        raise ValueError(f"Unknown runner={runner} for call_evaluator_sdk; must be one of 'copilot', 'claude', 'gemini'")
 
 
-def _attach_usage_metadata(response, *, provider: str) -> None:
+def _attach_usage_metadata(response, *, provider: str, model: str = "") -> None:
     """
     Attach token usage to the current Opik span when the response carries it.
 
@@ -251,6 +288,11 @@ def _attach_usage_metadata(response, *, provider: str) -> None:
         if usage_payload:
             logger.debug("_attach_usage_metadata: provider=%s %s", provider, usage_payload)
             opik_context.update_current_span(usage=usage_payload)
+            ti = usage_payload.get("prompt_tokens", 0)
+            to = usage_payload.get("completion_tokens", 0)
+            in_rate, out_rate = _MODEL_PRICING.get(model, _DEFAULT_PRICING)
+            cost = round((ti / 1_000_000 * in_rate) + (to / 1_000_000 * out_rate), 6)
+            _emit_event("metrics", tokens_in=ti, tokens_out=to, cost_usd=cost)
     except Exception as exc:
         # Never let observability errors propagate.
         logger.debug("_attach_usage_metadata: swallowed error: %s", exc)

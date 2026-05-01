@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>agent-runner</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Crect width='32' height='32' rx='6' fill='%23c4873a'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='central' text-anchor='middle' font-family='monospace' font-size='20' font-weight='700' fill='%2307080b'%3Ea%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -34,7 +36,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .view{display:none;flex:1;overflow:hidden}
 .view.active{display:flex;flex-direction:column}
 .view-header{padding:14px 20px 12px;border-bottom:1px solid var(--br);display:flex;justify-content:space-between;align-items:center}
-.view-title{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--t3)}
+.view-title{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#07080b;background:var(--acc);padding:3px 10px;border-radius:4px;font-weight:700;font-family:var(--mono)}
 .view-meta{font-family:var(--mono);font-size:11px;color:var(--t1);font-weight:600}
 .runs-layout{display:flex;flex:1;overflow:hidden}
 .runs-left{width:280px;border-right:1px solid var(--br);display:flex;flex-direction:column;overflow:hidden;background:rgba(13,15,20,.45)}
@@ -130,11 +132,271 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .eval-config{margin:14px 20px 0;padding:14px 16px;border:1px solid var(--br);border-radius:8px;background:rgba(13,15,20,.45)}
 .eval-run-panel{margin:0 20px 14px;border:1px solid var(--br);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;min-height:260px;background:rgba(13,15,20,.45)}
 .eval-run-panel .term{min-height:170px;max-height:300px}
+.view[data-view="evaluate"]{overflow:hidden}
+.view[data-view="evaluate"] .view-header{padding-left:max(32px,calc((100% - 1100px)/2));padding-right:max(32px,calc((100% - 1100px)/2))}
+.view[data-view="evaluate"] .eval-content{flex:1;overflow-y:auto;padding:14px 32px 24px;background:transparent;scrollbar-gutter:stable}
+.view[data-view="evaluate"] .eval-config,
+.view[data-view="evaluate"] .eval-bridge,
+.view[data-view="evaluate"] .cards,
+.view[data-view="evaluate"] #eval-list,
+.view[data-view="evaluate"] .eval-run-panel{width:min(1100px,100%);margin-left:auto;margin-right:auto}
+.view[data-view="evaluate"] .eval-config{margin-top:0;margin-bottom:14px}
+.view[data-view="evaluate"] .eval-bridge{margin-top:0;margin-bottom:14px}
+.view[data-view="evaluate"] .cards{padding:14px 0}
+.view[data-view="evaluate"] #eval-list{flex:none;overflow:visible;padding:14px 0;margin-bottom:14px}
+.view[data-view="evaluate"] .eval-run-panel{margin-bottom:0}
 .empty{padding:30px;text-align:center;color:var(--t1);font-weight:600;font-style:italic}
 .empty.error{color:var(--er)}
+
 .toast{position:fixed;bottom:20px;right:20px;background:var(--s4);border:1px solid var(--brb);border-radius:4px;padding:10px 16px;color:var(--t1);font-size:12px;z-index:1000;display:none}
 .toast.show{display:block}
 .toast.error{border-color:var(--er);color:var(--er)}
+
+/* ============================================================
+   Settings view restyle (scoped to data-view="settings" only)
+   ============================================================ */
+.view[data-view="settings"]{
+  --set-amber:#e8a030;
+  --set-amber-dim:rgba(232,160,48,0.12);
+  --set-amber-glow:rgba(232,160,48,0.06);
+  --set-surface:rgba(20,23,32,0.82);
+  --set-surface-2:rgba(28,32,40,0.85);
+  --set-surface-3:rgba(36,40,52,0.92);
+  --set-border:rgba(255,255,255,0.07);
+  --set-border-hover:rgba(255,255,255,0.14);
+  --set-text-primary:#f0eff4;
+  --set-text-secondary:#8885a0;
+  --set-text-tertiary:#55536a;
+  --set-mono:'JetBrains Mono','Cascadia Code','Fira Code','SF Mono',Consolas,monospace;
+  --set-sans:'DM Sans','Trebuchet MS','Segoe UI',sans-serif;
+  --set-radius:6px;
+  --set-radius-lg:10px;
+  font-family:var(--set-sans);
+  color:var(--set-text-primary);
+}
+.view[data-view="settings"] .view-header{
+  background:transparent;
+  padding:14px 32px 12px;
+}
+.view[data-view="settings"] .view-title{
+  font-family:var(--set-mono);
+  font-size:11px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--set-text-tertiary);
+}
+.view[data-view="settings"] #settings-save{
+  background:var(--set-amber);
+  color:#0a0a0b;
+  border:none;
+  border-radius:var(--set-radius);
+  padding:7px 18px;
+  font-family:var(--set-mono);
+  font-size:12px;
+  font-weight:600;
+  letter-spacing:.02em;
+  cursor:pointer;
+  transition:opacity .15s,transform .1s;
+}
+.view[data-view="settings"] #settings-save:hover{opacity:.88}
+.view[data-view="settings"] #settings-save:active{transform:scale(.97)}
+
+.view[data-view="settings"] .simple-list{
+  flex:1;
+  overflow-y:auto;
+  padding:24px 32px 40px;
+  background:transparent;
+  width:100%;
+  scrollbar-gutter:stable;
+}
+.view[data-view="settings"] .set-section{
+  width:min(980px,100%);
+  margin:0 auto 32px;
+}
+.view[data-view="settings"] .set-section-header{
+  display:flex;align-items:center;gap:12px;margin-bottom:14px;
+}
+.view[data-view="settings"] .set-section-label{
+  font-family:var(--set-mono);
+  font-size:10px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--set-text-tertiary);
+  flex-shrink:0;
+}
+.view[data-view="settings"] .set-section-line{
+  flex:1;height:1px;background:var(--set-border);
+}
+
+.view[data-view="settings"] .set-card{
+  background:var(--set-surface);
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--set-border);
+  border-radius:var(--set-radius-lg);
+  overflow:hidden;
+}
+
+.view[data-view="settings"] .set-field-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:0;
+}
+.view[data-view="settings"] .set-field-grid .set-field{
+  border-right:1px solid var(--set-border);
+  border-bottom:1px solid var(--set-border);
+}
+.view[data-view="settings"] .set-field-grid .set-field:nth-child(2n){border-right:none}
+.view[data-view="settings"] .set-field-grid .set-field.full{
+  grid-column:1 / -1;border-right:none;
+}
+.view[data-view="settings"] .set-field-grid .set-field:last-child,
+.view[data-view="settings"] .set-field-grid .set-field.last-row{border-bottom:none}
+
+.view[data-view="settings"] .set-field{
+  padding:14px 18px;position:relative;
+}
+.view[data-view="settings"] .set-field-label{
+  font-family:var(--set-mono);
+  font-size:10px;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--set-text-tertiary);
+  margin-bottom:8px;
+  display:block;
+}
+.view[data-view="settings"] .set-field input,
+.view[data-view="settings"] .set-field select{
+  width:100%;
+  background:var(--set-surface-2);
+  border:1px solid var(--set-border);
+  border-radius:var(--set-radius);
+  padding:8px 12px;
+  font-family:var(--set-mono);
+  font-size:13px;
+  color:var(--set-text-primary);
+  outline:none;
+  transition:border-color .15s,background .15s;
+  -webkit-appearance:none;appearance:none;
+}
+.view[data-view="settings"] .set-field input:hover,
+.view[data-view="settings"] .set-field select:hover{border-color:var(--set-border-hover)}
+.view[data-view="settings"] .set-field input:focus,
+.view[data-view="settings"] .set-field select:focus{
+  border-color:rgba(232,160,48,.4);
+  background:var(--set-surface-3);
+  box-shadow:0 0 0 3px rgba(232,160,48,.06);
+}
+.view[data-view="settings"] .set-field select{
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2355536a' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 10px center;
+  padding-right:28px;
+  cursor:pointer;
+}
+.view[data-view="settings"] .set-field-inline{display:flex;align-items:center;gap:8px}
+.view[data-view="settings"] .set-field-inline input{flex:1}
+
+.view[data-view="settings"] .set-btn-connect{
+  background:transparent;
+  border:1px solid var(--set-border);
+  border-radius:var(--set-radius);
+  padding:8px 14px;
+  font-family:var(--set-mono);
+  font-size:11px;
+  color:var(--set-text-secondary);
+  cursor:pointer;
+  white-space:nowrap;
+  transition:all .15s;
+  flex-shrink:0;
+}
+.view[data-view="settings"] .set-btn-connect:hover{border-color:var(--set-amber);color:var(--set-amber)}
+.view[data-view="settings"] .set-btn-connect:disabled{opacity:.55;cursor:not-allowed}
+
+.view[data-view="settings"] .set-warn-note{
+  display:flex;align-items:center;gap:8px;
+  padding:10px 18px;
+  background:rgba(232,160,48,.06);
+  border-top:1px solid rgba(232,160,48,.12);
+  font-size:11px;
+  color:rgba(232,160,48,.78);
+  font-family:var(--set-mono);
+}
+.view[data-view="settings"] .set-warn-dot{
+  width:5px;height:5px;border-radius:50%;background:var(--set-amber);flex-shrink:0;
+}
+
+.view[data-view="settings"] .set-hint{
+  font-size:12px;color:var(--set-text-tertiary);
+  margin:-4px 0 14px;font-family:var(--set-mono);
+}
+
+/* Agent model table */
+.view[data-view="settings"] .set-agent-table{
+  width:100%;border-collapse:collapse;
+}
+.view[data-view="settings"] .set-agent-table thead tr{border-bottom:1px solid var(--set-border)}
+.view[data-view="settings"] .set-agent-table th{
+  font-family:var(--set-mono);
+  font-size:10px;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--set-text-tertiary);
+  padding:10px 16px;
+  text-align:left;
+  font-weight:400;
+}
+.view[data-view="settings"] .set-agent-table th:not(:first-child){text-align:center}
+.view[data-view="settings"] .set-agent-table tbody tr{
+  border-bottom:1px solid var(--set-border);
+  transition:background .12s;
+}
+.view[data-view="settings"] .set-agent-table tbody tr:last-child{border-bottom:none}
+.view[data-view="settings"] .set-agent-table tbody tr:hover{background:rgba(255,255,255,.02)}
+.view[data-view="settings"] .set-agent-table td{padding:10px 16px;font-size:13px}
+.view[data-view="settings"] .set-agent-name{
+  font-family:var(--set-mono);
+  font-size:12px;
+  color:var(--set-text-secondary);
+  display:flex;align-items:center;gap:8px;
+}
+.view[data-view="settings"] .set-agent-dot{
+  width:5px;height:5px;border-radius:50%;background:var(--set-text-tertiary);flex-shrink:0;
+}
+.view[data-view="settings"] .set-agent-table td:not(:first-child){text-align:center}
+.view[data-view="settings"] .set-agent-table select{
+  background:var(--set-surface-2);
+  border:1px solid var(--set-border);
+  border-radius:var(--set-radius);
+  padding:5px 24px 5px 10px;
+  font-family:var(--set-mono);
+  font-size:11px;
+  color:var(--set-text-secondary);
+  outline:none;
+  cursor:pointer;
+  transition:border-color .15s;
+  -webkit-appearance:none;appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath fill='%2355536a' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 8px center;
+  min-width:140px;max-width:180px;
+}
+.view[data-view="settings"] .set-agent-table select:hover{border-color:var(--set-border-hover)}
+.view[data-view="settings"] .set-agent-table select:focus{border-color:rgba(232,160,48,.4)}
+
+.view[data-view="settings"] .set-agent-tag{
+  display:inline-flex;align-items:center;
+  padding:2px 7px;border-radius:3px;
+  font-family:var(--set-mono);
+  font-size:9px;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  margin-left:auto;
+}
+.view[data-view="settings"] .tag-intake{background:rgba(30,120,80,.15);color:#3dd68c}
+.view[data-view="settings"] .tag-generator{background:rgba(100,80,200,.15);color:#a78bfa}
+.view[data-view="settings"] .tag-assigner{background:rgba(50,130,200,.15);color:#60a5fa}
+.view[data-view="settings"] .tag-engineer{background:rgba(200,100,40,.15);color:#fb923c}
+.view[data-view="settings"] .tag-qa{background:rgba(200,60,60,.15);color:#f87171}
+.view[data-view="settings"] .tag-optimizer{background:rgba(180,130,20,.15);color:#fcd34d}
+.view[data-view="settings"] .tag-evaluator{background:rgba(120,160,80,.15);color:#86efac}
 </style>
 </head>
 <body>
@@ -148,7 +410,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
     <nav class="nav" id="nav">
       <div class="nav-item active" data-view="runs">Runs</div>
       <div class="nav-item" data-view="agents">Agents</div>
-      <div class="nav-item" data-view="corpus">Corpus</div>
+      <div class="nav-item" data-view="corpus">Evaluations</div>
       <div class="nav-item" data-view="evaluate">Evaluate</div>
       <div class="nav-item" data-view="settings">Settings</div>
     </nav>
@@ -201,7 +463,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
             <div class="alert-meta" id="run-alert-meta"></div>
           </div>
           <div class="term" id="term"><div class="empty">No run selected.</div></div>
-          <div class="metrics" id="metrics"><span>tokens in <b id="m-ti">—</b></span><span>tokens out <b id="m-to">—</b></span><span>cost <b id="m-cost">—</b></span><span>stage <b id="m-stage">—</b></span></div>
+          <div class="metrics" id="metrics"><span>tokens in <b id="m-ti">—</b></span><span>tokens out <b id="m-to">—</b></span><span>total <b id="m-total">—</b></span><span>cost <b id="m-cost">—</b></span><span>stage <b id="m-stage">—</b></span></div>
         </div>
       </div>
     </section>
@@ -228,58 +490,60 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 
     <!-- CORPUS -->
     <section class="view" data-view="corpus">
-      <div class="view-header"><span class="view-title">Corpus</span><span class="view-meta" id="corpus-meta"></span></div>
+      <div class="view-header"><span class="view-title">Evaluations</span><span class="view-meta" id="corpus-meta"></span></div>
       <div class="simple-list" id="corpus-list"></div>
     </section>
 
     <!-- EVALUATE -->
     <section class="view" data-view="evaluate">
       <div class="view-header"><span class="view-title">Evaluate</span><span class="view-meta" id="eval-meta"></span></div>
-      <div class="eval-config">
-        <div class="section-label">Start evaluation run</div>
-        <div class="field"><label>Repo path</label><input type="text" id="eval-repo" placeholder="/path/to/target/repo"></div>
-        <div class="field"><label>Evaluation story</label><select id="eval-story"></select></div>
-        <div class="row2">
-          <div class="field"><label>Runner</label><select id="eval-runner"><option value="claude">Claude</option><option value="copilot">Copilot</option><option value="gemini">Gemini</option></select></div>
-          <div class="field"><label>Model</label><select id="eval-model"></select></div>
+      <div class="eval-content">
+        <div class="eval-config">
+          <div class="section-label">Start evaluation run</div>
+          <div class="field"><label>Repo path</label><input type="text" id="eval-repo" placeholder="/path/to/target/repo"></div>
+          <div class="field"><label>Evaluation story</label><select id="eval-story"></select></div>
+          <div class="row2">
+            <div class="field"><label>Runner</label><select id="eval-runner"><option value="claude">Claude</option><option value="copilot">Copilot</option><option value="gemini">Gemini</option></select></div>
+            <div class="field"><label>Model</label><select id="eval-model"></select></div>
+          </div>
+          <div class="row2">
+            <div class="field"><label>Copilot effort</label><select id="eval-effort"><option value="">(default)</option></select></div>
+            <div class="field"><label>Mode</label><select id="eval-mode"><option value="live">Live</option><option value="hermetic">Hermetic (record)</option></select></div>
+          </div>
+          <label class="checkbox"><input type="checkbox" id="eval-skip"> Skip materialize</label>
+          <div class="field"><label>Extra context</label><textarea id="eval-extra" placeholder="Optional notes appended to the evaluation run prompt..."></textarea></div>
+          <button class="btn" id="eval-submit-btn">Start evaluation run</button>
         </div>
-        <div class="row2">
-          <div class="field"><label>Copilot effort</label><select id="eval-effort"><option value="">(default)</option></select></div>
-          <div class="field"><label>Mode</label><select id="eval-mode"><option value="live">Live</option><option value="hermetic">Hermetic (record)</option></select></div>
-        </div>
-        <label class="checkbox"><input type="checkbox" id="eval-skip"> Skip materialize</label>
-        <div class="field"><label>Extra context</label><textarea id="eval-extra" placeholder="Optional notes appended to the evaluation run prompt..."></textarea></div>
-        <button class="btn" id="eval-submit-btn">Start evaluation run</button>
-      </div>
-      <div class="eval-bridge">
-        <div>
-          <div class="section-label">Opik evaluation workspace</div>
-          <h2>Use Opik for the deep evaluation view.</h2>
-          <p>The local summary below is a quick health check from Agent Runner history. Open Opik for experiments, trace drill-down, online evaluation, annotation queues, and richer regression analysis.</p>
-        </div>
-        <div class="eval-actions">
-          <a class="btn link-btn" id="eval-opik-link" href="#" target="_blank" rel="noreferrer" style="display:none">Open Opik evaluation workspace</a>
-          <span class="eval-missing" id="eval-opik-missing">Configure Opik in Settings to open the evaluation workspace.</span>
-        </div>
-      </div>
-      <div class="cards" id="eval-cards"></div>
-      <div class="simple-list" id="eval-list"></div>
-      <div class="eval-run-panel">
-        <div class="term-header">
-          <span id="eval-term-title">No evaluation run selected</span>
-          <div class="term-actions">
-            <span class="opik-hint" id="eval-opik-hint" style="display:none"></span>
-            <a class="btn link-btn" id="eval-run-opik-link" href="#" target="_blank" rel="noreferrer" style="display:none">Open current evaluation in Opik</a>
-            <button class="btn" id="eval-cancel-btn" style="display:none">Cancel</button>
+        <div class="eval-bridge">
+          <div>
+            <div class="section-label">Opik evaluation workspace</div>
+            <h2>Use Opik for the deep evaluation view.</h2>
+            <p>The local summary below is a quick health check from Agent Workbench history. Open Opik for experiments, trace drill-down, online evaluation, annotation queues, and richer regression analysis.</p>
+          </div>
+          <div class="eval-actions">
+            <a class="btn link-btn" id="eval-opik-link" href="#" target="_blank" rel="noreferrer" style="display:none">Open Opik evaluation workspace</a>
+            <span class="eval-missing" id="eval-opik-missing">Configure Opik in Settings to open the evaluation workspace.</span>
           </div>
         </div>
-        <div class="run-alert" id="eval-run-alert">
-          <div class="alert-title" id="eval-run-alert-title"></div>
-          <div class="alert-msg" id="eval-run-alert-msg"></div>
-          <div class="alert-meta" id="eval-run-alert-meta"></div>
+        <div class="cards" id="eval-cards"></div>
+        <div class="simple-list" id="eval-list"></div>
+        <div class="eval-run-panel">
+          <div class="term-header">
+            <span id="eval-term-title">No evaluation run selected</span>
+            <div class="term-actions">
+              <span class="opik-hint" id="eval-opik-hint" style="display:none"></span>
+              <a class="btn link-btn" id="eval-run-opik-link" href="#" target="_blank" rel="noreferrer" style="display:none">Open current evaluation in Opik</a>
+              <button class="btn" id="eval-cancel-btn" style="display:none">Cancel</button>
+            </div>
+          </div>
+          <div class="run-alert" id="eval-run-alert">
+            <div class="alert-title" id="eval-run-alert-title"></div>
+            <div class="alert-msg" id="eval-run-alert-msg"></div>
+            <div class="alert-meta" id="eval-run-alert-meta"></div>
+          </div>
+          <div class="term" id="eval-term"><div class="empty">Start an evaluation run to see logs here.</div></div>
+          <div class="metrics" id="eval-metrics"><span>tokens in <b id="eval-m-ti">—</b></span><span>tokens out <b id="eval-m-to">—</b></span><span>total <b id="eval-m-total">—</b></span><span>cost <b id="eval-m-cost">—</b></span><span>stage <b id="eval-m-stage">—</b></span></div>
         </div>
-        <div class="term" id="eval-term"><div class="empty">Start an evaluation run to see logs here.</div></div>
-        <div class="metrics" id="eval-metrics"><span>tokens in <b id="eval-m-ti">—</b></span><span>tokens out <b id="eval-m-to">—</b></span><span>cost <b id="eval-m-cost">—</b></span><span>stage <b id="eval-m-stage">—</b></span></div>
       </div>
     </section>
 
@@ -289,25 +553,93 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
         <span class="view-title">Settings</span>
         <button class="btn" id="settings-save">Save</button>
       </div>
-        <div class="simple-list">
-          <div class="row2"><div class="field"><label>API host</label><input type="text" id="s-host"></div>
-          <div class="field"><label>API port</label><input type="text" id="s-port"></div></div>
-          <div class="row2"><div class="field"><label>Default runner</label><select id="s-runner"><option>claude</option><option>copilot</option><option>gemini</option></select></div>
-          <div class="field"><label>Default mode</label><select id="s-mode"><option>live</option><option>hermetic</option></select></div></div>
-          <div class="field"><label>Max running jobs</label><input type="text" id="s-conc"></div>
-          <div class="field"><label>Data dir</label><input type="text" id="s-data"></div>
-          <div class="field"><label>Opik dashboard URL</label>
-            <div style="display:flex;gap:8px;align-items:center">
-              <input type="text" id="s-opik-url" placeholder="https://www.comet.com/opik" style="flex:1">
-              <button id="s-opik-connect" class="btn" title="Auto-detect workspace and project ID from the dashboard URL">Connect</button>
+      <div class="simple-list">
+
+        <!-- Server -->
+        <div class="set-section">
+          <div class="set-section-header">
+            <span class="set-section-label">Server</span>
+            <div class="set-section-line"></div>
+          </div>
+          <div class="set-card">
+            <div class="set-field-grid">
+              <div class="set-field">
+                <label class="set-field-label" for="s-host">API Host</label>
+                <input type="text" id="s-host">
+              </div>
+              <div class="set-field">
+                <label class="set-field-label" for="s-port">API Port</label>
+                <input type="text" id="s-port">
+              </div>
+              <div class="set-field">
+                <label class="set-field-label" for="s-runner">Default Runner</label>
+                <select id="s-runner"><option>claude</option><option>copilot</option><option>gemini</option></select>
+              </div>
+              <div class="set-field">
+                <label class="set-field-label" for="s-mode">Default Mode</label>
+                <select id="s-mode"><option>live</option><option>hermetic</option></select>
+              </div>
+              <div class="set-field last-row">
+                <label class="set-field-label" for="s-conc">Max Running Jobs</label>
+                <input type="text" id="s-conc">
+              </div>
+              <div class="set-field last-row">
+                <label class="set-field-label" for="s-data">Data Directory</label>
+                <input type="text" id="s-data">
+              </div>
+            </div>
+            <div class="set-warn-note">
+              <span class="set-warn-dot"></span>
+              Host/port changes require a server restart.
             </div>
           </div>
-          <div class="row2"><div class="field"><label>Opik workspace</label><input type="text" id="s-opik-workspace"></div>
-          <div class="field"><label>Opik project ID</label><input type="text" id="s-opik-project-id"></div></div>
-          <div class="field"><label>Opik project name</label><input type="text" id="s-opik-project-name"></div>
-          <p style="font-size:11px;color:var(--t3);margin-top:8px">Host/port changes require a server restart.</p>
         </div>
-      </section>
+
+        <!-- Observability -->
+        <div class="set-section">
+          <div class="set-section-header">
+            <span class="set-section-label">Observability · Opik</span>
+            <div class="set-section-line"></div>
+          </div>
+          <div class="set-card">
+            <div class="set-field-grid">
+              <div class="set-field full">
+                <label class="set-field-label" for="s-opik-url">Dashboard URL</label>
+                <div class="set-field-inline">
+                  <input type="text" id="s-opik-url" placeholder="https://www.comet.com/opik">
+                  <button id="s-opik-connect" class="set-btn-connect" title="Auto-detect workspace and project ID from the dashboard URL">Connect</button>
+                </div>
+              </div>
+              <div class="set-field">
+                <label class="set-field-label" for="s-opik-workspace">Workspace</label>
+                <input type="text" id="s-opik-workspace">
+              </div>
+              <div class="set-field">
+                <label class="set-field-label" for="s-opik-project-id">Project ID</label>
+                <input type="text" id="s-opik-project-id">
+              </div>
+              <div class="set-field full last-row">
+                <label class="set-field-label" for="s-opik-project-name">Project Name</label>
+                <input type="text" id="s-opik-project-name">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Agent Model Defaults -->
+        <div class="set-section">
+          <div class="set-section-header">
+            <span class="set-section-label">Agent Model Defaults</span>
+            <div class="set-section-line"></div>
+          </div>
+          <p class="set-hint">Per-agent model overrides. Empty = use runner default.</p>
+          <div class="set-card">
+            <div id="agent-defaults-container"></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
 
   </main>
 </div>
@@ -384,7 +716,7 @@ function runSurface(surface="runs"){
       opikLink:"#eval-run-opik-link",
       opikHint:"#eval-opik-hint",
       cancel:"#eval-cancel-btn",
-      metrics:["eval-m-ti","eval-m-to","eval-m-cost","eval-m-stage"],
+      metrics:["eval-m-ti","eval-m-to","eval-m-cost","eval-m-stage","eval-m-total"],
       stage:"#eval-m-stage",
     };
   }
@@ -398,7 +730,7 @@ function runSurface(surface="runs"){
     opikLink:"#opik-link",
     opikHint:"#opik-hint",
     cancel:"#cancel-btn",
-    metrics:["m-ti","m-to","m-cost","m-stage"],
+    metrics:["m-ti","m-to","m-cost","m-stage","m-total"],
     stage:"#m-stage",
   };
 }
@@ -433,6 +765,100 @@ async function pollHealth(){
 setInterval(pollHealth, 5000); pollHealth();
 
 // Settings (also populates model/effort dropdowns)
+const WORKFLOW_STAGE_AGENTS = [
+  "intake", "task-generator", "task-assigner", "software-engineer-hyperagent",
+  "qa-engineer", "lessons-optimizer-hyperagent",
+  "task-plan-evaluator", "assignment-evaluator", "implementation-evaluator", "qa-evaluator"
+];
+
+function buildAgentDefaultsUI(agentDefaults) {
+  const container = $("#agent-defaults-container");
+  container.innerHTML = "";
+  const runners = Object.keys(RUNNER_MODELS);
+
+  const AGENT_TAGS = {
+    "intake": ["core", "tag-intake"],
+    "task-generator": ["planner", "tag-generator"],
+    "task-assigner": ["router", "tag-assigner"],
+    "software-engineer-hyperagent": ["exec", "tag-engineer"],
+    "qa-engineer": ["qa", "tag-qa"],
+    "lessons-optimizer-hyperagent": ["learn", "tag-optimizer"],
+    "task-plan-evaluator": ["eval", "tag-evaluator"],
+    "assignment-evaluator": ["eval", "tag-evaluator"],
+    "implementation-evaluator": ["eval", "tag-evaluator"],
+    "qa-evaluator": ["eval", "tag-qa"],
+  };
+
+  const table = document.createElement("table");
+  table.className = "set-agent-table";
+
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  const agentTh = document.createElement("th");
+  agentTh.textContent = "Agent";
+  agentTh.style.width = "44%";
+  headRow.appendChild(agentTh);
+  runners.forEach(runner => {
+    const th = document.createElement("th");
+    th.textContent = runner;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  WORKFLOW_STAGE_AGENTS.forEach(agentName => {
+    const tr = document.createElement("tr");
+
+    const nameTd = document.createElement("td");
+    const nameWrap = document.createElement("div");
+    nameWrap.className = "set-agent-name";
+    const dot = document.createElement("span");
+    dot.className = "set-agent-dot";
+    nameWrap.appendChild(dot);
+    nameWrap.appendChild(document.createTextNode(agentName));
+    const tagInfo = AGENT_TAGS[agentName];
+    if (tagInfo) {
+      const tag = document.createElement("span");
+      tag.className = `set-agent-tag ${tagInfo[1]}`;
+      tag.textContent = tagInfo[0];
+      nameWrap.appendChild(tag);
+    }
+    nameTd.appendChild(nameWrap);
+    tr.appendChild(nameTd);
+
+    runners.forEach(runner => {
+      const td = document.createElement("td");
+      const select = document.createElement("select");
+      select.id = `agent-model-${agentName}-${runner}`;
+
+      const emptyOpt = document.createElement("option");
+      emptyOpt.value = "";
+      emptyOpt.textContent = "(default)";
+      select.appendChild(emptyOpt);
+
+      const models = RUNNER_MODELS[runner] || [];
+      models.forEach(model => {
+        const opt = document.createElement("option");
+        opt.value = model;
+        opt.textContent = model;
+        select.appendChild(opt);
+      });
+
+      const currentDefault = agentDefaults?.[agentName]?.[runner] || "";
+      select.value = currentDefault;
+
+      td.appendChild(select);
+      tr.appendChild(td);
+    });
+
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  container.appendChild(table);
+}
+
 async function loadSettings(){
   const cfg = await api("/settings");
   RUNNER_MODELS = cfg.runner_models || RUNNER_MODELS;
@@ -447,10 +873,26 @@ async function loadSettings(){
   $("#s-opik-workspace").value = cfg.opik?.workspace_name || "";
   $("#s-opik-project-id").value = cfg.opik?.project_id || "";
   $("#s-opik-project-name").value = cfg.opik?.project_name || "";
+  buildAgentDefaultsUI(cfg.agent_model_defaults || {});
   syncRunConfigSelects();
 }
 $("#settings-save").addEventListener("click", async ()=>{
   try{
+    const agentDefaults = {};
+    WORKFLOW_STAGE_AGENTS.forEach(agentName => {
+      agentDefaults[agentName] = {};
+      Object.keys(RUNNER_MODELS).forEach(runner => {
+        const select = $(`#agent-model-${agentName}-${runner}`);
+        const value = select?.value || "";
+        if(value) {
+          agentDefaults[agentName][runner] = value;
+        }
+      });
+      if(Object.keys(agentDefaults[agentName]).length === 0) {
+        delete agentDefaults[agentName];
+      }
+    });
+    
     await api("/settings", {method:"PUT", headers:{"content-type":"application/json"}, body:JSON.stringify({
       api:{host:$("#s-host").value, port:parseInt($("#s-port").value,10)},
       defaults:{runner:$("#s-runner").value, mode:$("#s-mode").value},
@@ -462,6 +904,7 @@ $("#settings-save").addEventListener("click", async ()=>{
         project_id:$("#s-opik-project-id").value.trim(),
         project_name:$("#s-opik-project-name").value.trim(),
       },
+      agent_model_defaults: agentDefaults,
     })});
     toast("Settings saved");
   }catch(e){ toast(e.message, true); }
@@ -718,6 +1161,7 @@ function describeEvent(ev, surface="runs"){
     if(ev.tokens_in!=null) $("#"+ui.metrics[0]).textContent = ev.tokens_in;
     if(ev.tokens_out!=null) $("#"+ui.metrics[1]).textContent = ev.tokens_out;
     if(ev.cost_usd!=null) $("#"+ui.metrics[2]).textContent = "$"+Number(ev.cost_usd).toFixed(4);
+    if(ev.tokens_in!=null||ev.tokens_out!=null) $("#"+ui.metrics[4]).textContent = (ev.tokens_in||0)+(ev.tokens_out||0);
     return null;
   }
   return {cls, tag, msg};
@@ -825,6 +1269,7 @@ async function selectJob(id, surface="runs"){
     $("#"+ui.metrics[1]).textContent = job.tokens_out||0;
     $("#"+ui.metrics[2]).textContent = "$"+Number(job.cost_usd||0).toFixed(4);
     $("#"+ui.metrics[3]).textContent = job.current_stage || "—";
+    $("#"+ui.metrics[4]).textContent = (job.tokens_in||0)+(job.tokens_out||0);
     // Replay past events then attach stream
     const events = await api(`/runs/${id}/events`);
     updateRunFeedback(job, events, surface);
@@ -926,7 +1371,7 @@ async function loadAgents(){
 // Corpus
 async function loadCorpus(){
   const r = await api("/corpus"); const wrap = $("#corpus-list"); wrap.innerHTML="";
-  if(!r.items.length){ wrap.innerHTML='<div class="empty">No stories found in eval/stories/.</div>'; }
+  if(!r.items.length){ wrap.innerHTML = '<div class="empty">No stories found in corpus.</div>'; }
   r.items.forEach(s=>{
     const d = document.createElement("div"); d.className = "item";
     const pr = s.pass_rate==null ? "—" : (Math.round(s.pass_rate*100)+"%");

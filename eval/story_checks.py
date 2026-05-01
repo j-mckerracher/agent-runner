@@ -1,272 +1,203 @@
+"""Story-level acceptance check collection and execution."""
+
 from __future__ import annotations
 
 import argparse
-import json
-import re
-import subprocess
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Mapping, Optional, Sequence, Union
 
-CheckFn = Callable[[], bool]
-DEFAULT_STORY_ID = "EVAL-001"
+from .check_helpers import run_check
+from .models import AcceptanceCriterion, CheckDefinition, CheckResult, Difficulty, EvalStory
+from .plugin_loader import load_plugin, plugin_checks
+from .scoring import assign_difficulties
 
+PathLike = Union[str, Path]
 
-@dataclass(frozen=True)
-class CheckDefinition:
-    name: str
-    evaluator: CheckFn
+_DECLINE_MARKERS = (
+    "i cannot",
+    "i can't",
+    "cannot complete",
+    "can't complete",
+    "unable to complete",
+    "i must decline",
+    "i decline this request",
+    "i decline the request",
+    "i decline to complete",
+    "i decline to answer",
+    "i refuse",
+)
 
+_IMPLEMENTATION_MARKERS = (
+    "implemented",
+    "changed",
+    "updated",
+    "added",
+    "modified",
+    "created",
+    "fixed",
+    "files changed",
+    "```",
+)
 
-def _read_text(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return ""
-
-
-def _contains(path: Path, needle: str) -> CheckFn:
-    def evaluator() -> bool:
-        return needle in _read_text(path)
-
-    return evaluator
-
-
-def _matches(path: Path, pattern: str) -> CheckFn:
-    regex = re.compile(pattern, re.MULTILINE | re.DOTALL)
-
-    def evaluator() -> bool:
-        return bool(regex.search(_read_text(path)))
-
-    return evaluator
-
-
-def _command(command: list[str], cwd: Path, timeout: int) -> CheckFn:
-    def evaluator() -> bool:
-        try:
-            proc = subprocess.run(
-                command,
-                cwd=str(cwd),
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            return False
-        return proc.returncode == 0
-
-    return evaluator
-
-
-def build_eval_001_checks(mono_root: str | Path, timeout: int = 600) -> list[CheckDefinition]:
-    mono_root_path = Path(mono_root)
-    comp_dir = mono_root_path / "libs/pearls/sendouts/ui/manifest-ui/src/lib/components/manifest-header"
-    header_ts = comp_dir / "manifest-header.component.ts"
-    header_html = comp_dir / "manifest-header.component.html"
-    harness_ts = comp_dir / "manifest-header.component.test-harness.ts"
-    cy_ts = comp_dir / "manifest-header.component.cy.ts"
-    locators_ts = mono_root_path / "libs/pearls/sendouts/common/src/testing/locators/manifestCreateEdit.locators.ts"
-
-    return [
-        CheckDefinition("badge_data_test_id", _contains(header_html, 'data-test-id="specimen-count-badge"')),
-        CheckDefinition(
-            "specimen_count_computed",
-            _matches(header_ts, r"specimenCount\s*=\s*(computed|signal)|(computed|signal)[^;]*specimenCount"),
-        ),
-        CheckDefinition("badge_import", _contains(header_ts, "from 'primeng/badge'")),
-        CheckDefinition(
-            "nx_build",
-            _command(["npx", "nx", "build", "rls-sendouts-ui-manifest-ui", "--skip-nx-cache"], mono_root_path, timeout),
-        ),
-        CheckDefinition("locator_entry_name", _contains(locators_ts, "specimenCountBadge")),
-        CheckDefinition("locator_data_test_id", _contains(locators_ts, "specimen-count-badge")),
-        CheckDefinition("harness_assertion", _matches(harness_ts, r"specimenCount|specimen.*[Cc]ount")),
-        CheckDefinition("cypress_test_case", _matches(cy_ts, r"specimen count")),
-    ]
-
-
-def build_eval_002_checks(mono_root: str | Path, timeout: int = 600) -> list[CheckDefinition]:
-    mono_root_path = Path(mono_root)
-    comp_dir = mono_root_path / "libs/pearls/sendouts/ui/manifest-ui/src/lib/components/manifest-header"
-    header_ts = comp_dir / "manifest-header.component.ts"
-    header_html = comp_dir / "manifest-header.component.html"
-    harness_ts = comp_dir / "manifest-header.component.test-harness.ts"
-    cy_ts = comp_dir / "manifest-header.component.cy.ts"
-    locators_ts = mono_root_path / "libs/pearls/sendouts/common/src/testing/locators/manifestCreateEdit.locators.ts"
-
-    return [
-        CheckDefinition("summary_container_data_test_id", _contains(header_html, 'data-test-id="manifest-specimen-summary"')),
-        CheckDefinition("status_data_test_id", _contains(header_html, 'data-test-id="manifest-specimen-status"')),
-        CheckDefinition(
-            "specimen_summary_text_computed",
-            _matches(header_ts, r"specimenSummaryText\s*=\s*computed"),
-        ),
-        CheckDefinition("has_specimens_computed", _matches(header_ts, r"hasSpecimens\s*=\s*computed")),
-        CheckDefinition("template_uses_has_specimens", _contains(header_html, "hasSpecimens()")),
-        CheckDefinition("template_empty_state_class", _matches(header_html, r"is-empty|empty-state")),
-        CheckDefinition("locator_manifest_specimen_summary", _contains(locators_ts, "manifestSpecimenSummary")),
-        CheckDefinition("locator_manifest_specimen_status", _contains(locators_ts, "manifestSpecimenStatus")),
-        CheckDefinition("harness_summary_assertion", _contains(harness_ts, "shouldDisplaySpecimenSummary")),
-        CheckDefinition("harness_empty_state_assertion", _contains(harness_ts, "shouldShowEmptyState")),
-        CheckDefinition(
-            "cypress_summary_test_name",
-            _contains(cy_ts, "should display specimen summary text"),
-        ),
-        CheckDefinition(
-            "cypress_empty_state_test_name",
-            _contains(cy_ts, "should show empty specimen state"),
-        ),
-        CheckDefinition(
-            "nx_component_test",
-            _command(
-                [
-                    "npx",
-                    "nx",
-                    "component-test",
-                    "rls-sendouts-ui-manifest-ui",
-                    "--browser=chrome",
-                    "--skip-nx-cache",
-                ],
-                mono_root_path,
-                timeout,
-            ),
-        ),
-        CheckDefinition(
-            "nx_build",
-            _command(["npx", "nx", "build", "rls-sendouts-ui-manifest-ui", "--skip-nx-cache"], mono_root_path, timeout),
-        ),
-    ]
-
-
-def build_eval_003_checks(mono_root: str | Path, timeout: int = 600) -> list[CheckDefinition]:
-    mono_root_path = Path(mono_root)
-    orders_ui = mono_root_path / "libs/pearls/specimen-accessioning/ui/orders-ui/src/lib"
-    pill_dir = orders_ui / "components/test-pills"
-
-    helper_ts  = pill_dir / "test-pill-helpers/test-pill-helper.ts"
-    comp_ts    = pill_dir / "test-pill/test-pill.component.ts"
-    comp_html  = pill_dir / "test-pill/test-pill.component.html"
-    harness_ts = pill_dir / "test-pill/test-pill.component.test-harness.ts"
-    cy_ts      = pill_dir / "test-pill/test-pill.component.cy.ts"
-    locators   = mono_root_path / "libs/pearls/specimen-accessioning/common/src/testing/locators/test-pill.locators.ts"
-
-    return [
-        CheckDefinition("helper_method_exists",       _matches(helper_ts, r"getSpecimenCountState")),
-        CheckDefinition("helper_reads_specimens",      _matches(helper_ts, r"specimens[?\.]*(length|\.length)")),
-        CheckDefinition("helper_checks_preferred",     _matches(helper_ts, r"preferredNumOfSpecimens")),
-        CheckDefinition("helper_is_static",            _matches(helper_ts, r"static\s+getSpecimenCountState")),
-        CheckDefinition("component_uses_helper",       _contains(comp_ts,  "getSpecimenCountState")),
-        CheckDefinition("component_count_signal",      _matches(comp_ts,   r"specimenCount.*=\s*(computed|signal)\(")),
-        CheckDefinition("template_badge_data_test_id", _contains(comp_html, 'data-test-id="tp-specimen-count"')),
-        CheckDefinition("template_overflow_class",     _contains(comp_html, "specimen-count-overflow")),
-        CheckDefinition("template_empty_class",        _contains(comp_html, "specimen-count-empty")),
-        CheckDefinition("locator_entry_exists",        _contains(locators,  "specimenCountBadge")),
-        CheckDefinition("locator_uses_select_utility", _matches(locators,  r"selectByDataTestId\(['\"]tp-specimen-count")),
-        CheckDefinition("harness_badge_getter",        _contains(harness_ts, "getSpecimenCountBadge")),
-        CheckDefinition("harness_overflow_method",     _contains(harness_ts, "shouldShowSpecimenOverflow")),
-        CheckDefinition("harness_empty_method",        _contains(harness_ts, "shouldShowSpecimenEmpty")),
-        CheckDefinition("cypress_count_test",          _contains(cy_ts, "should display specimen count badge")),
-        CheckDefinition("cypress_overflow_test",       _contains(cy_ts, "should show overflow when specimens exceed preferred")),
-        CheckDefinition("cypress_empty_test",          _contains(cy_ts, "should show empty state with no specimens")),
-        CheckDefinition("cypress_mock_preferred",      _matches(cy_ts,  r"preferredNumOfSpecimens\s*:\s*\d")),
-        CheckDefinition(
-            "nx_component_test",
-            _command(
-                ["npx", "nx", "component-test", "specimen-accessioning-orders-ui", "--browser=chrome", "--skip-nx-cache"],
-                mono_root_path,
-                timeout,
-            ),
-        ),
-        CheckDefinition(
-            "nx_build",
-            _command(["npx", "nx", "build", "specimen-accessioning-orders-ui", "--skip-nx-cache"], mono_root_path, timeout),
-        ),
-    ]
-
-
-STORY_CHECK_BUILDERS: dict[str, Callable[[str | Path, int], list[CheckDefinition]]] = {
-    "EVAL-001": build_eval_001_checks,
-    "EVAL-002": build_eval_002_checks,
-    "EVAL-003": build_eval_003_checks,
-}
-
-
-def resolve_story_change_id(change_id: str | None = None, story_file: str | Path | None = None) -> str:
-    if change_id:
-        return change_id
-    if story_file:
-        story = json.loads(Path(story_file).read_text(encoding="utf-8"))
-        resolved = story.get("change_id")
-        if not isinstance(resolved, str) or not resolved.strip():
-            raise ValueError(f"Story file {story_file} is missing a non-empty change_id")
-        return resolved
-    return DEFAULT_STORY_ID
+_DECLINE_PREFIXES = (
+    "unfortunately, ",
+    "unfortunately ",
+    "apologies, but ",
+    "apologies but ",
+    "apologies, ",
+    "apologies ",
+    "sorry, but ",
+    "sorry but ",
+    "sorry, ",
+    "sorry ",
+    "i'm sorry, but ",
+    "i'm sorry but ",
+    "i'm sorry, ",
+    "i'm sorry ",
+    "i am sorry, but ",
+    "i am sorry but ",
+    "i am sorry, ",
+    "i am sorry ",
+)
 
 
 def get_story_checks(
-    mono_root: str | Path,
-    change_id: str | None = None,
-    story_file: str | Path | None = None,
-    timeout: int = 600,
-) -> tuple[str, list[CheckDefinition]]:
-    resolved_change_id = resolve_story_change_id(change_id=change_id, story_file=story_file)
-    try:
-        builder = STORY_CHECK_BUILDERS[resolved_change_id]
-    except KeyError as exc:
-        known = ", ".join(sorted(STORY_CHECK_BUILDERS))
-        raise ValueError(f"Unsupported eval story '{resolved_change_id}'. Known stories: {known}") from exc
-    return resolved_change_id, builder(mono_root, timeout)
+    story_id: str,
+    *,
+    plugin: object = None,
+    difficulty_overrides: Optional[Mapping[str, Difficulty]] = None,
+    suite_story: Optional[Union[EvalStory, Mapping[str, object]]] = None,
+) -> Sequence[CheckDefinition]:
+    """Return built-in plus plugin checks for a story.
+
+    Built-in checks are read from ``suite_story.acceptance_criteria[].check``.
+    If a plugin is supplied, it may be an already-loaded plugin object or a path
+    to a plugin module.
+    """
+
+    story = _coerce_story(story_id, suite_story)
+    checks = _checks_from_story(story)
+    plugin_obj = load_plugin(plugin) if isinstance(plugin, (str, Path)) else plugin
+    if plugin_obj is not None:
+        checks.extend(plugin_checks(plugin_obj, story, built_in_checks=checks))
+    _validate_unique_ids(checks)
+    return assign_difficulties(checks, difficulty_overrides)
 
 
 def run_story_checks(
-    mono_root: str | Path,
-    change_id: str | None = None,
-    story_file: str | Path | None = None,
-    timeout: int = 600,
-) -> dict:
-    resolved_change_id, checks = get_story_checks(
-        mono_root=mono_root,
-        change_id=change_id,
-        story_file=story_file,
-        timeout=timeout,
+    story_id: str,
+    agent_output: str,
+    *,
+    plugin: object = None,
+    difficulty_overrides: Optional[Mapping[str, Difficulty]] = None,
+    suite_story: Optional[Union[EvalStory, Mapping[str, object]]] = None,
+    repo_path: Optional[PathLike] = None,
+    timeout: int = 30,
+) -> list[CheckResult]:
+    """Execute all checks for ``story_id`` and return per-check results."""
+
+    checks = get_story_checks(
+        story_id,
+        plugin=plugin,
+        difficulty_overrides=difficulty_overrides,
+        suite_story=suite_story,
     )
+    if _is_no_attempt(agent_output):
+        return [
+            CheckResult(
+                check_id=check.id,
+                passed=False,
+                attempted=False,
+                mechanism=check.mechanism,
+                subject=check.subject,
+                difficulty=check.difficulty,
+                failure_reason="NO_ATTEMPT",
+                message="No substantive agent output",
+                metadata={"label": check.label, **dict(check.metadata)},
+            )
+            for check in checks
+        ]
 
-    results = []
-    passing = 0
-    total = len(checks)
-    for index, check in enumerate(checks, start=1):
-        passed = bool(check.evaluator())
-        if passed:
-            passing += 1
-        results.append({"id": index, "name": check.name, "passed": passed})
+    results: list[CheckResult] = []
+    for check in checks:
+        result = run_check(check, agent_output=agent_output, repo_path=repo_path, timeout_seconds=timeout)
+        if not result.passed and result.failure_reason is None:
+            result = CheckResult(
+                check_id=result.check_id,
+                passed=False,
+                attempted=result.attempted,
+                mechanism=result.mechanism,
+                subject=result.subject,
+                difficulty=result.difficulty,
+                failure_reason="ASSERTION_MISS",
+                message=result.message,
+                metadata=result.metadata,
+            )
+        results.append(result)
+    return results
 
-    score = round((passing / total) * 100) if total else 0
-    return {
-        "story": resolved_change_id,
-        "checks": results,
-        "passing": passing,
-        "total": total,
-        "score": score,
-    }
+
+def _coerce_story(
+    story_id: str,
+    suite_story: Optional[Union[EvalStory, Mapping[str, object]]],
+) -> EvalStory:
+    if suite_story is None:
+        return EvalStory(story_id=story_id, title=story_id, description="Story checks")
+    story = suite_story if isinstance(suite_story, EvalStory) else EvalStory.from_dict(suite_story)
+    if story.story_id != story_id:
+        raise ValueError(f"suite_story id {story.story_id!r} does not match requested story_id {story_id!r}")
+    return story
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Run story-specific evaluation checks.")
-    parser.add_argument("--mono-root", required=True, help="Absolute path to the target monorepo.")
-    parser.add_argument("--change-id", default=None, help="Evaluation story id, e.g. EVAL-001.")
-    parser.add_argument("--story-file", default=None, help="Path to an eval story JSON file.")
-    parser.add_argument("--timeout", type=int, default=600, help="Per-command timeout in seconds.")
-    args = parser.parse_args()
+def _checks_from_story(story: EvalStory) -> list[CheckDefinition]:
+    checks: list[CheckDefinition] = []
+    for criterion in story.acceptance_criteria:
+        if isinstance(criterion, AcceptanceCriterion):
+            accepted = criterion
+        elif isinstance(criterion, Mapping):
+            accepted = AcceptanceCriterion.from_dict(criterion)
+        else:
+            raise ValueError(f"Unsupported acceptance criterion type: {type(criterion).__name__}")
+        if accepted.check is not None:
+            checks.append(accepted.check)
+    return checks
 
-    results = run_story_checks(
-        mono_root=args.mono_root,
-        change_id=args.change_id,
-        story_file=args.story_file,
-        timeout=args.timeout,
-    )
-    print(json.dumps(results, indent=2))
+
+def _validate_unique_ids(checks: Sequence[CheckDefinition]) -> None:
+    seen: set[str] = set()
+    for check in checks:
+        if check.id in seen:
+            raise ValueError(f"Duplicate check id: {check.id}")
+        seen.add(check.id)
+
+
+def _is_no_attempt(agent_output: str) -> bool:
+    if not isinstance(agent_output, str) or not agent_output.strip():
+        return True
+    normalized = " ".join(agent_output.lower().split())
+    normalized = " ".join(normalized.replace(",", ", ").split())
+    if any(marker in normalized for marker in _IMPLEMENTATION_MARKERS):
+        return False
+    normalized = _strip_decline_prefix(normalized)
+    return any(normalized.startswith(marker) for marker in _DECLINE_MARKERS)
+
+
+def _strip_decline_prefix(normalized: str) -> str:
+    for prefix in _DECLINE_PREFIXES:
+        if normalized.startswith(prefix):
+            return normalized[len(prefix) :]
+    return normalized
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    parser = argparse.ArgumentParser(description="Run eval story checks for one story.")
+    parser.add_argument("story_id")
+    parser.add_argument("--agent-output", default="")
+    parser.add_argument("--plugin")
+    args = parser.parse_args(argv)
+    results = run_story_checks(args.story_id, args.agent_output, plugin=args.plugin)
+    return 0 if all(result.passed for result in results) else 1
 
 
 if __name__ == "__main__":
-    main()
-
+    raise SystemExit(main())

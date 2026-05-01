@@ -1,208 +1,200 @@
-# Difficulty rubric for this file:
-#   easy   = single-field presence or value equality on a pre-built registry
-#            (e.g. asserting a count or a single name).
-#   medium = exercising STORY_CHECK_BUILDERS via patch.dict, requires mock
-#            setup and dispatch verification.
-#   hard   = (none in this file)
-
-import json
-import tempfile
+import sys
 import unittest
-from pathlib import Path
-from unittest.mock import patch
 
-from eval import story_checks
+from eval.check_helpers import command_check, contains_check, matches_check
+from eval.models import AcceptanceCriterion, EvalStory
+from eval.scoring import assign_check_difficulty, suggested_difficulty_for_check
+from eval.story_checks import run_story_checks
 
 
-class StoryCheckRegistryTests(unittest.TestCase):
-    def test_easy__eval_001_resolved_change_id_is_eval_001(self):
-        resolved_change_id, _ = story_checks.get_story_checks("/tmp/mono", change_id="EVAL-001", timeout=1)
-        self.assertEqual(resolved_change_id, "EVAL-001")
+def story_with_checks(*checks):
+    return EvalStory(
+        story_id="story-001",
+        title="Story 001",
+        description="A test story",
+        acceptance_criteria=[
+            AcceptanceCriterion(ac_id=f"AC{index}", text=check.label, tier="easy", check=check)
+            for index, check in enumerate(checks, start=1)
+        ],
+    )
 
-    def test_easy__eval_001_registry_has_eight_checks(self):
-        _, checks = story_checks.get_story_checks("/tmp/mono", change_id="EVAL-001", timeout=1)
-        self.assertEqual(len(checks), 8)
 
-    def test_easy__eval_001_first_check_is_badge_data_test_id(self):
-        _, checks = story_checks.get_story_checks("/tmp/mono", change_id="EVAL-001", timeout=1)
-        self.assertEqual(checks[0].name, "badge_data_test_id")
+class CheckHelperTests(unittest.TestCase):
+    def test_contains_factory_sets_expected_and_metadata(self):
+        check = contains_check(
+            "contains-title",
+            "Contains title",
+            "agent_output",
+            "needle",
+            metadata={"source": "test"},
+        )
 
-    def test_easy__eval_001_last_check_is_cypress_test_case(self):
-        _, checks = story_checks.get_story_checks("/tmp/mono", change_id="EVAL-001", timeout=1)
-        self.assertEqual(checks[-1].name, "cypress_test_case")
+        self.assertEqual(check.mechanism, "contains")
+        self.assertEqual(check.expected, "needle")
+        self.assertEqual(check.metadata["source"], "test")
 
-    def test_easy__eval_002_resolved_change_id_is_eval_002(self):
-        resolved_change_id, _ = story_checks.get_story_checks("/tmp/mono", change_id="EVAL-002", timeout=1)
-        self.assertEqual(resolved_change_id, "EVAL-002")
+    def test_matches_factory_sets_pattern(self):
+        check = matches_check("matches-title", "Matches title", "agent_output", r"need[a-z]+")
 
-    def test_easy__eval_002_registry_has_fourteen_checks(self):
-        _, checks = story_checks.get_story_checks("/tmp/mono", change_id="EVAL-002", timeout=1)
-        self.assertEqual(len(checks), 14)
+        self.assertEqual(check.mechanism, "matches")
+        self.assertEqual(check.expected, r"need[a-z]+")
 
-    def test_easy__eval_002_first_check_is_summary_container_data_test_id(self):
-        _, checks = story_checks.get_story_checks("/tmp/mono", change_id="EVAL-002", timeout=1)
-        self.assertEqual(checks[0].name, "summary_container_data_test_id")
+    def test_command_factory_sets_command(self):
+        check = command_check("cmd", "Command", "build", [sys.executable, "--version"])
 
-    def test_easy__eval_002_last_check_is_nx_build(self):
-        _, checks = story_checks.get_story_checks("/tmp/mono", change_id="EVAL-002", timeout=1)
-        self.assertEqual(checks[-1].name, "nx_build")
+        self.assertEqual(check.mechanism, "command")
+        self.assertEqual(check.command, [sys.executable, "--version"])
 
-    def test_easy__eval_003_resolved_change_id_is_eval_003(self):
-        resolved_change_id, _ = story_checks.get_story_checks("/tmp/mono", change_id="EVAL-003", timeout=1)
-        self.assertEqual(resolved_change_id, "EVAL-003")
 
-    def test_easy__eval_003_registry_has_twenty_checks(self):
-        _, checks = story_checks.get_story_checks("/tmp/mono", change_id="EVAL-003", timeout=1)
-        self.assertEqual(len(checks), 20)
+class DifficultyAssignmentTests(unittest.TestCase):
+    def test_two_signal_difficulty_assigns_low_medium_high(self):
+        low = contains_check("low", "Low", "file", "needle")
+        medium = matches_check("medium", "Medium", "agent_output", r"needle")
+        high = command_check("high", "High", "build", [sys.executable, "--version"])
 
-    def test_easy__eval_003_first_check_is_helper_method_exists(self):
-        _, checks = story_checks.get_story_checks("/tmp/mono", change_id="EVAL-003", timeout=1)
-        self.assertEqual(checks[0].name, "helper_method_exists")
+        self.assertEqual(suggested_difficulty_for_check(low), "low")
+        self.assertEqual(suggested_difficulty_for_check(medium), "medium")
+        self.assertEqual(suggested_difficulty_for_check(high), "high")
 
-    def test_easy__eval_003_last_check_is_nx_build(self):
-        _, checks = story_checks.get_story_checks("/tmp/mono", change_id="EVAL-003", timeout=1)
-        self.assertEqual(checks[-1].name, "nx_build")
+    def test_manual_override_wins_and_preserves_suggested_difficulty(self):
+        check = contains_check("manual", "Manual", "build", "needle")
 
-    def test_medium__resolve_story_change_id_reads_change_id_from_story_file(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            story_path = Path(tmpdir) / "EVAL-002.json"
-            story_path.write_text(json.dumps({"change_id": "EVAL-002"}), encoding="utf-8")
+        assigned = assign_check_difficulty(check, {"manual": "high"})
 
-            resolved_change_id = story_checks.resolve_story_change_id(story_file=story_path)
+        self.assertEqual(assigned.difficulty, "high")
+        self.assertEqual(assigned.suggested_difficulty, "medium")
 
-        self.assertEqual(resolved_change_id, "EVAL-002")
+    def test_definition_difficulty_wins_and_preserves_suggested_difficulty(self):
+        check = command_check(
+            "manual-definition",
+            "Manual definition",
+            "build",
+            [sys.executable, "--version"],
+            difficulty="low",
+        )
+
+        assigned = assign_check_difficulty(check)
+
+        self.assertEqual(assigned.difficulty, "low")
+        self.assertEqual(assigned.suggested_difficulty, "high")
 
 
 class StoryCheckExecutionTests(unittest.TestCase):
-    def test_medium__legacy_default_run_returns_eval_001_story(self):
-        builder = lambda mono_root, timeout: [story_checks.CheckDefinition("legacy_default", lambda: True)]
+    def test_run_story_checks_passes_contains_and_matches(self):
+        story = story_with_checks(
+            contains_check("contains", "Contains", "agent_output", "needle"),
+            matches_check("matches", "Matches", "agent_output", r"need[a-z]+"),
+        )
 
-        with patch.dict(story_checks.STORY_CHECK_BUILDERS, {"EVAL-001": builder}, clear=False):
-            result = story_checks.run_story_checks("/tmp/mono", timeout=1)
+        results = run_story_checks("story-001", "haystack needle", suite_story=story)
 
-        self.assertEqual(result["story"], "EVAL-001")
+        self.assertTrue(all(result.passed for result in results))
 
-    def test_medium__legacy_default_run_returns_full_score(self):
-        builder = lambda mono_root, timeout: [story_checks.CheckDefinition("legacy_default", lambda: True)]
+    def test_direct_story_with_dict_criteria_runs_checks(self):
+        story = EvalStory(
+            story_id="story-001",
+            title="Story 001",
+            description="A test story",
+            acceptance_criteria=[
+                {
+                    "ac_id": "AC1",
+                    "text": "Contains needle",
+                    "tier": "easy",
+                    "check": contains_check("contains", "Contains", "agent_output", "needle").to_dict(),
+                }
+            ],
+        )
 
-        with patch.dict(story_checks.STORY_CHECK_BUILDERS, {"EVAL-001": builder}, clear=False):
-            result = story_checks.run_story_checks("/tmp/mono", timeout=1)
+        result = run_story_checks("story-001", "haystack needle", suite_story=story)[0]
 
-        self.assertEqual(result["score"], 100)
+        self.assertTrue(result.passed)
 
-    def test_medium__legacy_default_run_first_check_name_is_legacy_default(self):
-        builder = lambda mono_root, timeout: [story_checks.CheckDefinition("legacy_default", lambda: True)]
+    def test_failed_assertion_has_failure_reason(self):
+        story = story_with_checks(contains_check("missing", "Missing", "agent_output", "needle"))
 
-        with patch.dict(story_checks.STORY_CHECK_BUILDERS, {"EVAL-001": builder}, clear=False):
-            result = story_checks.run_story_checks("/tmp/mono", timeout=1)
+        result = run_story_checks("story-001", "haystack", suite_story=story)[0]
 
-        self.assertEqual(result["checks"][0]["name"], "legacy_default")
+        self.assertFalse(result.passed)
+        self.assertEqual(result.failure_reason, "ASSERTION_MISS")
 
-    def test_medium__story_file_dispatch_resolves_to_change_id_in_file(self):
-        builder = lambda mono_root, timeout: [story_checks.CheckDefinition("story_file_dispatch", lambda: True)]
+    def test_empty_output_marks_all_checks_no_attempt_and_not_attempted(self):
+        story = story_with_checks(
+            contains_check("contains", "Contains", "agent_output", "needle"),
+            command_check("command", "Command", "build", [sys.executable, "--version"]),
+        )
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            story_path = Path(tmpdir) / "EVAL-002.json"
-            story_path.write_text(json.dumps({"change_id": "EVAL-002"}), encoding="utf-8")
+        results = run_story_checks("story-001", "", suite_story=story)
 
-            with patch.dict(story_checks.STORY_CHECK_BUILDERS, {"EVAL-002": builder}, clear=False):
-                result = story_checks.run_story_checks("/tmp/mono", story_file=story_path, timeout=1)
+        self.assertEqual([result.failure_reason for result in results], ["NO_ATTEMPT", "NO_ATTEMPT"])
+        self.assertEqual([result.attempted for result in results], [False, False])
 
-        self.assertEqual(result["story"], "EVAL-002")
+    def test_declined_output_marks_no_attempt(self):
+        story = story_with_checks(contains_check("contains", "Contains", "agent_output", "needle"))
 
-    def test_medium__story_file_dispatch_passing_count_equals_one(self):
-        builder = lambda mono_root, timeout: [story_checks.CheckDefinition("story_file_dispatch", lambda: True)]
+        for output in (
+            "I cannot complete this request.",
+            "Unfortunately, I cannot complete this request.",
+            "Unfortunately,I cannot complete this request.",
+        ):
+            with self.subTest(output=output):
+                result = run_story_checks("story-001", output, suite_story=story)[0]
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            story_path = Path(tmpdir) / "EVAL-002.json"
-            story_path.write_text(json.dumps({"change_id": "EVAL-002"}), encoding="utf-8")
+                self.assertEqual(result.failure_reason, "NO_ATTEMPT")
+                self.assertFalse(result.attempted)
 
-            with patch.dict(story_checks.STORY_CHECK_BUILDERS, {"EVAL-002": builder}, clear=False):
-                result = story_checks.run_story_checks("/tmp/mono", story_file=story_path, timeout=1)
+    def test_decline_phrase_with_implementation_is_attempted(self):
+        story = story_with_checks(contains_check("contains", "Contains", "agent_output", "needle"))
 
-        self.assertEqual(result["passing"], 1)
+        result = run_story_checks(
+            "story-001",
+            "I decline to use the risky approach, but implemented the needle feature.",
+            suite_story=story,
+        )[0]
 
-    def test_medium__story_file_dispatch_total_count_equals_one(self):
-        builder = lambda mono_root, timeout: [story_checks.CheckDefinition("story_file_dispatch", lambda: True)]
+        self.assertTrue(result.attempted)
+        self.assertTrue(result.passed)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            story_path = Path(tmpdir) / "EVAL-002.json"
-            story_path.write_text(json.dumps({"change_id": "EVAL-002"}), encoding="utf-8")
+    def test_decline_phrase_about_rejected_approach_is_attempted(self):
+        story = story_with_checks(contains_check("contains", "Contains", "agent_output", "needle"))
 
-            with patch.dict(story_checks.STORY_CHECK_BUILDERS, {"EVAL-002": builder}, clear=False):
-                result = story_checks.run_story_checks("/tmp/mono", story_file=story_path, timeout=1)
+        result = run_story_checks(
+            "story-001",
+            "I decline to use the risky approach; the safer answer includes needle.",
+            suite_story=story,
+        )[0]
 
-        self.assertEqual(result["total"], 1)
+        self.assertTrue(result.attempted)
+        self.assertTrue(result.passed)
 
-    def test_medium__partial_results_story_id_matches_change_id(self):
-        builder = lambda mono_root, timeout: [
-            story_checks.CheckDefinition("pass_check", lambda: True),
-            story_checks.CheckDefinition("fail_check", lambda: False),
-        ]
+    def test_non_zero_command_is_build_error(self):
+        story = story_with_checks(
+            command_check(
+                "command-fails",
+                "Command fails",
+                "build",
+                [sys.executable, "-c", "import sys; sys.exit(7)"],
+            )
+        )
 
-        with patch.dict(story_checks.STORY_CHECK_BUILDERS, {"EVAL-999": builder}, clear=False):
-            result = story_checks.run_story_checks("/tmp/mono", change_id="EVAL-999", timeout=1)
+        result = run_story_checks("story-001", "implemented", suite_story=story)[0]
 
-        self.assertEqual(result["story"], "EVAL-999")
+        self.assertFalse(result.passed)
+        self.assertEqual(result.failure_reason, "BUILD_ERROR")
 
-    def test_medium__partial_results_passing_count_is_one(self):
-        builder = lambda mono_root, timeout: [
-            story_checks.CheckDefinition("pass_check", lambda: True),
-            story_checks.CheckDefinition("fail_check", lambda: False),
-        ]
+    def test_command_timeout_is_timeout(self):
+        story = story_with_checks(
+            command_check(
+                "command-timeout",
+                "Command timeout",
+                "execute",
+                [sys.executable, "-c", "import time; time.sleep(2)"],
+            )
+        )
 
-        with patch.dict(story_checks.STORY_CHECK_BUILDERS, {"EVAL-999": builder}, clear=False):
-            result = story_checks.run_story_checks("/tmp/mono", change_id="EVAL-999", timeout=1)
+        result = run_story_checks("story-001", "implemented", suite_story=story, timeout=0.1)[0]
 
-        self.assertEqual(result["passing"], 1)
-
-    def test_medium__partial_results_total_count_is_two(self):
-        builder = lambda mono_root, timeout: [
-            story_checks.CheckDefinition("pass_check", lambda: True),
-            story_checks.CheckDefinition("fail_check", lambda: False),
-        ]
-
-        with patch.dict(story_checks.STORY_CHECK_BUILDERS, {"EVAL-999": builder}, clear=False):
-            result = story_checks.run_story_checks("/tmp/mono", change_id="EVAL-999", timeout=1)
-
-        self.assertEqual(result["total"], 2)
-
-    def test_medium__partial_results_score_is_fifty(self):
-        builder = lambda mono_root, timeout: [
-            story_checks.CheckDefinition("pass_check", lambda: True),
-            story_checks.CheckDefinition("fail_check", lambda: False),
-        ]
-
-        with patch.dict(story_checks.STORY_CHECK_BUILDERS, {"EVAL-999": builder}, clear=False):
-            result = story_checks.run_story_checks("/tmp/mono", change_id="EVAL-999", timeout=1)
-
-        self.assertEqual(result["score"], 50)
-
-    def test_medium__partial_results_second_check_name_is_fail_check(self):
-        builder = lambda mono_root, timeout: [
-            story_checks.CheckDefinition("pass_check", lambda: True),
-            story_checks.CheckDefinition("fail_check", lambda: False),
-        ]
-
-        with patch.dict(story_checks.STORY_CHECK_BUILDERS, {"EVAL-999": builder}, clear=False):
-            result = story_checks.run_story_checks("/tmp/mono", change_id="EVAL-999", timeout=1)
-
-        self.assertEqual(result["checks"][1]["name"], "fail_check")
-
-    def test_medium__partial_results_second_check_passed_is_false(self):
-        builder = lambda mono_root, timeout: [
-            story_checks.CheckDefinition("pass_check", lambda: True),
-            story_checks.CheckDefinition("fail_check", lambda: False),
-        ]
-
-        with patch.dict(story_checks.STORY_CHECK_BUILDERS, {"EVAL-999": builder}, clear=False):
-            result = story_checks.run_story_checks("/tmp/mono", change_id="EVAL-999", timeout=1)
-
-        self.assertFalse(result["checks"][1]["passed"])
-
-    def test_easy__get_story_checks_raises_value_error_for_unknown_story(self):
-        with self.assertRaisesRegex(ValueError, "Unsupported eval story"):
-            story_checks.get_story_checks("/tmp/mono", change_id="EVAL-404", timeout=1)
+        self.assertFalse(result.passed)
+        self.assertEqual(result.failure_reason, "TIMEOUT")
 
 
 if __name__ == "__main__":

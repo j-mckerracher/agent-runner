@@ -1,12 +1,78 @@
 """Aggregate metrics for the Evaluate view."""
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
 from . import db, corpus
 
 logger = logging.getLogger(__name__)
+
+
+def _score_to_percent(value: Any) -> int | None:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return None
+    if score < 0:
+        return None
+    if score <= 1:
+        score *= 100.0
+    return round(min(score, 100.0))
+
+
+def _extract_weighted_score(row: dict[str, Any]) -> int | None:
+    """Return persisted weighted eval score when a future DB row exposes one.
+
+    The current jobs table does not persist eval scoring metrics; it only stores
+    job status/cost/token fields. These lookups are intentionally optional so
+    /evaluate/summary keeps its status-based fallback until score columns or
+    JSON metric fields are added by a future migration.
+    """
+
+    direct = _score_to_percent(row.get("score_weighted_composite"))
+    if direct is not None:
+        return direct
+    for field_name in ("metrics", "eval_metrics", "score_metrics"):
+        raw = row.get(field_name)
+        if not raw:
+            continue
+        payload: Any
+        if isinstance(raw, str):
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+        else:
+            payload = raw
+        if isinstance(payload, dict):
+            nested = _score_to_percent(payload.get("score_weighted_composite"))
+            if nested is not None:
+                return nested
+            expected = payload.get("expected_output")
+            if isinstance(expected, dict):
+                nested = _score_to_percent(expected.get("score_weighted_composite"))
+                if nested is not None:
+                    return nested
+    return None
+
+
+def _score_average(rows: list[dict[str, Any]], *, require_complete: bool = False) -> int | None:
+    scores = [_extract_weighted_score(row) for row in rows]
+    available = [score for score in scores if score is not None]
+    if require_complete and len(available) != len(rows):
+        return None
+    if not available:
+        return None
+    return round(sum(available) / len(available))
+
+
+def _status_pass_rate(rows: list[dict[str, Any]]) -> int:
+    if not rows:
+        return 0
+    succ = sum(1 for r in rows if r["status"] == "succeeded")
+    return round(100.0 * succ / len(rows))
 
 
 def summary() -> dict[str, Any]:
@@ -35,15 +101,25 @@ def summary() -> dict[str, Any]:
                 "status": "no-data",
             })
             continue
-        succ = sum(1 for r in all_runs if r["status"] == "succeeded")
-        current = round(100.0 * succ / len(all_runs))
         # Baseline = pass rate over the older half of runs (oldest first).
         ordered = sorted(all_runs, key=lambda r: r["submitted_at"])
         if len(ordered) >= 4:
             half = len(ordered) // 2
-            base_succ = sum(1 for r in ordered[:half] if r["status"] == "succeeded")
-            baseline = round(100.0 * base_succ / half)
+            baseline_score = _score_average(ordered[:half], require_complete=True)
+            current_score = _score_average(all_runs, require_complete=True)
+            if baseline_score is not None and current_score is not None:
+                baseline = baseline_score
+                current = current_score
+                score_source = "score_weighted_composite"
+            else:
+                baseline = _status_pass_rate(ordered[:half])
+                current = _status_pass_rate(all_runs)
+                score_source = "job_status"
         else:
+            current = _score_average(all_runs, require_complete=True)
+            score_source = "score_weighted_composite" if current is not None else "job_status"
+            if current is None:
+                current = _status_pass_rate(all_runs)
             baseline = current
         delta = current - baseline
         if delta <= -10:
@@ -65,6 +141,7 @@ def summary() -> dict[str, Any]:
             "delta": delta,
             "runs": len(all_runs),
             "status": status,
+            "score_source": score_source,
         })
         # Cost aggregation
         for r in all_runs:
