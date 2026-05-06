@@ -1,7 +1,7 @@
 """Thin facade so server.routes don't need to know about runner_models layout."""
 from __future__ import annotations
 
-from runner_models import (
+from core.runner_models import (
     COPILOT_EFFORT_CHOICES,
     RUNNER_DEFAULT_MODELS,
     RUNNER_MODEL_CHOICES,

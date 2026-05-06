@@ -1,6 +1,6 @@
 import unittest
 
-from opik_integration import _sdk_trace_metadata
+from core.opik_integration import _sdk_trace_metadata
 
 
 class OpikIntegrationTests(unittest.TestCase):

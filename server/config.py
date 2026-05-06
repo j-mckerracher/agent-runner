@@ -9,7 +9,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .paths import RUNNER_ROOT, config_path, data_dir
-from runner_models import RUNNER_DEFAULT_MODELS, RUNNER_MODEL_CHOICES, canonical_runner, is_copilot_runner
+from core.runner_models import RUNNER_DEFAULT_MODELS, RUNNER_MODEL_CHOICES, canonical_runner, is_copilot_runner
 
 logger = logging.getLogger(__name__)
 

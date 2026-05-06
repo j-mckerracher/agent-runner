@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional, Sequence
 
-from workflow_inputs import resolve_workflow_input
+from core.workflow_inputs import resolve_workflow_input
 
 if __package__ in {None, ""}:  # pragma: no cover - exercised by direct CLI use.
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))

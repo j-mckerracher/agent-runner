@@ -44,9 +44,9 @@ class UiTraceBridgeTests(unittest.TestCase):
 
     def test_medium__track_with_ui_emits_opik_trace_start_and_end(self):
         from server.events import read_all
-        from ui_trace_bridge import track_with_ui
+        from core.ui_trace_bridge import track_with_ui
 
-        with patch("ui_trace_bridge.opik.track", side_effect=_fake_track):
+        with patch("core.ui_trace_bridge.opik.track", side_effect=_fake_track):
             @track_with_ui(
                 name="stage:intake",
                 type="tool",
@@ -67,9 +67,9 @@ class UiTraceBridgeTests(unittest.TestCase):
 
     def test_medium__track_with_ui_marks_error_when_wrapped_call_raises(self):
         from server.events import read_all
-        from ui_trace_bridge import track_with_ui
+        from core.ui_trace_bridge import track_with_ui
 
-        with patch("ui_trace_bridge.opik.track", side_effect=_fake_track):
+        with patch("core.ui_trace_bridge.opik.track", side_effect=_fake_track):
             @track_with_ui(name="sdk-evaluator", type="llm")
             def explode() -> None:
                 raise ValueError("boom")
@@ -84,11 +84,11 @@ class UiTraceBridgeTests(unittest.TestCase):
 
     def test_medium__start_span_with_ui_tracks_nested_depth(self):
         from server.events import read_all
-        from ui_trace_bridge import start_span_with_ui, track_with_ui
+        from core.ui_trace_bridge import start_span_with_ui, track_with_ui
 
         with (
-            patch("ui_trace_bridge.opik.track", side_effect=_fake_track),
-            patch("ui_trace_bridge.opik.start_as_current_span", side_effect=_fake_span),
+            patch("core.ui_trace_bridge.opik.track", side_effect=_fake_track),
+            patch("core.ui_trace_bridge.opik.start_as_current_span", side_effect=_fake_span),
         ):
             @track_with_ui(name="loop:uow-eval", type="general")
             def run_loop() -> None:

@@ -30,14 +30,14 @@ import anthropic
 import httpx
 from opik import opik_context
 from google import genai as google_genai
-from agent_prompts import load_agent_system_prompt
-from ui_trace_bridge import track_with_ui
-from run_cmds import run_copilot_cmd
-from runner_models import is_copilot_runner
+from .agent_prompts import load_agent_system_prompt
+from .ui_trace_bridge import track_with_ui
+from .run_cmds import run_copilot_cmd
+from .runner_models import is_copilot_runner
 
 logger = logging.getLogger(__name__)
 
-RUNNER_ROOT = Path(__file__).resolve().parent
+RUNNER_ROOT = Path(__file__).resolve().parent.parent
 
 _MODEL_PRICING: dict[str, tuple[float, float]] = {
     "claude-sonnet-4-6": (3.0, 15.0),
@@ -310,3 +310,4 @@ def _attach_usage_metadata(response, *, provider: str, model: str = "") -> None:
         # Never let observability errors propagate.
         logger.debug("_attach_usage_metadata: swallowed error: %s", exc)
         return
+

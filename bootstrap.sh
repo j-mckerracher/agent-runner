@@ -12,4 +12,4 @@ else
   exit 1
 fi
 
-exec "$PYTHON_BIN" "$ROOT_DIR/bootstrap.py" "$@"
+exec "$PYTHON_BIN" "$ROOT_DIR/scripts/bootstrap.py" "$@"

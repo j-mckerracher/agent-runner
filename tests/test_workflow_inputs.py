@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from workflow_inputs import (
+from core.workflow_inputs import (
     DEFAULT_TEST_STORY_FILE,
     infer_change_id_from_ado_url,
     load_story_fixture,

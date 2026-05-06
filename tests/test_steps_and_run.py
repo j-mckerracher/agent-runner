@@ -21,8 +21,8 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
 
 import run
-from steps import build_intake_prompt
-from workflow_inputs import DEFAULT_TEST_STORY_FILE
+from core.steps import build_intake_prompt
+from core.workflow_inputs import DEFAULT_TEST_STORY_FILE
 
 
 class IntakePromptAdoModeTests(unittest.TestCase):

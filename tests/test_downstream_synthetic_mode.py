@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, Mock, patch
 import yaml
 
 from run import load_assignments
-from steps import step_task_gen_producer, step_task_assigner
+from core.steps import step_task_gen_producer, step_task_assigner
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "workflow-fixtures"
 TEST_AC_001_ROOT = FIXTURE_ROOT / "TEST-AC-001"
@@ -122,7 +122,7 @@ class TaskPlanNormalizationTests(unittest.TestCase):
                 return "task plan written"
 
             context = f"Generate tasks from {agent_context_root}/{change_id}/intake/."
-            with patch("steps.AGENT_CONTEXT_ROOT", agent_context_root), patch("steps.run_agent_cmd", side_effect=fake_run_agent_cmd):
+            with patch("core.steps.AGENT_CONTEXT_ROOT", agent_context_root), patch("core.steps.run_agent_cmd", side_effect=fake_run_agent_cmd):
                 step_task_gen_producer(context, runner="claude")
 
             with tasks_path.open("r", encoding="utf-8") as handle:
@@ -171,7 +171,7 @@ class TaskPlanNormalizationTests(unittest.TestCase):
                 return "task plan written"
 
             context = f"Generate tasks from {agent_context_root}/{change_id}/intake/."
-            with patch("steps.AGENT_CONTEXT_ROOT", agent_context_root), patch("steps.run_agent_cmd", side_effect=fake_run_agent_cmd):
+            with patch("core.steps.AGENT_CONTEXT_ROOT", agent_context_root), patch("core.steps.run_agent_cmd", side_effect=fake_run_agent_cmd):
                 step_task_gen_producer(context, runner="claude")
 
             with tasks_path.open("r", encoding="utf-8") as handle:
@@ -212,7 +212,7 @@ class TaskPlanNormalizationTests(unittest.TestCase):
                 return "assignments written"
 
             context = f"Create assignments from {agent_context_root}/{change_id}/planning/tasks.yaml."
-            with patch("steps.AGENT_CONTEXT_ROOT", agent_context_root), patch("steps.run_agent_cmd", side_effect=fake_run_agent_cmd):
+            with patch("core.steps.AGENT_CONTEXT_ROOT", agent_context_root), patch("core.steps.run_agent_cmd", side_effect=fake_run_agent_cmd):
                 step_task_assigner(context, runner="claude")
 
             parsed = json.loads(assignments_path.read_text(encoding="utf-8"))

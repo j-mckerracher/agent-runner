@@ -3,9 +3,9 @@ import re
 
 from opik import opik_context
 
-import steps
-from runner_models import DEFAULT_GEMINI_MODEL
-from ui_trace_bridge import start_span_with_ui, track_with_ui
+from . import steps
+from .runner_models import DEFAULT_GEMINI_MODEL
+from .ui_trace_bridge import start_span_with_ui, track_with_ui
 
 logger = logging.getLogger(__name__)
 
@@ -206,3 +206,4 @@ def run_eval_optimizer_loop(
 
     logger.info("run_eval_optimizer_loop: DONE change_id=%s", change_id)
     return producer_out, evaluator_out
+

@@ -14,16 +14,16 @@ from pathlib import Path
 
 import yaml
 
-from artifact_utils import load_assignments_file
+from core.artifact_utils import load_assignments_file
 from dotenv import load_dotenv
 load_dotenv()
 
-import opik_integration  # noqa: F401 — configures Opik project context before the flow runs
-import steps
-from evaluator_optimizer_loops import run_uow_eval_loop, run_eval_optimizer_loop
-from materialize import run_materialization
-from runner_models import COPILOT_EFFORT_CHOICES, RUNNER_DEFAULT_MODELS, RUNNER_MODEL_CHOICES, canonical_runner, is_copilot_runner, copilot_alias_model
-from workflow_inputs import DEFAULT_TEST_STORY_FILE, resolve_workflow_input
+import core.opik_integration  # noqa: F401 — configures Opik project context before the flow runs
+import core.steps as steps
+from core.evaluator_optimizer_loops import run_uow_eval_loop, run_eval_optimizer_loop
+from core.materialize import run_materialization
+from core.runner_models import COPILOT_EFFORT_CHOICES, RUNNER_DEFAULT_MODELS, RUNNER_MODEL_CHOICES, canonical_runner, is_copilot_runner, copilot_alias_model
+from core.workflow_inputs import DEFAULT_TEST_STORY_FILE, resolve_workflow_input
 
 logger = logging.getLogger(__name__)
 

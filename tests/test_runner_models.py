@@ -1,7 +1,7 @@
 """Tests for runner_models module, especially model resolution and dispatching."""
 import unittest
 
-from runner_models import (
+from core.runner_models import (
     resolve_agent_model,
     RUNNER_DEFAULT_MODELS,
     RUNNER_MODEL_CHOICES,

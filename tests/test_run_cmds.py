@@ -8,7 +8,7 @@ import subprocess
 import unittest
 from unittest.mock import patch
 
-import run_cmds
+import core.run_cmds as run_cmds
 
 
 class RunCopilotCmdEnvironmentTests(unittest.TestCase):

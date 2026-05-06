@@ -5,16 +5,16 @@ import subprocess
 from pathlib import Path
 import yaml
 
-from artifact_utils import normalize_assignments_file
+from .artifact_utils import normalize_assignments_file
 from opik import opik_context
-from run_cmds import run_claude_cmd, run_agent_cmd
-from opik_integration import call_evaluator_sdk
-from runner_models import DEFAULT_GEMINI_MODEL, resolve_agent_model
-from ui_trace_bridge import track_with_ui
+from .run_cmds import run_claude_cmd, run_agent_cmd
+from .opik_integration import call_evaluator_sdk
+from .runner_models import DEFAULT_GEMINI_MODEL, resolve_agent_model
+from .ui_trace_bridge import track_with_ui
 
 logger = logging.getLogger(__name__)
 
-AGENT_CONTEXT_ROOT = Path(__file__).resolve().parent / "agent-context"
+AGENT_CONTEXT_ROOT = Path(__file__).resolve().parent.parent / "agent-context"
 _TASK_FIELD_ALIASES = {
     "task_id": "id",
     "acceptance_criteria_mapped": "ac_mapping",
@@ -690,3 +690,4 @@ def step_lessons_optimizer(
     )
     logger.info("step_lessons_optimizer: completed change_id=%s output_len=%d", change_id, len(result or ""))
     return result
+

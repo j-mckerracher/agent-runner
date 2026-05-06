@@ -8,8 +8,8 @@ import threading
 import time
 from pathlib import Path
 
-from agent_prompts import load_agent_system_prompt
-from runner_models import DEFAULT_GEMINI_MODEL, DEFAULT_COPILOT_MODEL, is_copilot_runner
+from .agent_prompts import load_agent_system_prompt
+from .runner_models import DEFAULT_GEMINI_MODEL, DEFAULT_COPILOT_MODEL, is_copilot_runner
 
 logger = logging.getLogger(__name__)
 
@@ -187,7 +187,7 @@ def _run_cli_live(cmd: list[str], *, env: dict | None = None) -> subprocess.Comp
         stderr="".join(stderr_chunks),
     )
 
-RUNNER_ROOT = Path(__file__).resolve().parent
+RUNNER_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_ROOT = RUNNER_ROOT / ".github" / "skills"
 
 CLAUDE_AUTH_ENV_VARS = frozenset({
@@ -553,3 +553,4 @@ def run_gemini(
 ) -> str:
     """Wrapper around run_gemini_cmd."""
     return run_gemini_cmd(prompt=prompt, agent=agent, model=model, extra_flags=extra_flags)
+

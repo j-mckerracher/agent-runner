@@ -4,12 +4,12 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from workflow_inputs import resolve_workflow_input
+from core.workflow_inputs import resolve_workflow_input
 
 from .. import evaluate
 from .. import corpus
 from ..jobs import manager
-from runner_models import canonical_runner, RUNNER_DEFAULT_MODELS
+from core.runner_models import canonical_runner, RUNNER_DEFAULT_MODELS
 
 logger = logging.getLogger(__name__)
 

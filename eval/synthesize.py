@@ -15,16 +15,16 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 if __package__ in {None, ""}:  # pragma: no cover - direct script execution
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    import run_cmds
-    from runner_models import is_copilot_runner, copilot_alias_model
+    from core import run_cmds
+    from core.runner_models import is_copilot_runner, copilot_alias_model
     from eval.dataset_manifest import load_dataset_lock, load_dataset_manifest, stable_manifest_hash
     from eval.models import AcceptanceCriterion, CheckDefinition, DatasetLock, DatasetManifest, EvalStory
     from eval.run_eval import StoryRun, TrialRunSpec, run_story_trials
     from eval.suite_io import dump_eval_story, workflow_fixture_from_story
     from eval.yaml_io import dump_yaml
 else:
-    import run_cmds
-    from runner_models import is_copilot_runner, copilot_alias_model
+    from core import run_cmds
+    from core.runner_models import is_copilot_runner, copilot_alias_model
     from .dataset_manifest import load_dataset_lock, load_dataset_manifest, stable_manifest_hash
     from .models import AcceptanceCriterion, CheckDefinition, DatasetLock, DatasetManifest, EvalStory
     from .run_eval import StoryRun, TrialRunSpec, run_story_trials

@@ -17,7 +17,7 @@ from eval.synthesize import (
     validate_raw_ac,
 )
 from eval.yaml_io import dump_yaml, load_yaml_mapping
-from workflow_inputs import load_story_fixture
+from core.workflow_inputs import load_story_fixture
 
 
 def _extract_prompt_payload(prompt: str) -> dict:
