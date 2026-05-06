@@ -43,15 +43,15 @@ Follow the **execution-discipline** skill protocol and the **evaluator-framework
 - **Artifact Root**: `{code_repo}/agent-context/{CHANGE-ID}/` (read/write artifacts in this path).
 - **Inputs** from `{CHANGE-ID}/`:
   - `planning/assignments.json`: execution schedule to evaluate.
-  - `planning/tasks.yaml`: authoritative brownfield work-item list (`task_id`, dependencies, planning metadata).
+  - `planning/tasks.yaml`: authoritative brownfield work-item list (`id`, dependencies, planning metadata).
   - Attempt number and previous evaluation feedback (if revision).
 - **Output**: write evaluation to `{CHANGE-ID}/planning/eval_assignments_k.json` (k = attempt number).
 
 ## Evaluation Workflow
 
 1. **Programmatic Gates (Hard Pass/Fail)**: Run deterministic checks before any subjective assessment:
-   - Schema validation: `assignments.json` is valid JSON matching the expected schema.
-   - Completeness: all `tasks.yaml.task_id` values are scheduled via `source_task_id`.
+   - Schema validation: `assignments.json` is valid JSON matching the expected schema. Legacy YAML artifacts may exist from older runs, but new task-assigner output is required to be canonical JSON.
+   - Completeness: all `tasks.yaml.id` values are scheduled via `source_task_id`.
    - Dependency respect: no UoW is scheduled before its dependencies.
    - No duplicates: each UoW appears exactly once.
 
@@ -83,7 +83,7 @@ If ANY script exits non-zero, set `all_gates_passed: false` and include the scri
 ## Dependency & Completeness Validation (Used for Gates and Rubric)
 
 1. Build the dependency graph from `tasks.yaml`.
-2. Verify every `tasks.yaml.task_id` appears in `assignments.json` via `source_task_id`.
+2. Verify every `tasks.yaml.id` appears in `assignments.json` via `source_task_id`.
 3. For each scheduled UoW, verify all mapped task dependencies are in earlier batches.
 4. Flag any violations with specific batch numbers.
 
@@ -126,8 +126,8 @@ High-risk UoWs should be early if they:
 
 ### 4. Completeness (Critical)
 
-- **Pass**: All `tasks.yaml.task_id` values are scheduled via `source_task_id` mappings.
-- **Fail**: One or more `tasks.yaml.task_id` values are missing from the schedule.
+- **Pass**: All `tasks.yaml.id` values are scheduled via `source_task_id` mappings.
+- **Fail**: One or more `tasks.yaml.id` values are missing from the schedule.
 
 ### 5. Rationale Quality (Important)
 

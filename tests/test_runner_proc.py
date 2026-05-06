@@ -26,6 +26,23 @@ class RunnerProcFailureSummaryTests(unittest.TestCase):
 
         self.assertEqual(summary, "ValueError: fixture mismatch")
 
+    def test_medium__uses_failed_stage_when_command_failure_lacks_stage(self):
+        events = [
+            {"type": "stage.start", "stage": "qa"},
+            {
+                "type": "log",
+                "level": "error",
+                "kind": "command_failed",
+                "msg": "qa-engineer command failed (exit 1): qa cli failed",
+            },
+            {"type": "stage.end", "stage": "qa", "status": "error"},
+            {"type": "job.end", "status": "failed", "exit_code": 1},
+        ]
+
+        summary = _format_failure_summary(events, "", 1)
+
+        self.assertEqual(summary, "qa: qa-engineer command failed (exit 1): qa cli failed")
+
 
 if __name__ == "__main__":
     unittest.main()

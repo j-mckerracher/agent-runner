@@ -32,8 +32,10 @@ Run these checks at the very start of your first invocation:
 # Step 1: Is the ov CLI installed?
 command -v ov >/dev/null 2>&1 && echo "ov_installed" || echo "ov_not_installed"
 
-# Step 2: If installed, is the server healthy?
-ov system health 2>/dev/null && echo "ov_healthy" || echo "ov_unhealthy"
+# Step 2: If installed, is the server healthy and can it read the knowledge root?
+ov system health >/dev/null 2>&1 && \
+ov overview viking://resources/knowledge/ >/dev/null 2>&1 && \
+echo "ov_healthy" || echo "ov_unhealthy"
 ```
 
 ### Mode Assignment
@@ -51,9 +53,9 @@ Set `knowledge_mode` as an internal variable for the remainder of this session. 
 If an `ov` command fails unexpectedly after the session has committed to `openviking` mode:
 
 1. Log the failure in `metacognitive_context.tool_anomalies`
-2. Attempt the equivalent flat-file operation as a one-off recovery
-3. Do **not** switch `knowledge_mode` — the session remains `openviking`
-4. If failures are persistent (3+ consecutive), note this in log entries for operator awareness
+2. If the failure indicates auth, permission, or query access problems (for example 401, Unauthorized, authentication, permission denied), immediately switch to `flat-file` mode for the remainder of the session
+3. Otherwise, attempt the equivalent flat-file operation as a one-off recovery while keeping `knowledge_mode` as `openviking`
+4. If non-auth failures are persistent (3+ consecutive), switch to `flat-file` mode for the remainder of the session and note this in log entries for operator awareness
 
 ## Required Skills
 

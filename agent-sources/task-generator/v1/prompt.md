@@ -92,43 +92,43 @@ Produce `tasks.yaml` with this structure:
 
 ```yaml
 story_id: "<CHANGE-ID>"
-  librarian_queries:
-      query: "What existing tooltip patterns exist?"
-      confidence_received: "full"
-      answer_summary: "PrimeNG pTooltip directive with tooltipPosition"
-  librarian_exploration_summaries:
-      query: "Where is the PersonService located?"
-      summary_received: "Found in src/services/PersonService.ts, uses repository pattern"
-  tasks:
-      task_id: "T1"
-      title: "<descriptive title>"
-      description: "<what this task accomplishes>"
-      acceptance_criteria_mapped: ["AC1", "AC3"]
-      dependencies: []
-      priority: "high|medium|low"
-      estimated_complexity: "simple|moderate|complex"
-      task_id: "T2"
-      title: "<descriptive title>"
-      description: "<what this task accomplishes>"
-      acceptance_criteria_mapped: ["AC2"]
-      dependencies: ["T1"]
-      priority: "high|medium|low"
-      estimated_complexity: "simple|moderate|complex"
-  ac_coverage_matrix: {
-    AC1: ["T1"]
-    AC2: ["T2"]
-    AC3: ["T1"]
-  notes: "<any important considerations or risks>"
-  metacognitive_context:
-    decision_rationale: '<Why this task decomposition approach was chosen over alternatives>'
-    alternatives_discarded:
-      - approach: '<alternative task structure considered>'
-        reason_rejected: '<why it was not used>'
-    knowledge_gaps:
-      - '<specific documentation, files, or context the agent felt was missing>'
-    tool_anomalies:
-      - tool: '<tool name>'
-        anomaly: '<unexpected behavior observed>'
+librarian_queries:
+  - query: "What existing tooltip patterns exist?"
+    confidence_received: "full"
+    answer_summary: "PrimeNG pTooltip directive with tooltipPosition"
+librarian_exploration_summaries:
+  - query: "Where is the PersonService located?"
+    summary_received: "Found in src/services/PersonService.ts, uses repository pattern"
+tasks:
+  - id: "T1"
+    title: "<descriptive title>"
+    description: "<what this task accomplishes>"
+    ac_mapping: ["AC1", "AC3"]
+    dependencies: []
+    priority: "high|medium|low"
+    complexity: "simple|moderate|complex"
+  - id: "T2"
+    title: "<descriptive title>"
+    description: "<what this task accomplishes>"
+    ac_mapping: ["AC2"]
+    dependencies: ["T1"]
+    priority: "high|medium|low"
+    complexity: "simple|moderate|complex"
+ac_coverage_matrix:
+  AC1: ["T1"]
+  AC2: ["T2"]
+  AC3: ["T1"]
+notes: "<any important considerations or risks>"
+metacognitive_context:
+  decision_rationale: "<Why this task decomposition approach was chosen over alternatives>"
+  alternatives_discarded:
+    - approach: "<alternative task structure considered>"
+      reason_rejected: "<why it was not used>"
+  knowledge_gaps:
+    - "<specific documentation, files, or context the agent felt was missing>"
+  tool_anomalies:
+    - tool: "<tool name>"
+      anomaly: "<unexpected behavior observed>"
 ```
 
 ## Quality Criteria
@@ -137,8 +137,13 @@ Your task plan must:
 
 1. **Cover all ACs**: Every acceptance criterion must map to at least one task
 2. **Correct dependencies**: Tasks must be orderable without cycles
-3. **Appropriate granularity**: 3-8 broad tasks typically; avoid micro-steps
+3. **Appropriate granularity**: 2-8 broad tasks typically; never produce fewer than 2 tasks
 4. **Clear descriptions**: Each task must be understandable in isolation
+
+If the requested change is very small, still produce at least 2 meaningful tasks by splitting the work into:
+
+- one implementation task
+- one verification/alignment task that validates the change against the ACs and repository conventions
 
 ## Common Patterns
 

@@ -9,7 +9,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .paths import RUNNER_ROOT, config_path, data_dir
-from runner_models import RUNNER_DEFAULT_MODELS, RUNNER_MODEL_CHOICES
+from runner_models import RUNNER_DEFAULT_MODELS, RUNNER_MODEL_CHOICES, canonical_runner, is_copilot_runner
 
 logger = logging.getLogger(__name__)
 
@@ -86,8 +86,8 @@ def validate_config(cfg: dict) -> list[str]:
         errors.append("api.host must be a non-empty string")
     defaults = cfg.get("defaults") or {}
     runner = defaults.get("runner")
-    if runner not in (None, "claude", "copilot", "gemini"):
-        errors.append("defaults.runner must be one of: claude, copilot, gemini")
+    if runner is not None and (not isinstance(runner, str) or canonical_runner(runner) not in RUNNER_DEFAULT_MODELS):
+        errors.append("defaults.runner must be one of: claude, copilot, gemini, or a copilot alias (copilot-<name>)")
     mode = defaults.get("mode")
     if mode not in (None, "live", "hermetic"):
         errors.append("defaults.mode must be 'live' or 'hermetic'")
@@ -121,12 +121,13 @@ def validate_config(cfg: dict) -> list[str]:
                 errors.append(f"agent_model_defaults[{agent_name}] must be a dict")
                 continue
             for runner, model in runner_models.items():
-                if runner not in valid_runners:
-                    errors.append(f"agent_model_defaults[{agent_name}][{runner}] has invalid runner {runner}; must be one of {valid_runners}")
+                base = canonical_runner(runner)
+                if base not in valid_runners:
+                    errors.append(f"agent_model_defaults[{agent_name}][{runner}] has invalid runner {runner}; must be one of {valid_runners} or a copilot alias")
                 elif not isinstance(model, str):
                     errors.append(f"agent_model_defaults[{agent_name}][{runner}] model must be a string")
-                elif runner in RUNNER_MODEL_CHOICES:
-                    valid_models = RUNNER_MODEL_CHOICES[runner]
+                elif base in RUNNER_MODEL_CHOICES and (not is_copilot_runner(runner) or runner == "copilot"):
+                    valid_models = RUNNER_MODEL_CHOICES[base]
                     if model not in valid_models:
                         errors.append(f"agent_model_defaults[{agent_name}][{runner}]={model} is not valid for runner={runner}")
 

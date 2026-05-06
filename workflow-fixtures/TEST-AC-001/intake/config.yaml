@@ -1,0 +1,5 @@
+change_id: TEST-AC-001
+code_repo: /tmp/target-repo
+project_type: synthetic-fixture
+created_at: 2026-01-01T00:00:00Z
+intake_mode: synthetic

@@ -9,6 +9,7 @@ from workflow_inputs import resolve_workflow_input
 from .. import evaluate
 from .. import corpus
 from ..jobs import manager
+from runner_models import canonical_runner, RUNNER_DEFAULT_MODELS
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +47,9 @@ async def submit_evaluation_run(payload: EvaluationRunSubmit) -> dict:
         raise HTTPException(400, "story_id is required")
     if payload.story_id and payload.change_id and payload.story_id != payload.change_id:
         raise HTTPException(400, "story_id and change_id must match when both are provided")
-    if payload.runner not in ("claude", "copilot", "gemini"):
+    if canonical_runner(payload.runner) not in RUNNER_DEFAULT_MODELS:
         logger.warning("submit_evaluation_run: invalid runner=%s", payload.runner)
-        raise HTTPException(400, "runner must be claude|copilot|gemini")
+        raise HTTPException(400, "runner must be claude, copilot, gemini, or a copilot alias (copilot-<name>)")
 
     story = corpus.get_story(story_id)
     story_path = corpus.story_path_for(story_id)

@@ -1,0 +1,18 @@
+{
+  "story_id": "TEST-AC-001",
+  "execution_schedule": [
+    {
+      "batch": 1,
+      "parallel_execution": false,
+      "uows": [
+        {
+          "uow_id": "UOW-001",
+          "source_task_id": "T1",
+          "assigned_role": "software-engineer",
+          "priority_in_batch": 1,
+          "rationale": "Synthetic fixture verification"
+        }
+      ]
+    }
+  ]
+}

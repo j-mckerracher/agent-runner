@@ -33,6 +33,7 @@ from google import genai as google_genai
 from agent_prompts import load_agent_system_prompt
 from ui_trace_bridge import track_with_ui
 from run_cmds import run_copilot_cmd
+from runner_models import is_copilot_runner
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,7 @@ def _sdk_trace_metadata(
     model: str = "claude-haiku-4-5-20251001",
     runner: str = "claude",
     runner_model: str | None = None,
+    **_unused: object,
 ) -> dict[str, str]:
     resolved_model = runner_model if runner == "gemini" and runner_model else model
     return {
@@ -155,14 +157,25 @@ def call_evaluator_sdk(
     )
     logger.debug("call_evaluator_sdk: user_message length=%d agent=%s", len(user_message), agent_name)
 
-    if runner == "copilot":
-        logger.info("call_evaluator_sdk: using Copilot CLI model=%s effort=%s agent=%s", model, copilot_effort, agent_name)
-        text = run_copilot_cmd(
-            prompt=user_message,
-            agent=agent_name,
-            model=model,
-            effort=copilot_effort,
-        )
+    if is_copilot_runner(runner):
+        if runner == "copilot":
+            # Base copilot: pass --model as usual
+            logger.info("call_evaluator_sdk: using Copilot CLI model=%s effort=%s agent=%s", model, copilot_effort, agent_name)
+            text = run_copilot_cmd(
+                prompt=user_message,
+                agent=agent_name,
+                model=model,
+                effort=copilot_effort,
+            )
+        else:
+            # Alias runner (e.g. "copilot-deepseek"): binary IS the command, no --model flag
+            logger.info("call_evaluator_sdk: using Copilot alias cli_cmd=%s effort=%s agent=%s", runner, copilot_effort, agent_name)
+            text = run_copilot_cmd(
+                prompt=user_message,
+                agent=agent_name,
+                effort=copilot_effort,
+                cli_cmd=runner,
+            )
         logger.info("call_evaluator_sdk: Copilot CLI call succeeded agent=%s response_len=%d", agent_name, len(text or ""))
         _attach_usage_metadata(None, provider="copilot", model=model)
         return text
@@ -244,7 +257,7 @@ def call_evaluator_sdk(
         return text
 
     else:
-        raise ValueError(f"Unknown runner={runner} for call_evaluator_sdk; must be one of 'copilot', 'claude', 'gemini'")
+        raise ValueError(f"Unknown runner={runner} for call_evaluator_sdk; must be one of 'copilot', 'claude', 'gemini', or a copilot alias (copilot-<name>)")
 
 
 def _attach_usage_metadata(response, *, provider: str, model: str = "") -> None:

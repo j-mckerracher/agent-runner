@@ -1,0 +1,21 @@
+change_id: TEST-AC-001
+title: Synthetic local fixture smoke test
+description: Verify the workflow handles a bundled synthetic fixture without Azure DevOps metadata.
+acceptance_criteria:
+  AC1: Use the local synthetic fixture inputs when no external story source is supplied.
+  AC2: Preserves the normalized synthetic metadata and fixture payload in intake artifacts.
+  AC3: Skip ado-specific operations because the story has no Azure DevOps provenance.
+examples:
+  - local bundled fixture
+constraints:
+  - Keep the workflow self-contained for synthetic runs.
+non_functional_requirements:
+  - deterministic setup
+raw_input:
+  source_type: synthetic_fixture
+  fixture_path: workflow-fixtures/synthetic_story.json
+  original_fixture: >-
+    {"change_id":"TEST-AC-001","title":"Synthetic local fixture smoke test","description":"Verify the workflow handles a bundled synthetic fixture without Azure DevOps metadata.","acceptance_criteria":["Use the local synthetic fixture inputs when no external story source is supplied.","Preserves the normalized synthetic metadata and fixture payload in intake artifacts.","Skip ado-specific operations because the story has no Azure DevOps provenance."]}
+metacognitive_context:
+  normalization_source: synthetic_fixture
+ado_provenance:

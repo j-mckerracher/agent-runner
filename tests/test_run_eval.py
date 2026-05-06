@@ -93,6 +93,32 @@ class RunEvalCompatibilityTests(unittest.TestCase):
         self.assertIn("--skip-materialize", command)
         self.assertEqual(subprocess_run.call_args.kwargs["cwd"], str(self.workdir))
 
+    def test_run_workflow_streams_live_output_when_requested(self):
+        story_path = self._write_workflow_json()
+        completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="live", stderr="")
+
+        with patch.object(run_eval, "_run_subprocess_live", return_value=completed) as run_live, patch.object(
+            run_eval.subprocess, "run"
+        ) as subprocess_run:
+            result = run_eval._run_workflow(
+                fixture_path=story_path,
+                repo=str(self.repo),
+                runner="copilot",
+                model="gpt-5.4-mini",
+                skip_materialize=False,
+                stream_output=True,
+            )
+
+        self.assertIs(result, completed)
+        subprocess_run.assert_not_called()
+        command = run_live.call_args.args[0]
+        self.assertEqual(command[0], run_eval.sys.executable)
+        self.assertEqual(command[command.index("--story-file") + 1], str(story_path))
+        self.assertEqual(command[command.index("--repo") + 1], str(self.repo))
+        self.assertEqual(command[command.index("--runner") + 1], "copilot")
+        self.assertEqual(command[command.index("--model") + 1], "gpt-5.4-mini")
+        self.assertEqual(run_live.call_args.kwargs["cwd"], str(self.workdir))
+
 
 if __name__ == "__main__":
     unittest.main()

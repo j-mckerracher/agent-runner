@@ -18,6 +18,7 @@ from ..config import load_config
 from ..events import read_all
 from ..jobs import manager
 from ..paths import user_responses_path_for
+from runner_models import canonical_runner, RUNNER_DEFAULT_MODELS
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +81,9 @@ class RunSubmit(BaseModel):
 @router.post("")
 async def submit_run(payload: RunSubmit) -> dict[str, Any]:
     logger.info("submit_run: change_id=%s runner=%s mode=%s", payload.change_id, payload.runner, payload.mode)
-    if payload.runner not in ("claude", "copilot", "gemini"):
+    if canonical_runner(payload.runner) not in RUNNER_DEFAULT_MODELS:
         logger.warning("submit_run: invalid runner=%s", payload.runner)
-        raise HTTPException(400, "runner must be claude|copilot|gemini")
+        raise HTTPException(400, "runner must be claude, copilot, gemini, or a copilot alias (copilot-<name>)")
     if payload.run_kind and payload.run_kind != "regular":
         logger.warning("submit_run: invalid run_kind=%s", payload.run_kind)
         raise HTTPException(400, "regular runs must be submitted through /runs")

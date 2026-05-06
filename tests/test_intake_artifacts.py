@@ -15,13 +15,15 @@ from pathlib import Path
 
 import yaml
 
+TEST_AC_001_ROOT = Path(__file__).parent.parent / "workflow-fixtures" / "TEST-AC-001"
+
 
 class SyntheticIntakeArtifactsTests(unittest.TestCase):
     """Verify intake artifacts created for TEST-AC-001 synthetic story."""
 
     @classmethod
     def setUpClass(cls):
-        agent_context = Path(__file__).parent.parent / "agent-context" / "TEST-AC-001" / "intake"
+        agent_context = TEST_AC_001_ROOT / "intake"
         cls.story_yaml_path = agent_context / "story.yaml"
         cls.config_yaml_path = agent_context / "config.yaml"
         cls.constraints_md_path = agent_context / "constraints.md"

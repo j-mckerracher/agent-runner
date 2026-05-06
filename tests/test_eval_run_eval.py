@@ -45,7 +45,21 @@ class EvalRunEvalTests(unittest.TestCase):
         change_id="CHG-001",
         suite_tier="hard",
         check_difficulty="high",
+        mechanism="contains",
+        subject="agent_output",
+        command=None,
     ):
+        check = {
+            "id": "contains_expected",
+            "label": "Contains expected",
+            "mechanism": mechanism,
+            "subject": subject,
+            "difficulty": check_difficulty,
+        }
+        if mechanism in {"contains", "matches"}:
+            check["expected"] = expected
+        if mechanism == "command":
+            check["command"] = command or ["python3", "-c", "raise SystemExit(1)"]
         story_path = self.suite_dir / f"{story_id}.yaml"
         dump_yaml(
             {
@@ -60,14 +74,7 @@ class EvalRunEvalTests(unittest.TestCase):
                         "ac_id": "AC1",
                         "tier": suite_tier,
                         "text": "Output contains expected text",
-                        "check": {
-                            "id": "contains_expected",
-                            "label": "Contains expected",
-                            "mechanism": "contains",
-                            "subject": "agent_output",
-                            "expected": expected,
-                            "difficulty": check_difficulty,
-                        },
+                        "check": check,
                     }
                 ],
             },
@@ -157,17 +164,119 @@ class EvalRunEvalTests(unittest.TestCase):
         self.assertIn("--skip-materialize", command)
         self.assertEqual(result.stories[0].subprocess_returncode, 0)
 
-    def test_multi_run_pipeline_uses_isolated_workflow_change_ids(self):
+    def test_run_story_trials_passes_calibration_fast_mode_to_workflow(self):
         story_path = self._write_story()
+        completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="implemented needle", stderr="")
+        with mock.patch.object(run_eval, "_run_workflow", return_value=completed) as run_workflow, mock.patch.object(
+            run_eval, "_validate_fixture"
+        ), mock.patch.object(run_eval, "load_best_artifact_text", return_value="implemented needle"):
+            story_runs = run_eval.run_story_trials(
+                story_path=story_path,
+                repo=str(self.repo),
+                runner="claude",
+                model="claude-sonnet",
+                runs=1,
+                skip_pipeline=False,
+                calibration_fast_mode=True,
+            )
+
+        self.assertEqual(len(story_runs), 1)
+        self.assertTrue(run_workflow.call_args.kwargs["calibration_fast_mode"])
+
+    def test_run_story_trials_respects_explicit_run_indices_for_isolated_change_ids(self):
+        story_path = self._write_story(
+            mechanism="command",
+            subject="repo",
+            command=["python3", "-c", "raise SystemExit(1)"],
+        )
+        completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="implemented needle", stderr="")
+        with (
+            mock.patch.object(run_eval, "_run_workflow", return_value=completed),
+            mock.patch.object(run_eval, "_validate_fixture"),
+            mock.patch.object(run_eval, "load_best_artifact_text", return_value="implemented needle"),
+            mock.patch.object(run_eval, "_copy_repo_for_run", return_value=(str(self.repo), self.workdir / "transient-repo")),
+        ):
+            story_runs = run_eval.run_story_trials(
+                story_path=story_path,
+                repo=str(self.repo),
+                runner="claude",
+                model="claude-sonnet",
+                runs=3,
+                run_indices=[2],
+                skip_pipeline=False,
+            )
+
+        self.assertEqual([story_run.change_id for story_run in story_runs], ["CHG-001-RUN-02"])
+
+    def test_run_story_trials_forwards_per_run_runner_specs(self):
+        story_path = self._write_story(
+            mechanism="command",
+            subject="repo",
+            command=["python3", "-c", "raise SystemExit(1)"],
+        )
+        completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="implemented needle", stderr="")
+        run_specs = [
+            run_eval.TrialRunSpec(run_index=1, runner="copilot-gemma4", model="gemma4"),
+            run_eval.TrialRunSpec(run_index=2, runner="copilot-minimax-m2.7", model="minimax-m2.7"),
+        ]
+        with (
+            mock.patch.object(run_eval, "_run_workflow", return_value=completed) as run_workflow,
+            mock.patch.object(run_eval, "_validate_fixture"),
+            mock.patch.object(run_eval, "load_best_artifact_text", return_value="implemented needle"),
+            mock.patch.object(run_eval, "_copy_repo_for_run", return_value=(str(self.repo), self.workdir / "transient-repo")),
+        ):
+            story_runs = run_eval.run_story_trials(
+                story_path=story_path,
+                repo=str(self.repo),
+                runner="claude",
+                model="claude-sonnet",
+                runs=2,
+                run_specs=run_specs,
+                skip_pipeline=False,
+            )
+
+        self.assertEqual(len(story_runs), 2)
+        self.assertEqual(
+            [call.kwargs["runner"] for call in run_workflow.call_args_list],
+            ["copilot-gemma4", "copilot-minimax-m2.7"],
+        )
+        self.assertEqual(
+            [call.kwargs["model"] for call in run_workflow.call_args_list],
+            ["gemma4", "minimax-m2.7"],
+        )
+
+    def test_multi_run_pipeline_uses_isolated_workflow_change_ids(self):
+        story_path = self._write_story(
+            mechanism="command",
+            subject="repo",
+            command=[
+                "python3",
+                "-c",
+                "import pathlib, sys; sys.exit(0 if pathlib.Path('done.txt').exists() else 1)",
+            ],
+        )
         self._write_suite(story_path)
         seen_change_ids = []
         seen_story_ids = []
+        seen_repo_paths = []
         seen_lock = threading.Lock()
 
         def fake_run(command, **kwargs):
+            if command[:2] == ["cp", "-cR"] or command[:2] == ["cp", "--reflink=auto"]:
+                source = Path(command[-2])
+                destination = Path(command[-1])
+                shutil.copytree(source, destination, symlinks=True)
+                return subprocess.CompletedProcess(args=command, returncode=0, stdout="", stderr="")
+            if "--story-file" not in command:
+                repo_dir = Path(kwargs["cwd"])
+                passed = (repo_dir / "done.txt").exists()
+                return subprocess.CompletedProcess(args=command, returncode=0 if passed else 1, stdout="", stderr="")
+
             fixture_path = Path(command[command.index("--story-file") + 1])
             fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
             change_id = fixture["change_id"]
+            repo_path = Path(command[command.index("--repo") + 1])
+            (repo_path / "done.txt").write_text("ok", encoding="utf-8")
             artifact = (
                 self.workdir
                 / "agent-context"
@@ -181,14 +290,18 @@ class EvalRunEvalTests(unittest.TestCase):
             with seen_lock:
                 seen_change_ids.append(change_id)
                 seen_story_ids.append(fixture["metadata"]["eval_story_id"])
+                seen_repo_paths.append(str(repo_path))
             return subprocess.CompletedProcess(args=command, returncode=0, stdout="", stderr="")
 
         with mock.patch.object(run_eval.subprocess, "run", side_effect=fake_run) as subprocess_run:
             result = run_eval.run_eval(self._args(skip_pipeline=False, runs=2, max_concurrent=2))
 
-        self.assertEqual(subprocess_run.call_count, 2)
+        self.assertEqual(subprocess_run.call_count, 8)
         self.assertCountEqual(seen_change_ids, ["CHG-001-RUN-01", "CHG-001-RUN-02"])
         self.assertEqual(seen_story_ids, ["story_001", "story_001"])
+        self.assertEqual(len(seen_repo_paths), 2)
+        self.assertEqual(len(set(seen_repo_paths)), 2)
+        self.assertTrue(all(path != str(self.repo) for path in seen_repo_paths))
         self.assertCountEqual(
             [story_run.change_id for story_run in result.stories],
             ["CHG-001-RUN-01", "CHG-001-RUN-02"],
@@ -196,6 +309,36 @@ class EvalRunEvalTests(unittest.TestCase):
         self.assertTrue(all(story_run.story.story_id == "story_001" for story_run in result.stories))
         self.assertFalse((self.workdir / "agent-context" / "CHG-001").exists())
         self.assertTrue(result.summary.weighted_composite)
+
+    def test_multi_run_pipeline_rejects_non_repo_grounded_checks_before_launch(self):
+        story_path = self._write_story()
+        self._write_suite(story_path)
+
+        with mock.patch.object(run_eval.subprocess, "run") as subprocess_run:
+            result = run_eval.run_eval(self._args(skip_pipeline=False, runs=2))
+
+        subprocess_run.assert_not_called()
+        self.assertTrue(result.workflow_failed)
+        self.assertIn("repo-grounded command check", result.stories[0].artifact_text)
+
+    def test_multi_run_pipeline_rejects_already_satisfied_story_before_launch(self):
+        story_path = self._write_story(
+            mechanism="command",
+            subject="repo",
+            command=["python3", "-c", "raise SystemExit(0)"],
+        )
+        self._write_suite(story_path)
+
+        def fake_run(command, **kwargs):
+            if "--story-file" in command:
+                self.fail("workflow should not launch when the story already passes preflight")
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout="", stderr="")
+
+        with mock.patch.object(run_eval.subprocess, "run", side_effect=fake_run):
+            result = run_eval.run_eval(self._args(skip_pipeline=False, runs=2))
+
+        self.assertTrue(result.workflow_failed)
+        self.assertIn("already passes against the starting repository", result.stories[0].artifact_text)
 
     def test_skip_pipeline_multi_run_preserves_base_change_id_artifacts(self):
         story_path = self._write_story()
@@ -209,6 +352,18 @@ class EvalRunEvalTests(unittest.TestCase):
         self.assertEqual([story_run.change_id for story_run in result.stories], ["CHG-001", "CHG-001"])
         self.assertFalse(any(self.fixtures.glob("*.json")))
         self.assertTrue(result.summary.weighted_composite)
+
+    def test_copy_repo_for_run_fallback_ignores_common_build_outputs(self):
+        with mock.patch.object(run_eval, "_clone_repo_tree", return_value=False), mock.patch.object(
+            run_eval.shutil, "copytree"
+        ) as copytree:
+            repo_path, temp_root = run_eval._copy_repo_for_run(str(self.repo), change_id="CHG-IGNORE")
+
+        ignore = copytree.call_args.kwargs["ignore"]
+        ignored = set(ignore(str(self.repo), ["build", "coverage", "dist", "src", "storybook-static"]))
+        self.assertTrue({"build", "coverage", "dist", "storybook-static"}.issubset(ignored))
+        self.assertTrue(Path(repo_path).name == self.repo.name)
+        shutil.rmtree(temp_root, ignore_errors=True)
 
     def test_pipeline_failure_returns_nonzero_and_does_not_write_baseline(self):
         story_path = self._write_story()

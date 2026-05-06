@@ -1,0 +1,39 @@
+dataset_id: mcs-products-mono-ui
+display_name: mcs-products-mono-ui
+source:
+  type: code_repository
+  path: ~/Code/mcs-products-mono-ui/libs
+  include_extensions:
+    - .ts
+    - .tsx
+  exclude_patterns:
+    - .spec.ts
+    - /node_modules/
+    - /dist/
+    - /coverage/
+    - /.angular/
+    - /storybook-static/
+  layer_map:
+    pearls: pearls_features
+    shared: shared_libraries
+    product-catalog: product_catalog
+    storybook-host: storybook
+sampling:
+  strategy: stratified
+  sample_size: 50
+  seed: 8675309
+  stratify_by: layer
+domain_context: >
+  This is an Angular/TypeScript Nx monorepo (mcs-products-mono-ui) for RLS
+  (Reference Lab System) frontend applications. The library code is organized
+  into three main domains: pearls_features (clinical lab features including
+  specimen accessioning, sendouts, auto-accession, order system viewer, and
+  HL7 admin), shared_libraries (shared UI components, data access services,
+  state management, core utilities, and testing helpers), and product_catalog
+  (product viewer and product details features). Synthetic stories should ask
+  the agent to implement realistic front-end engineering tasks such as adding
+  Angular components, updating NgRx state and effects, extending data access
+  services, wiring up new routes, or improving shared UI pattern library
+  elements — spanning the relevant feature and shared layers.
+metadata:
+  owner: platform-eval

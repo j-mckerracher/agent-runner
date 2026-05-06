@@ -25,7 +25,7 @@ It can run fully local synthetic stories for offline iteration or live Azure Dev
 | **Synthetic + ADO inputs** | Develop safely with local JSON fixtures, then point the same runner at live Azure DevOps work items when you are ready. |
 | **Traceable workflow artifacts** | Every stage writes structured artifacts under `agent-context/<change-id>/`, so downstream agents and reviewers can inspect the chain of decisions. |
 | **Opik tracing and insights** | Bootstrap can start a local self-hosted Opik stack, wire project metadata, and deep-link each selected run to traces filtered for that change ID. |
-| **Evaluation harness** | `eval/run_eval.py` runs repeatable agent evaluations, logs experiments to Opik, and supports isolated multi-run regression checks. |
+| **Evaluation harness** | `eval/synthesize.py` creates empirically calibrated easy/medium/hard eval stories, and `eval/run_eval.py` runs repeatable evaluations with regression checks. |
 | **Hermetic recordings** | Browser-launched runs can record CLI subprocess I/O into local cassettes for later inspection. |
 
 ## Why Opik?
@@ -138,6 +138,14 @@ python run.py --repo /absolute/path/to/target/repo --ado-url 'https://dev.azure.
 
 This mode also requires Azure CLI plus the `azure-devops` extension to already be installed and authenticated.
 
+Watch a live Azure DevOps CI/CD run until it finishes:
+
+```bash
+python watch_ado_run.py 'https://dev.azure.com/<org>/<project>/_build/results?buildId=2131917'
+```
+
+The watcher polls Azure DevOps with `az pipelines build show`, prints live status updates, and raises a terminal alert with a bell plus a desktop notification when the run completes or fails.
+
 Choose a runner:
 
 ```bash
@@ -156,6 +164,131 @@ python run.py --repo /path/to/repo --ado-url 'https://dev.azure.com/...' \
 The text is appended verbatim to the intake prompt. The intake agent incorporates it into `story.yaml` and `constraints.md`, so all downstream stages inherit it through those artifacts.
 
 Run `python run.py --help` for all options.
+
+---
+
+## Create and run calibrated eval stories
+
+Use this flow when you want to generate the repository-wide eval corpus for a **single dataset** and immediately run it against a target repo.
+
+### Step 1 — Install dependencies
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
+### Step 2 — Create a dataset manifest
+
+Copy this example into a new file such as `eval/datasets/my-service.yaml`, then replace the paths and domain description with your own:
+
+```bash
+mkdir -p eval/datasets
+cat > eval/datasets/my-service.yaml <<'YAML'
+dataset_id: my-service
+display_name: my-service
+source:
+  type: code_repository
+  path: /absolute/path/to/my-service/src
+  include_extensions:
+    - .py
+    - .ts
+  exclude_patterns:
+    - /node_modules/
+    - /dist/
+    - /coverage/
+sampling:
+  strategy: stratified
+  sample_size: 50
+  seed: 8675309
+  stratify_by: layer
+domain_context: >
+  This is the repository you want to evaluate. Synthetic stories should ask
+  the agent to implement realistic changes that match this codebase.
+metadata:
+  owner: platform-eval
+YAML
+```
+
+### Step 3 — Lock the dataset sample
+
+```bash
+python3 eval/init_dataset.py --dataset eval/datasets/my-service.yaml
+```
+
+This writes:
+
+- `eval/datasets/my-service.lock`
+- `eval/datasets/samples/my-service_sample.jsonl`
+
+### Step 4 — Synthesize and calibrate the eval stories
+
+```bash
+python3 eval/synthesize.py \
+  --dataset eval/datasets/my-service.yaml \
+  --repo /absolute/path/to/my-service \
+  --runner copilot \
+  --model gpt-5-mini \
+  --output eval/suites \
+  --stories-output eval/stories
+```
+
+What this does:
+
+1. Generates one repository-wide story each for **easy**, **medium**, and **hard**.
+2. Keeps the story title and description fixed.
+3. Iteratively rewrites only the ACs.
+4. Runs a faster default calibration profile: **3 workflow trials** per candidate
+   AC set, with cheaper single-iteration workflow loops enabled during
+   calibration.
+5. Accepts the AC set only when the measured pass rate lands in-band:
+   - **Easy:** `>= 75%`
+   - **Medium:** `50% - 74%`
+   - **Hard:** `25% - 49%`
+6. Stops after **5 iterations** by default and automatically resumes from
+   compatible raw-story checkpoints in `eval/suites/raw/` when possible.
+
+While this command runs, it now streams live synthesis and calibration output to
+the terminal. If the selected runner exposes token-by-token response text, you
+will see that too, but hidden model reasoning is not available unless the
+runner CLI itself reveals it.
+
+The command writes:
+
+```text
+eval/suites/easy/
+eval/suites/medium/
+eval/suites/hard/
+eval/suites/raw/
+eval/suites/synthesis_report.json
+eval/stories/story_001_easy.json
+eval/stories/story_002_medium.json
+eval/stories/story_003_hard.json
+```
+
+### Step 5 — Run the generated suites
+
+```bash
+python3 eval/run_eval.py --suite eval/suites/easy   --repo /absolute/path/to/my-service --runner copilot --model gpt-5-mini --skip-opik
+python3 eval/run_eval.py --suite eval/suites/medium --repo /absolute/path/to/my-service --runner copilot --model gpt-5-mini --skip-opik
+python3 eval/run_eval.py --suite eval/suites/hard   --repo /absolute/path/to/my-service --runner copilot --model gpt-5-mini --skip-opik
+```
+
+### Step 6 — Re-synthesize only flagged stories later
+
+If you already have a calibration report or hint file and only want to rework flagged stories:
+
+```bash
+python3 eval/synthesize.py \
+  --dataset eval/datasets/my-service.yaml \
+  --repo /absolute/path/to/my-service \
+  --runner copilot \
+  --model gpt-5-mini \
+  --output eval/suites \
+  --stories-output eval/stories \
+  --ac-hints eval/suites/calibration_report.json
+```
+
+For the full evaluation reference, artifact details, and troubleshooting, see [`eval/README.md`](eval/README.md).
 
 ---
 

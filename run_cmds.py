@@ -3,13 +3,36 @@ import logging
 import os
 import re
 import subprocess
+import sys
+import threading
 import time
 from pathlib import Path
 
 from agent_prompts import load_agent_system_prompt
-from runner_models import DEFAULT_GEMINI_MODEL
+from runner_models import DEFAULT_GEMINI_MODEL, DEFAULT_COPILOT_MODEL, is_copilot_runner
 
 logger = logging.getLogger(__name__)
+
+_TRANSIENT_COPILOT_ERROR_MARKERS = (
+    "http2: server sent goaway",
+    "stream error",
+    "internal_error",
+    "connection reset",
+    "connection refused",
+    "temporarily unavailable",
+    "timed out",
+    "timeout",
+    "rate limit",
+    "too many requests",
+    "429",
+    "500",
+    "502",
+    "503",
+    "504",
+    "unavailable",
+    "eof",
+)
+_COPILOT_MAX_ATTEMPTS = 5
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -51,12 +74,20 @@ def _summarize_cli_failure(result: subprocess.CompletedProcess) -> str:
     return f"Process exited with code {result.returncode}"
 
 
+def is_transient_runner_failure_text(text: str, *, runner: str | None = None) -> bool:
+    normalized = text.lower()
+    if runner is None or is_copilot_runner(runner):
+        return any(marker in normalized for marker in _TRANSIENT_COPILOT_ERROR_MARKERS)
+    return False
+
+
 def _run_cli(
     cmd: list[str],
     *,
     runner: str,
     agent: str,
     env: dict | None = None,
+    stream_output: bool = False,
 ) -> subprocess.CompletedProcess:
     """Wrapper around subprocess.run that emits structured events / cassette records.
 
@@ -73,10 +104,7 @@ def _run_cli(
         argc=len(cmd) - 1,
     )
     start = time.monotonic()
-    if env is None:
-        result = subprocess.run(cmd, text=True, capture_output=True)
-    else:
-        result = subprocess.run(cmd, text=True, capture_output=True, env=env)
+    result = _run_cli_live(cmd, env=env) if stream_output else _run_cli_captured(cmd, env=env)
     duration_ms = int((time.monotonic() - start) * 1000)
     logger.info(
         "_run_cli: runner=%s agent=%s exit_code=%d duration_ms=%d",
@@ -116,6 +144,48 @@ def _run_cli(
         extra={"runner": runner},
     )
     return result
+
+
+def _run_cli_captured(cmd: list[str], *, env: dict | None = None) -> subprocess.CompletedProcess:
+    if env is None:
+        return subprocess.run(cmd, text=True, capture_output=True)
+    return subprocess.run(cmd, text=True, capture_output=True, env=env)
+
+
+def _run_cli_live(cmd: list[str], *, env: dict | None = None) -> subprocess.CompletedProcess:
+    process = subprocess.Popen(
+        cmd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+
+    def _pump(pipe, chunks: list[str], target) -> None:
+        if pipe is None:
+            return
+        try:
+            for line in iter(pipe.readline, ""):
+                chunks.append(line)
+                print(line, end="", file=target, flush=True)
+        finally:
+            pipe.close()
+
+    stdout_thread = threading.Thread(target=_pump, args=(process.stdout, stdout_chunks, sys.stdout))
+    stderr_thread = threading.Thread(target=_pump, args=(process.stderr, stderr_chunks, sys.stderr))
+    stdout_thread.start()
+    stderr_thread.start()
+    returncode = process.wait()
+    stdout_thread.join()
+    stderr_thread.join()
+    return subprocess.CompletedProcess(
+        args=cmd,
+        returncode=returncode,
+        stdout="".join(stdout_chunks),
+        stderr="".join(stderr_chunks),
+    )
 
 RUNNER_ROOT = Path(__file__).resolve().parent
 SKILLS_ROOT = RUNNER_ROOT / ".github" / "skills"
@@ -208,6 +278,7 @@ def run_claude_cmd(
     agent: str,
     model: str = "claude-haiku-4-5-20251001",
     skip_permissions: bool = True,
+    stream_output: bool = False,
     extra_flags: list[str] | None = None,
 ) -> str:
     """
@@ -234,7 +305,7 @@ def run_claude_cmd(
         cmd.append("--dangerously-skip-permissions")
     if extra_flags:
         cmd.extend(extra_flags)
-    result = _run_cli(cmd, runner="claude", agent=agent)
+    result = _run_cli(cmd, runner="claude", agent=agent, stream_output=stream_output)
     stdout_raw = result.stdout or ""
     text_out = stdout_raw
     try:
@@ -267,10 +338,12 @@ def run_claude(
     agent: str,
     model: str = "claude-haiku-4-5-20251001",
     skip_permissions: bool = True,
+    stream_output: bool = False,
     extra_flags: list[str] | None = None,
 ) -> str:
     """Wrapper around run_claude_cmd."""
     return run_claude_cmd(prompt=prompt, agent=agent, model=model,
+                          stream_output=stream_output,
                           skip_permissions=skip_permissions, extra_flags=extra_flags)
 
 
@@ -281,7 +354,9 @@ def run_copilot_cmd(
     effort: str | None = None,
     skip_permissions: bool = True,
     silent: bool = True,
+    stream_output: bool = False,
     extra_flags: list[str] | None = None,
+    cli_cmd: str = "copilot",
 ) -> str:
     """
     Trigger GitHub Copilot CLI non-interactively and return stdout.
@@ -289,8 +364,13 @@ def run_copilot_cmd(
     Args:
         prompt: The prompt to pass with -p.
         agent: The --agent=<name> value.
-        model: The --model value.
+        model: The --model value. Only passed for the base 'copilot' command;
+               alias binaries (e.g. 'copilot-gemma4') are self-contained and
+               do not accept a --model flag.
         silent: When True, passes -s to suppress usage info from stdout.
+        cli_cmd: The actual binary to invoke. Defaults to 'copilot'. For alias
+                 runners (e.g. runner='copilot-gemma4') pass 'copilot-gemma4'
+                 here — the binary IS the model configuration.
         extra_flags: Any additional CLI flags to append.
 
     Returns:
@@ -299,33 +379,57 @@ def run_copilot_cmd(
     """
     if not prompt:
         raise ValueError(f"prompt must not be empty (agent={agent})")
-    logger.info("run_copilot_cmd: agent=%s model=%s effort=%s prompt_len=%d", agent, model, effort, len(prompt))
-    print(f"Starting Copilot CLI via {agent}...")
+    logger.info("run_copilot_cmd: cli_cmd=%s agent=%s model=%s effort=%s prompt_len=%d", cli_cmd, agent, model, effort, len(prompt))
+    print(f"Starting Copilot CLI via {agent} (cmd={cli_cmd})...")
     print(f"Prompt: {prompt}")
-    print(f"Model: {model}")
+    if cli_cmd == "copilot":
+        print(f"Model: {model}")
     if effort:
         print(f"Effort: {effort}")
-    cmd = ["copilot", "-p", prompt, f"--agent={agent}", "--model", model]
+    cmd = [cli_cmd, "-p", prompt, f"--agent={agent}"]
+    # Only the base 'copilot' command accepts --model; alias binaries are self-contained
+    if cli_cmd == "copilot":
+        cmd.extend(["--model", model])
     if effort:
         cmd.extend(["--effort", effort])
     if silent:
         cmd.append("-s")
+    if stream_output and not (extra_flags and "--stream" in extra_flags):
+        cmd.extend(["--stream", "on"])
     if skip_permissions:
         cmd.append("--yolo")
     if extra_flags:
         cmd.extend(extra_flags)
-    result = _run_cli(cmd, runner="copilot", agent=agent, env=_without_claude_auth_env())
-    if result.stdout:
-        logger.debug("run_copilot_cmd: stdout length=%d for agent=%s", len(result.stdout), agent)
-        print(result.stdout)
-    if result.stderr:
-        logger.debug("run_copilot_cmd: stderr length=%d for agent=%s", len(result.stderr), agent)
-        print(result.stderr)
-    if result.returncode != 0:
-        logger.error("run_copilot_cmd: agent=%s exited %d", agent, result.returncode)
+    for attempt in range(_COPILOT_MAX_ATTEMPTS):
+        logger.debug("run_copilot_cmd: attempt %d/%d agent=%s cli_cmd=%s", attempt + 1, _COPILOT_MAX_ATTEMPTS, agent, cli_cmd)
+        result = _run_cli(cmd, runner=cli_cmd, agent=agent, env=_without_claude_auth_env(), stream_output=stream_output)
+        if result.stdout:
+            logger.debug("run_copilot_cmd: stdout length=%d for agent=%s", len(result.stdout), agent)
+            print(result.stdout)
+        if result.stderr:
+            logger.debug("run_copilot_cmd: stderr length=%d for agent=%s", len(result.stderr), agent)
+            print(result.stderr)
+        if result.returncode == 0:
+            logger.info("run_copilot_cmd: agent=%s completed OK on attempt %d", agent, attempt + 1)
+            return result.stdout
+        combined = (result.stdout or "") + (result.stderr or "")
+        is_transient = is_transient_runner_failure_text(combined, runner=cli_cmd)
+        if is_transient and attempt < _COPILOT_MAX_ATTEMPTS - 1:
+            delay = 5 * (2 ** attempt)
+            logger.warning(
+                "run_copilot_cmd: transient error on attempt %d/%d for agent=%s via %s; retrying in %ds",
+                attempt + 1,
+                _COPILOT_MAX_ATTEMPTS,
+                agent,
+                cli_cmd,
+                delay,
+            )
+            print(f"[run_copilot_cmd] Transient error (attempt {attempt + 1}/{_COPILOT_MAX_ATTEMPTS}). Retrying in {delay}s...")
+            time.sleep(delay)
+            continue
+        logger.error("run_copilot_cmd: agent=%s exited %d after %d attempt(s)", agent, result.returncode, attempt + 1)
         raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
-    logger.info("run_copilot_cmd: agent=%s completed OK", agent)
-    return result.stdout
+    return result.stdout  # unreachable
 
 
 def run_gemini_cmd(
@@ -334,6 +438,7 @@ def run_gemini_cmd(
     model: str = DEFAULT_GEMINI_MODEL,
     skip_permissions: bool = True,
     output_format: str = "text",
+    stream_output: bool = False,
     extra_flags: list[str] | None = None,
     extra_skills: list[str] | None = None,
 ) -> str:
@@ -358,7 +463,13 @@ def run_gemini_cmd(
         cmd.extend(extra_flags)
     for _attempt in range(5):
         logger.debug("run_gemini_cmd: attempt %d/5 agent=%s", _attempt + 1, agent)
-        result = _run_cli(cmd, runner="gemini", agent=agent, env=_without_claude_auth_env())
+        result = _run_cli(
+            cmd,
+            runner="gemini",
+            agent=agent,
+            env=_without_claude_auth_env(),
+            stream_output=stream_output,
+        )
         if result.stdout:
             logger.debug("run_gemini_cmd: stdout length=%d for agent=%s", len(result.stdout), agent)
             print(result.stdout)
@@ -401,17 +512,25 @@ def run_agent_cmd(
     runner_model = kwargs.pop("runner_model", None)
     extra_skills = kwargs.pop("extra_skills", None)
     copilot_effort = kwargs.pop("copilot_effort", None)
-    model_kwarg = {"model": runner_model} if runner_model is not None else {}
-    if runner == "copilot":
+    if is_copilot_runner(runner):
         effort_kwarg = {"effort": copilot_effort} if copilot_effort is not None else {}
-        return run_copilot_cmd(prompt=prompt, agent=agent, **model_kwarg, **effort_kwarg, **kwargs)
+        if runner == "copilot":
+            # Base copilot: pass --model as usual
+            effective_model = runner_model if runner_model is not None else DEFAULT_COPILOT_MODEL
+            return run_copilot_cmd(prompt=prompt, agent=agent, model=effective_model, cli_cmd="copilot", **effort_kwarg, **kwargs)
+        else:
+            # Alias runner (e.g. "copilot-gemma4"): the binary IS the command; no --model flag
+            logger.debug("run_agent_cmd: copilot alias runner=%s → invoking binary %r directly", runner, runner)
+            return run_copilot_cmd(prompt=prompt, agent=agent, cli_cmd=runner, **effort_kwarg, **kwargs)
     elif runner == "claude":
+        model_kwarg = {"model": runner_model} if runner_model is not None else {}
         return run_claude_cmd(prompt=prompt, agent=agent, **model_kwarg, **kwargs)
     elif runner == "gemini":
+        model_kwarg = {"model": runner_model} if runner_model is not None else {}
         return run_gemini_cmd(prompt=prompt, agent=agent, extra_skills=extra_skills, **model_kwarg, **kwargs)
     else:
         logger.error("run_agent_cmd: unknown runner=%r", runner)
-        raise ValueError(f"Unknown runner: {runner!r}. Must be 'claude', 'copilot', or 'gemini'.")
+        raise ValueError(f"Unknown runner: {runner!r}. Must be 'claude', 'copilot' (or a copilot alias), or 'gemini'.")
 
 
 def run_copilot(

@@ -5,13 +5,16 @@ import os
 import re
 import shutil
 import signal
+import subprocess
 import sys
+import traceback
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
 
+from artifact_utils import load_assignments_file
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -19,7 +22,7 @@ import opik_integration  # noqa: F401 — configures Opik project context before
 import steps
 from evaluator_optimizer_loops import run_uow_eval_loop, run_eval_optimizer_loop
 from materialize import run_materialization
-from runner_models import COPILOT_EFFORT_CHOICES, RUNNER_DEFAULT_MODELS, RUNNER_MODEL_CHOICES
+from runner_models import COPILOT_EFFORT_CHOICES, RUNNER_DEFAULT_MODELS, RUNNER_MODEL_CHOICES, canonical_runner, is_copilot_runner, copilot_alias_model
 from workflow_inputs import DEFAULT_TEST_STORY_FILE, resolve_workflow_input
 
 logger = logging.getLogger(__name__)
@@ -33,6 +36,7 @@ RUNNER_LABELS = {
     "copilot": "GitHub Copilot",
     "gemini": "Gemini CLI",
 }
+WORKFLOW_STATUS_FILENAME = "workflow_status.yaml"
 
 
 def _emit(type: str, **fields) -> None:
@@ -49,10 +53,13 @@ def _emit(type: str, **fields) -> None:
 class _Stage:
     """Context manager that emits stage.start/stage.end events around a block."""
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, state: dict[str, str | None] | None = None) -> None:
         self.name = name
+        self.state = state
 
     def __enter__(self):
+        if self.state is not None:
+            self.state["current_stage"] = self.name
         logger.info("Stage START: %s", self.name)
         _emit("stage.start", stage=self.name)
         return self
@@ -60,15 +67,21 @@ class _Stage:
     def __exit__(self, exc_type, exc, tb):
         status = "ok" if exc_type is None else "error"
         if exc_type is not None:
-            logger.error("Stage ERROR: %s — %s: %s", self.name, exc_type.__name__, exc)
+            if self.state is not None:
+                self.state["failed_stage"] = self.name
+            summary = _summarize_exception(exc)
+            logger.error("Stage ERROR: %s — %s: %s", self.name, exc_type.__name__, summary)
             _emit(
                 "log",
                 level="error",
                 kind="stage_failed",
                 stage=self.name,
-                msg=f"{exc_type.__name__}: {exc}"[:500],
+                msg=f"{exc_type.__name__}: {summary}"[:500],
             )
         else:
+            if self.state is not None:
+                self.state["last_completed_stage"] = self.name
+                self.state["current_stage"] = None
             logger.info("Stage END: %s (ok)", self.name)
         _emit("stage.end", stage=self.name, status=status)
         return False
@@ -88,6 +101,152 @@ def runner_label(runner: str) -> str:
     label = RUNNER_LABELS.get(runner, runner)
     logger.debug("runner_label: %s → %s", runner, label)
     return label
+
+
+def _last_nonempty_line(text: str | None) -> str:
+    if not text:
+        return ""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return lines[-1] if lines else ""
+
+
+def _truncate_text(text: str | None, limit: int = 2000) -> str | None:
+    if not text:
+        return None
+    if len(text) <= limit:
+        return text
+    return f"...{text[-limit:]}"
+
+
+def _truncate_arg(arg: str, limit: int = 160) -> str:
+    if len(arg) <= limit:
+        return arg
+    head = arg[:80]
+    tail = arg[-40:]
+    omitted = len(arg) - len(head) - len(tail)
+    return f"{head}...<{omitted} chars omitted>...{tail}"
+
+
+def _normalize_command(command: object) -> object:
+    if isinstance(command, (list, tuple)):
+        normalized: list[str] = []
+        hide_prompt_value = False
+        for raw_arg in command:
+            arg = str(raw_arg)
+            if hide_prompt_value:
+                normalized.append(f"<prompt omitted len={len(arg)}>")
+                hide_prompt_value = False
+                continue
+            normalized.append(_truncate_arg(arg))
+            if arg in {"-p", "--prompt"}:
+                hide_prompt_value = True
+        return normalized
+    if command is None:
+        return None
+    return _truncate_arg(str(command))
+
+
+def _command_label(command: object) -> str:
+    if isinstance(command, (list, tuple)):
+        parts = [str(part) for part in command]
+        agent = next((part.split("=", 1)[1] for part in parts if part.startswith("--agent=")), None)
+        if agent:
+            return agent
+        if parts:
+            return parts[0]
+    elif command is not None:
+        return str(command)
+    return "command"
+
+
+def _summarize_called_process_error(exc: subprocess.CalledProcessError) -> str:
+    stdout = getattr(exc, "stdout", None) or getattr(exc, "output", None)
+    stderr = getattr(exc, "stderr", None)
+    detail = _last_nonempty_line(stderr) or _last_nonempty_line(stdout)
+    label = _command_label(getattr(exc, "cmd", None) or getattr(exc, "args", None))
+    if detail:
+        return f"{label} command failed (exit {exc.returncode}): {detail}"
+    return f"{label} command failed (exit {exc.returncode})"
+
+
+def _summarize_exception(exc: BaseException | None) -> str:
+    if exc is None:
+        return ""
+    if isinstance(exc, subprocess.CalledProcessError):
+        return _summarize_called_process_error(exc)
+    detail = str(exc).strip()
+    return detail or type(exc).__name__
+
+
+def _serialize_exception(exc: BaseException) -> dict:
+    payload: dict[str, object] = {
+        "exception_type": type(exc).__name__,
+        "message": _summarize_exception(exc),
+    }
+    if isinstance(exc, subprocess.CalledProcessError):
+        payload["returncode"] = exc.returncode
+        command = getattr(exc, "cmd", None) or getattr(exc, "args", None)
+        normalized_command = _normalize_command(command)
+        if normalized_command is not None:
+            payload["command"] = normalized_command
+        stdout = getattr(exc, "stdout", None) or getattr(exc, "output", None)
+        stderr = getattr(exc, "stderr", None)
+        if stdout:
+            payload["stdout_tail"] = _truncate_text(stdout)
+        if stderr:
+            payload["stderr_tail"] = _truncate_text(stderr)
+    return payload
+
+
+def _workflow_status_path(change_id: str) -> Path:
+    return AGENT_CONTEXT_ROOT / change_id / "summary" / WORKFLOW_STATUS_FILENAME
+
+
+def _write_workflow_status(
+    *,
+    change_id: str,
+    status: str,
+    stage_state: dict[str, str | None],
+    runner: str,
+    model: str | None,
+    repo: str,
+    exit_code: int,
+    exc: BaseException | None = None,
+) -> Path | None:
+    run_dir = AGENT_CONTEXT_ROOT / change_id
+    if not run_dir.is_dir():
+        logger.warning("_write_workflow_status: run directory missing for change_id=%s", change_id)
+        return None
+
+    payload: dict[str, object] = {
+        "change_id": change_id,
+        "status": status,
+        "runner": runner,
+        "model": model,
+        "repo": repo,
+        "exit_code": exit_code,
+        "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+    }
+    current_stage = stage_state.get("current_stage")
+    failed_stage = current_stage or stage_state.get("failed_stage")
+    last_completed_stage = stage_state.get("last_completed_stage")
+    if failed_stage:
+        payload["failed_stage"] = failed_stage
+    if last_completed_stage:
+        payload["last_completed_stage"] = last_completed_stage
+    if exc is not None:
+        payload["failure_summary"] = _summarize_exception(exc)
+        payload["exception"] = _serialize_exception(exc)
+        payload["traceback"] = _truncate_text(
+            "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+            limit=8000,
+        )
+
+    path = _workflow_status_path(change_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    logger.info("_write_workflow_status: wrote %s", path)
+    return path
 
 
 def clean_workspace(change_id: str) -> None:
@@ -164,50 +323,38 @@ def load_assignments(change_id: str) -> dict:
     """
     path = AGENT_CONTEXT_ROOT / change_id / "planning" / "assignments.json"
     logger.debug("load_assignments: reading %s", path)
-    raw = path.read_text(encoding="utf-8")
-    try:
-        data = json.loads(raw)
-        logger.debug("load_assignments: parsed as JSON")
-    except json.JSONDecodeError:
-        logger.warning("load_assignments: JSON parse failed; falling back to YAML for %s", path)
-        data = yaml.safe_load(raw)
-
-    # Normalize execution_schedule to always be a list of batch dicts.
-    sched = data.get("execution_schedule", [])
-    if isinstance(sched, dict):
-        logger.debug("load_assignments: execution_schedule is dict; attempting duplicate-key extraction")
-        extracted = _extract_batches_from_duplicate_yaml(raw)
-        if extracted:
-            logger.debug("load_assignments: duplicate-key extraction yielded %d batch(es)", len(extracted))
-            data["execution_schedule"] = extracted
-        else:
-            logger.debug("load_assignments: falling back to legacy batch_2, batch_3 pattern")
-            batches = [sched]
-            i = 2
-            while f"batch_{i}" in data:
-                batches.append(data[f"batch_{i}"])
-                i += 1
-            data["execution_schedule"] = batches
-            logger.debug("load_assignments: legacy fallback yielded %d batch(es)", len(data["execution_schedule"]))
-
+    data = load_assignments_file(path)
     batch_count = len(data.get("execution_schedule", []))
     logger.info("load_assignments: change_id=%s loaded %d batch(es)", change_id, batch_count)
     return data
 
 
 def _validate_runner_model(parser: argparse.ArgumentParser, runner: str, model: str | None) -> str:
-    """Return resolved model string; error via parser if incompatible with runner."""
+    """Return resolved model string; error via parser if runner or model is invalid."""
+    base = canonical_runner(runner)
+    if base not in RUNNER_DEFAULT_MODELS:
+        parser.error(
+            f"Runner '{runner}' is not valid. "
+            f"Must be one of: claude, copilot, gemini, or a copilot alias (copilot-<name>)."
+        )
     if model is None:
-        resolved = RUNNER_DEFAULT_MODELS[runner]
+        # Copilot aliases encode the model in the runner string
+        if is_copilot_runner(runner) and runner != "copilot":
+            resolved = copilot_alias_model(runner)
+            logger.debug("_validate_runner_model: copilot alias runner=%s using alias model=%s", runner, resolved)
+            return resolved
+        resolved = RUNNER_DEFAULT_MODELS[base]
         logger.debug("_validate_runner_model: runner=%s no model specified; using default=%s", runner, resolved)
         return resolved
-    valid = RUNNER_MODEL_CHOICES[runner]
-    if model not in valid:
-        logger.error("_validate_runner_model: invalid model=%s for runner=%s valid=%s", model, runner, valid)
-        parser.error(
-            f"Model '{model}' is not valid for --runner {runner}. "
-            f"Valid models: {', '.join(valid)}"
-        )
+    # Explicit model: validate against base runner's allowlist (alias runners bypass this)
+    if runner == base and base in RUNNER_MODEL_CHOICES:
+        valid = RUNNER_MODEL_CHOICES[base]
+        if model not in valid:
+            logger.error("_validate_runner_model: invalid model=%s for runner=%s valid=%s", model, runner, valid)
+            parser.error(
+                f"Model '{model}' is not valid for --runner {runner}. "
+                f"Valid models: {', '.join(valid)}"
+            )
     logger.debug("_validate_runner_model: runner=%s model=%s validated OK", runner, model)
     return model
 
@@ -242,10 +389,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--runner",
         default="claude",
-        choices=["claude", "copilot", "gemini"],
+        metavar="RUNNER",
         help=(
             "Agent runner to use: 'claude' (Claude Code CLI), "
-            "'copilot' (GitHub Copilot CLI), or 'gemini' (Gemini CLI). Defaults to 'claude'."
+            "'copilot' (GitHub Copilot CLI), 'gemini' (Gemini CLI), "
+            "or a copilot alias like 'copilot-gemma4' (uses 'gemma4' as the model). "
+            "Defaults to 'claude'."
         ),
     )
     parser.add_argument(
@@ -279,6 +428,16 @@ def parse_args() -> argparse.Namespace:
             "reference PR URL and notes. Appended verbatim to the intake prompt."
         ),
     )
+    parser.add_argument(
+        "--skip-lessons-optimizer",
+        action="store_true",
+        help="Skip the lessons optimizer stage at the end of the workflow.",
+    )
+    parser.add_argument(
+        "--calibration-fast-mode",
+        action="store_true",
+        help="Use a cheaper one-iteration workflow profile intended for synthesis calibration runs.",
+    )
     args = parser.parse_args()
     args.model = _validate_runner_model(parser, args.runner, args.model)
     return args
@@ -295,13 +454,23 @@ def main(
     model: str | None = None,
     copilot_effort: str | None = None,
     extra_context: str | None = None,
+    skip_lessons_optimizer: bool = False,
+    calibration_fast_mode: bool = False,
 ):
     logger.info(
-        "main: starting workflow repo=%s change_id=%s runner=%s model=%s skip_materialize=%s",
-        repo, change_id, runner, model, skip_materialize,
+        "main: starting workflow repo=%s change_id=%s runner=%s model=%s skip_materialize=%s skip_lessons_optimizer=%s calibration_fast_mode=%s",
+        repo, change_id, runner, model, skip_materialize, skip_lessons_optimizer, calibration_fast_mode,
     )
     final_status = "succeeded"
     final_exit = 0
+    resolved_repo = repo or ""
+    resolved_change_id = change_id or ""
+    resolved_model = model
+    stage_state: dict[str, str | None] = {
+        "current_stage": None,
+        "failed_stage": None,
+        "last_completed_stage": None,
+    }
     try:
         workflow_input = resolve_workflow_input(
             repo=repo,
@@ -327,7 +496,10 @@ def main(
         print(f"Intake mode: {intake_mode}")
         print(f"Intake source: {intake_source}")
         print(f"Runner: {runner}")
-        resolved_model = model or RUNNER_DEFAULT_MODELS[runner]
+        resolved_model = model or (
+            copilot_alias_model(runner) if is_copilot_runner(runner) and runner != "copilot"
+            else RUNNER_DEFAULT_MODELS[canonical_runner(runner)]
+        )
         runner_model_kwargs: dict = {"runner_model": resolved_model}
         if copilot_effort is not None:
             runner_model_kwargs["copilot_effort"] = copilot_effort
@@ -336,6 +508,9 @@ def main(
             print(f"Copilot effort: {copilot_effort}")
 
         logger.info("main: runner=%s model=%s copilot_effort=%s", runner, resolved_model, copilot_effort)
+        loop_iter_count = 1 if calibration_fast_mode else 3
+        if calibration_fast_mode:
+            print("Calibration fast mode enabled (single-iteration workflow loops).")
 
         _emit(
             "job.start",
@@ -351,6 +526,16 @@ def main(
         # a job.end and exit cleanly so the tailer knows we're done.
         def _on_term(signum, frame):  # noqa: ARG001
             logger.warning("main: SIGTERM received — emitting job.end cancelled and exiting 143")
+            if resolved_change_id:
+                _write_workflow_status(
+                    change_id=resolved_change_id,
+                    status="cancelled",
+                    stage_state=stage_state,
+                    runner=runner,
+                    model=resolved_model,
+                    repo=resolved_repo,
+                    exit_code=143,
+                )
             _emit("job.end", status="cancelled", exit_code=143)
             sys.exit(143)
 
@@ -361,7 +546,7 @@ def main(
             logger.debug("main: could not install SIGTERM handler: %s", exc)
 
         # ── Stage 0: Materialize agents ───────────────────────────────────────
-        with _Stage("materialize"):
+        with _Stage("materialize", state=stage_state):
             if not skip_materialize:
                 logger.info("main: materializing agents from agent-sources/")
                 print("Materializing agents from agent-sources/...")
@@ -371,7 +556,7 @@ def main(
                 print("Skipping materialization (--skip-materialize).")
 
         # ── Stage 1: Intake ───────────────────────────────────────────────────
-        with _Stage("intake"):
+        with _Stage("intake", state=stage_state):
             logger.info("main: intake source=%s mode=%s", intake_source, intake_mode)
             result_intake = steps.step_intake(
                 intake_source=intake_source,
@@ -385,7 +570,7 @@ def main(
             logger.debug("main: intake complete, result length=%d", len(result_intake or ""))
 
     # ── Stage 2: Task Generation (eval-optimizer loop) ───────────────────────
-        with _Stage("task-generation"):
+        with _Stage("task-generation", state=stage_state):
             task_gen_input = (
                 f"Generate a task plan for change {resolved_change_id} in {resolved_repo}.\n"
                 f"Read the intake artifacts from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/intake/.\n"
@@ -401,12 +586,13 @@ def main(
                 producer_input=task_gen_input,
                 evaluator_func=steps.step_task_gen_evaluator,
                 evaluator_prompt=task_gen_evaluator_prompt,
+                iter_count=loop_iter_count,
                 runner=runner,
                 **runner_model_kwargs,
             )
 
         # ── Stage 3: Task Assignment (eval-optimizer loop) ────────────────────
-        with _Stage("task-assignment"):
+        with _Stage("task-assignment", state=stage_state):
             assigner_input = (
                 f"Create an execution schedule for change {resolved_change_id}.\n"
                 f"Read tasks from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/tasks.yaml.\n"
@@ -426,12 +612,13 @@ def main(
                 producer_input=assigner_input,
                 evaluator_func=steps.step_assignment_evaluator,
                 evaluator_prompt=assignment_evaluator_prompt,
+                iter_count=loop_iter_count,
                 runner=runner,
                 **runner_model_kwargs,
             )
 
         # ── Stage 4: Execution — per-batch, parallel where safe ──────────────
-        with _Stage("execution"):
+        with _Stage("execution", state=stage_state):
             assignments = load_assignments(resolved_change_id)
             batches = sorted(assignments.get("execution_schedule", []), key=lambda b: b["batch"])
             logger.info("main: execution stage — %d batch(es) to run", len(batches))
@@ -454,6 +641,7 @@ def main(
                                 uow_id=uid,
                                 change_id=resolved_change_id,
                                 repo=resolved_repo,
+                                iter_count=loop_iter_count,
                                 runner=runner,
                                 **runner_model_kwargs,
                             )
@@ -469,13 +657,14 @@ def main(
                             uow_id=uid,
                             change_id=resolved_change_id,
                             repo=resolved_repo,
+                            iter_count=loop_iter_count,
                             runner=runner,
                             **runner_model_kwargs,
                         )
                         logger.info("main: UoW %s complete", uid)
 
         # ── Stage 5: QA Validation (eval-optimizer loop) ─────────────────────
-        with _Stage("qa"):
+        with _Stage("qa", state=stage_state):
             qa_producer_input = (
                 f"Perform QA validation for change {resolved_change_id}.\n"
                 f"Read story ACs from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/intake/story.yaml.\n"
@@ -497,31 +686,58 @@ def main(
                 producer_input=qa_producer_input,
                 evaluator_func=steps.step_qa_evaluator,
                 evaluator_prompt=qa_evaluator_prompt,
+                iter_count=loop_iter_count,
                 runner=runner,
                 **runner_model_kwargs,
             )
 
         # ── Stage 6: Lessons Optimization (one-shot) ─────────────────────────
-        with _Stage("lessons-optimizer"):
-            logger.debug("main: running lessons optimizer")
-            steps.step_lessons_optimizer(
-                change_id=resolved_change_id,
-                repo=resolved_repo,
-                runner=runner,
-                **runner_model_kwargs,
-            )
+        if skip_lessons_optimizer:
+            logger.info("main: skipping lessons optimizer (--skip-lessons-optimizer)")
+            print("Skipping lessons optimizer (--skip-lessons-optimizer).")
+        else:
+            with _Stage("lessons-optimizer", state=stage_state):
+                logger.debug("main: running lessons optimizer")
+                steps.step_lessons_optimizer(
+                    change_id=resolved_change_id,
+                    repo=resolved_repo,
+                    runner=runner,
+                    **runner_model_kwargs,
+                )
 
     except SystemExit:
         raise
     except BaseException as exc:
         final_status = "failed"
         final_exit = 1
-        logger.exception("main: workflow FAILED — %s: %s", type(exc).__name__, exc)
-        _emit("log", level="error", kind="workflow_failed", msg=f"{type(exc).__name__}: {exc}"[:1000])
+        failure_summary = _summarize_exception(exc)
+        logger.exception("main: workflow FAILED — %s: %s", type(exc).__name__, failure_summary)
+        if resolved_change_id:
+            _write_workflow_status(
+                change_id=resolved_change_id,
+                status=final_status,
+                stage_state=stage_state,
+                runner=runner,
+                model=resolved_model,
+                repo=resolved_repo,
+                exit_code=final_exit,
+                exc=exc,
+            )
+        _emit("log", level="error", kind="workflow_failed", msg=f"{type(exc).__name__}: {failure_summary}"[:1000])
         _emit("job.end", status=final_status, exit_code=final_exit)
         raise
     else:
         logger.info("main: workflow SUCCEEDED change_id=%s", resolved_change_id)
+        if resolved_change_id:
+            _write_workflow_status(
+                change_id=resolved_change_id,
+                status=final_status,
+                stage_state=stage_state,
+                runner=runner,
+                model=resolved_model,
+                repo=resolved_repo,
+                exit_code=final_exit,
+            )
         _emit("job.end", status=final_status, exit_code=final_exit)
 
     return intake_source
@@ -541,4 +757,6 @@ if __name__ == "__main__":
         model=args.model,
         copilot_effort=args.copilot_effort,
         extra_context=args.extra_context,
+        skip_lessons_optimizer=args.skip_lessons_optimizer,
+        calibration_fast_mode=args.calibration_fast_mode,
     )

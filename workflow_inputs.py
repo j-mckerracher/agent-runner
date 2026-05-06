@@ -11,7 +11,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 DEFAULT_TEST_STORY_FILE = (
-    Path(__file__).resolve().parent / "agent-context" / "test-fixtures" / "synthetic_story.json"
+    Path(__file__).resolve().parent / "workflow-fixtures" / "synthetic_story.json"
 )
 
 
@@ -201,4 +201,3 @@ def resolve_workflow_input(
         intake_mode="ado",
         intake_source=ado_url or "",
     )
-

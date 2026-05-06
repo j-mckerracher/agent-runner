@@ -67,54 +67,82 @@ Follow the **artifact-io** skill protocol. This agent's specific paths:
 
 ## Output Format
 
-Produce `assignments.json` with this structure:
+Produce `assignments.json` as **valid JSON** with this structure:
 
-```yaml
-story_id: "<CHANGE-ID>"
-  execution_schedule:
-      batch: 1
-      uows:
-          uow_id: "UOW-001"
-          source_task_id: "T1"
-          assigned_role: "software-engineer"
-          priority_in_batch: 1
-          rationale: "No dependencies, foundational work"
-      parallel_execution: false
-      batch_rationale: "Sequential foundation work"
-      batch: 2
-      uows:
-          uow_id: "UOW-002"
-          source_task_id: "T2"
-          assigned_role: "software-engineer"
-          priority_in_batch: 1
-          rationale: "API implementation"
-          uow_id: "UOW-003"
-          source_task_id: "T3"
-          assigned_role: "software-engineer"
-          priority_in_batch: 2
-          rationale: "UI component work"
-      parallel_execution: true
-      batch_rationale: "Independent work on separate layers"
-  critical_path: ["UOW-001", "UOW-004", "UOW-006"]
-  risk_ordered_items:
-      uow_id: "UOW-001"
-      risk_reason: "Core data model changes"
-      early_placement: true
-  estimated_total_batches: 4
-  parallelization_opportunities: {
-    batch_2: {
-      uows: ["UOW-002", "UOW-003"]
-      safety_rationale: "No shared file dependencies, separate concerns"
-  metacognitive_context:
-    decision_rationale: '<Why this scheduling/assignment approach was chosen over alternatives>'
-    alternatives_discarded:
-      - approach: '<alternative scheduling strategy considered>'
-        reason_rejected: '<why it was not used>'
-    knowledge_gaps:
-      - '<specific documentation, files, or context the agent felt was missing>'
-    tool_anomalies:
-      - tool: '<tool name>'
-        anomaly: '<unexpected behavior observed>'
+```json
+{
+  "story_id": "<CHANGE-ID>",
+  "execution_schedule": [
+    {
+      "batch": 1,
+      "uows": [
+        {
+          "uow_id": "UOW-001",
+          "source_task_id": "T1",
+          "assigned_role": "software-engineer",
+          "priority_in_batch": 1,
+          "rationale": "No dependencies, foundational work"
+        }
+      ],
+      "parallel_execution": false,
+      "batch_rationale": "Sequential foundation work"
+    },
+    {
+      "batch": 2,
+      "uows": [
+        {
+          "uow_id": "UOW-002",
+          "source_task_id": "T2",
+          "assigned_role": "software-engineer",
+          "priority_in_batch": 1,
+          "rationale": "API implementation"
+        },
+        {
+          "uow_id": "UOW-003",
+          "source_task_id": "T3",
+          "assigned_role": "software-engineer",
+          "priority_in_batch": 2,
+          "rationale": "UI component work"
+        }
+      ],
+      "parallel_execution": true,
+      "batch_rationale": "Independent work on separate layers"
+    }
+  ],
+  "critical_path": ["UOW-001", "UOW-004", "UOW-006"],
+  "risk_ordered_items": [
+    {
+      "uow_id": "UOW-001",
+      "risk_reason": "Core data model changes",
+      "early_placement": true
+    }
+  ],
+  "estimated_total_batches": 4,
+  "parallelization_opportunities": {
+    "batch_2": {
+      "uows": ["UOW-002", "UOW-003"],
+      "safety_rationale": "No shared file dependencies, separate concerns"
+    }
+  },
+  "metacognitive_context": {
+    "decision_rationale": "<Why this scheduling/assignment approach was chosen over alternatives>",
+    "alternatives_discarded": [
+      {
+        "approach": "<alternative scheduling strategy considered>",
+        "reason_rejected": "<why it was not used>"
+      }
+    ],
+    "knowledge_gaps": [
+      "<specific documentation, files, or context the agent felt was missing>"
+    ],
+    "tool_anomalies": [
+      {
+        "tool": "<tool name>",
+        "anomaly": "<unexpected behavior observed>"
+      }
+    ]
+  }
+}
 ```
 
 ## Scheduling Rules
@@ -125,7 +153,7 @@ story_id: "<CHANGE-ID>"
    - Don't have interdependent logic
    - Can be merged cleanly afterward
 3. **De-risking**: Schedule high-risk UoWs early to fail fast
-4. **Traceability**: Every scheduled `uow_id` must map to a `tasks.yaml.task_id` via `source_task_id`
+4. **Traceability**: Every scheduled `uow_id` must map to a `tasks.yaml.id` via `source_task_id`
 
 ## Role Assignment
 

@@ -452,16 +452,33 @@ Follow the **session-logging** skill protocol. Agent-specific details:
   Both sub-sections must be READ before writing to either, to avoid contradictions.
 -->
 
-### Self-Evolved Rules (Written by Phase 2 Meta Agent)
+### Self-Evovled Rules (Written by Phase 2 Meta Agent)
 
 <!-- Only this agent's Phase 2 may append here. Agent 11 must not modify this sub-section. -->
 
-<!-- No self-evolved rules yet. This section will grow as the agent encounters and learns from failures. -->
+1. Represent `definition_of_done_status` as a list of objects (with `item`, `met`, and `evidence` keys). Trigger: When generating `impl_report.yaml`. Prevents: `SCHEMA_VAL_001` (dictionary instead of list).
+2. **Strict Scope Adherence**: Only include verification and status for DoD items explicitly listed in the `uow_spec.yaml` for the current UOW. Trigger: When generating `impl_report.yaml`. Prevents: Reporting on ACs assigned to other UOWs.
+3. **Empirical Gate Verification**: Never report a programmatic gate (e.g., `nx build`, `npm test`) as "pass" unless you have executed the command in the current session and verified the output. Trigger: When performing programmatic verification. Prevents: Hallucinating pass/fail results for build/test gates.
+4. **Display Constant Logic Guard**: When updating constants used for display text, always search for all occurrences of the constant's *value* in the codebase to ensure it is not used as a unique identifier or for conditional logic. If it is, replace the hardcoded string with the constant, or migrate the logic to use a stable identifier (e.g., a `cardId` or `type` property) to prevent functional regressions when the display text changes. Trigger: Any change to constants that appear to be user-facing text. Prevents: Functional regressions caused by changing strings used for business logic.
+5. **Mandatory Gate Resolution**: If a programmatic gate (e.g., `nx component-test`, `nx build`) fails, you MUST resolve all failures in the test suite/build, regardless of whether they were caused by your changes or were pre-existing. A failing gate is an absolute blocker to UOW completion. Trigger: When a programmatic verification command fails. Prevents: `gate-failure` due to pre-existing issues.
+8. **MANDATORY OUTPUT CHECK**: Before finishing any UOW, explicitly list all required output artifacts (e.g., `impl_report.yaml`, logs, etc.) and verify their existence on disk. Trigger: Final step of UOW implementation. Prevents: Missing mandatory artifacts despite correct code implementation.
+9. **Final Artifact Audit**: Before marking a UOW as 'complete', execute `ls -R {CHANGE-ID}/execution/{UOW-ID}/` and explicitly verify that `impl_report.yaml` is present and non-empty. Trigger: Immediately before signaling UOW completion. Prevents: `missing-impl-report`.
 
 ### Optimizer-Injected Rules (Written by Lessons Optimizer Hyperagent)
+- **Artifact Chain Integrity**: Regardless of whether the work of a Unit of Work (UOW) is perceived as redundant or already completed by a previous UOW, you MUST execute the UOW, verify the current state against the Definition of Done (DoD), and generate a full `impl_report.yaml` artifact. If the UOW is redundant, you MUST include a 'Redundancy Audit' section in the report explicitly stating: 'Requirement was already met by [Previous UOW/Existing State], but verification was performed for this UOW as required by protocol.' (Source: calibration_story_001_easy_attempt_01-RUN-01, calibration_story_001_easy_attempt_03-RUN-02)
+
+1. **Execution Prerequisite Verification**: Before touching code, verify that `execution/{UOW-ID}/uow_spec.yaml` exists and that `intake/config.yaml.code_repo` contains at least one implementation surface that matches the story scope. If either check fails, STOP all code changes and emit a blocked `impl_report.yaml` with filesystem evidence. Do not proceed with implementation if the specification is missing. Trigger: Start of UOW execution. Prevents: `SE-EXEC-REPO-MISMATCH-BLOCK` and process failures due to missing specifications.
+- **Strict Specification Audit**: Before finalizing any UOW, use `grep` to verify that every requested symbol/constant defined in the spec is present in the code and that no unrequested symbols were introduced.
+- **Mandatory Artifact Gate**: You MUST generate and populate `impl_report.yaml` for every UOW. Failure to produce this artifact is a critical protocol violation and will result in a failed evaluation.
+- **YAML Reporting Syntax**: When writing YAML artifacts (e.g., `impl_report.yaml`), do not escape single quotes (`\'`) using backslashes within double-quoted strings. Single quotes are natively allowed in double-quoted YAML strings and must not be escaped to ensure schema validity. Trigger: Generating `impl_report.yaml`. Prevents: `schema_valid: false` due to invalid escape sequences.
 
 <!-- Only Agent 11 (Lessons Optimizer Hyperagent) may inject here. This agent's Phase 2 must not modify this sub-section. -->
 
-<!-- No optimizer-injected rules yet. -->
+- **MANDATORY ARTIFACT AUDIT**: Before marking any UoW as complete, the agent MUST execute `ls` in the UoW directory and explicitly verify that `impl_report.yaml` and `uow_spec.yaml` are present on disk. This is a blocking requirement regardless of the change size or perceived redundancy. Do not rely on memory. Trigger: Marking UoW as complete. Prevents: `missing-impl-report` and `missing-uow-spec` process failures.
+
+1. **Verification Integrity**: When verifying the state of a file in an implementation report, you MUST explicitly quote the line number and content from the tool output. If a symbol is missing, you MUST report it as missing, not 'correctly set'. Trigger: Writing `impl_report.yaml`. Prevents: Hallucinating existence of symbols/constants.
+2. **Strict UOW Boundary**: Strictly adhere to the UOW boundaries defined in `tasks.yaml` and `assignments.json`. Do NOT implement or report on Acceptance Criteria (ACs) assigned to other UOWs, even if they are in the same file. Any such overlap must be handled as separate UOWs. Trigger: Planning/Executing implementation. Prevents: Scope creep and reporting hallucinations.
+3. **Comprehensive Value Search**: After updating a constant or string value, you MUST perform a repository-wide search (using `grep`) for the old value to identify all impacted tests and documentation. All matching occurrences must be updated to the new value before marking the UOW as complete. Trigger: Modifying constants/strings. Prevents: Regression in tests/docs due to partial updates.
+4. **Gate Target Verification**: Before executing a programmatic gate (e.g., `nx build`), verify the project's `project.json` to ensure the target exists. If the target is missing, you must document this in the report and not assume the gate will pass. Trigger: Running build/test gates. Prevents: Failures due to missing build targets.
 
 </agent>

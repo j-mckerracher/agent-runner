@@ -1,5 +1,8 @@
+### Local/generated artifacts
+.DS_Store
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .idea
 /agent-context/
+/eval/.run_fixtures/

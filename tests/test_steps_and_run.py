@@ -11,11 +11,13 @@ Difficulty rubric for this file:
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
 import yaml
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
 
 import run
@@ -116,6 +118,11 @@ class ParseArgsTests(unittest.TestCase):
         ):
             run.parse_args()
 
+    def test_easy__parse_args_accepts_calibration_fast_mode_flag(self):
+        with patch.object(sys, "argv", ["run.py", "--repo", "/tmp/target-repo", "--calibration-fast-mode"]):
+            args = run.parse_args()
+        self.assertTrue(args.calibration_fast_mode)
+
 
 class RunMainBundledFixtureDispatchTests(unittest.TestCase):
     def setUp(self):
@@ -201,6 +208,7 @@ class RunMainBundledFixtureDispatchTests(unittest.TestCase):
             uow_id="UOW-003",
             change_id="TEST-AC-001",
             repo="/tmp/target-repo",
+            iter_count=3,
             runner="claude",
             runner_model="claude-haiku-4-5-20251001",
         )
@@ -267,6 +275,36 @@ class RunMainOmittedRepoTests(unittest.TestCase):
 
     def test_medium__step_intake_intake_mode_defaults_to_synthetic(self):
         self.assertEqual(self.step_kwargs["intake_mode"], "synthetic")
+
+
+class RunMainCalibrationFastModeTests(unittest.TestCase):
+    def test_medium__main_uses_single_iteration_loops_in_calibration_fast_mode(self):
+        with (
+            patch.object(run, "use_runner_root"),
+            patch.object(run, "clean_workspace"),
+            patch.object(
+                run,
+                "resolve_workflow_input",
+                return_value=SimpleNamespace(
+                    repo="/tmp/target-repo",
+                    change_id="FAST-001",
+                    intake_mode="synthetic",
+                    intake_source="/tmp/story.json",
+                ),
+            ),
+            patch.object(run.steps, "step_intake", return_value="intake complete"),
+            patch.object(run, "run_eval_optimizer_loop") as eval_loop,
+            patch.object(run, "load_assignments", return_value={"execution_schedule": [{"batch": 1, "uows": [{"uow_id": "UOW-001"}]}]}),
+            patch.object(run, "run_uow_eval_loop") as uow_loop,
+            patch.object(run.steps, "step_lessons_optimizer"),
+            patch.object(run, "_emit"),
+        ):
+            run.main.fn(repo="/tmp/target-repo", calibration_fast_mode=True)
+
+        self.assertEqual(eval_loop.call_count, 3)
+        self.assertTrue(all(call.kwargs["iter_count"] == 1 for call in eval_loop.call_args_list))
+        uow_loop.assert_called_once()
+        self.assertEqual(uow_loop.call_args.kwargs["iter_count"], 1)
 
 
 class RunMainGeminiRunnerTests(unittest.TestCase):
@@ -336,6 +374,76 @@ class RunMainFailureEmissionTests(unittest.TestCase):
 
         emit.assert_any_call("log", level="error", kind="workflow_failed", msg="ValueError: bad input")
         emit.assert_any_call("job.end", status="failed", exit_code=1)
+
+    def test_hard__qa_called_process_error_writes_workflow_status_artifact(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            agent_context_root = Path(tmpdir) / "agent-context"
+            change_id = "QA-FAIL-001"
+            run_dir = agent_context_root / change_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            command = [
+                "copilot-gemma4",
+                "-p",
+                "Perform QA validation for change QA-FAIL-001.\n" + ("x" * 300),
+                "--agent=qa-engineer",
+                "-s",
+                "--yolo",
+            ]
+            qa_error = subprocess.CalledProcessError(
+                1,
+                command,
+                output="stdout context\nfatal qa output",
+                stderr="stderr context\nqa cli failed",
+            )
+
+            with (
+                patch.object(run, "AGENT_CONTEXT_ROOT", agent_context_root),
+                patch.object(
+                    run,
+                    "resolve_workflow_input",
+                    return_value=SimpleNamespace(
+                        repo="/tmp/target-repo",
+                        change_id=change_id,
+                        intake_mode="synthetic",
+                        intake_source="/tmp/story.json",
+                    ),
+                ),
+                patch.object(run, "use_runner_root"),
+                patch.object(run, "clean_workspace"),
+                patch.object(run.steps, "step_intake", return_value="intake complete"),
+                patch.object(run, "run_eval_optimizer_loop", side_effect=[None, None, qa_error]),
+                patch.object(run, "load_assignments", return_value={"execution_schedule": []}),
+                patch.object(run, "run_uow_eval_loop"),
+                patch.object(run.steps, "step_lessons_optimizer"),
+                patch.object(run, "_emit") as emit,
+                self.assertRaises(subprocess.CalledProcessError),
+            ):
+                run.main.fn(repo="/tmp/target-repo", change_id=change_id, skip_materialize=True)
+
+            status_path = agent_context_root / change_id / "summary" / run.WORKFLOW_STATUS_FILENAME
+            with status_path.open("r", encoding="utf-8") as handle:
+                status = yaml.safe_load(handle)
+
+            self.assertEqual(status["status"], "failed")
+            self.assertEqual(status["failed_stage"], "qa")
+            self.assertEqual(status["last_completed_stage"], "execution")
+            self.assertEqual(status["failure_summary"], "qa-engineer command failed (exit 1): qa cli failed")
+            self.assertEqual(status["exception"]["exception_type"], "CalledProcessError")
+            self.assertEqual(status["exception"]["returncode"], 1)
+            self.assertEqual(status["exception"]["command"][0], "copilot-gemma4")
+            self.assertEqual(status["exception"]["command"][1], "-p")
+            self.assertEqual(status["exception"]["command"][2], f"<prompt omitted len={len(command[2])}>")
+            self.assertEqual(status["exception"]["command"][3], "--agent=qa-engineer")
+            self.assertEqual(status["exception"]["stderr_tail"], "stderr context\nqa cli failed")
+            self.assertEqual(status["exception"]["stdout_tail"], "stdout context\nfatal qa output")
+            self.assertIn("CalledProcessError", status["traceback"])
+            emit.assert_any_call(
+                "log",
+                level="error",
+                kind="workflow_failed",
+                msg="CalledProcessError: qa-engineer command failed (exit 1): qa cli failed",
+            )
+            emit.assert_any_call("job.end", status="failed", exit_code=1)
 
 
 class _SyntheticWorkflowFixtureMixin:

@@ -78,7 +78,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output path for calibration report JSON",
     )
     parser.add_argument("--repo", help="Target repository path (optional, for suggestion generation)")
-    parser.add_argument("--runner", choices=["claude", "copilot", "gemini"], help="Runner for suggestions")
+    parser.add_argument("--runner", metavar="RUNNER",
+                        help="Runner for suggestions: 'claude', 'copilot', 'gemini', or a copilot alias like 'copilot-gemma4'")
     parser.add_argument("--model", help="Model for suggestion generation")
     parser.add_argument("--skip-opik", action="store_true", help="Skip Opik reporting")
     parser.add_argument("--skip-pipeline", action="store_true", help="Skip pipeline execution")

@@ -1,0 +1,124 @@
+dataset_id: mcs-products-mono-ui
+source_fingerprint: dafc1d4982a30a45ef4f8a1b34a3a8f138448fcaf7866cf0976d6f6dd54a5466
+sample_path: /Users/mckerracher.joshua/Code/agent-workbench/eval/datasets/samples/mcs-products-mono-ui_sample.jsonl
+record_count: 50
+schema:
+  fields:
+  - file
+  - filename
+  - layer
+  - project
+  - size_bytes
+  - sub_path
+  types:
+    file:
+    - string
+    filename:
+    - string
+    layer:
+    - string
+    project:
+    - string
+    size_bytes:
+    - integer
+    sub_path:
+    - string
+  nullable_fields: []
+  record_count: 50
+  source_metadata:
+    path: /Users/mckerracher.joshua/Code/mcs-products-mono-ui/libs
+    total_files: 1004
+    include_extensions:
+    - .ts
+    - .tsx
+    exclude_patterns:
+    - .spec.ts
+    - /node_modules/
+    - /dist/
+    - /coverage/
+    - /.angular/
+    - /storybook-static/
+    layer_distribution:
+      pearls_features: 579
+      product_catalog: 94
+      shared_libraries: 329
+      storybook: 2
+  sample_seed: 8675309
+  sampling_strategy: stratified
+  sample_metadata:
+    strategy: stratified
+    stratify_by: layer
+    stratum_distribution:
+      pearls_features: 29
+      product_catalog: 5
+      shared_libraries: 16
+    indexes:
+    - 506
+    - 503
+    - 271
+    - 103
+    - 261
+    - 92
+    - 480
+    - 517
+    - 309
+    - 95
+    - 558
+    - 543
+    - 392
+    - 336
+    - 6
+    - 7
+    - 302
+    - 460
+    - 567
+    - 540
+    - 521
+    - 74
+    - 90
+    - 414
+    - 347
+    - 20
+    - 111
+    - 405
+    - 369
+    - 666
+    - 656
+    - 652
+    - 639
+    - 643
+    - 982
+    - 874
+    - 813
+    - 830
+    - 916
+    - 717
+    - 951
+    - 771
+    - 962
+    - 848
+    - 683
+    - 721
+    - 842
+    - 777
+    - 825
+    - 880
+  stable_hash: cf5f25c173df38798fb2972bce86f76c06d135fb9d2f81992f6837c461ef5deb
+seed: 8675309
+metadata:
+  display_name: mcs-products-mono-ui
+  source_type: code_repository
+  sampling_strategy: stratified
+  domain_context: 'This is an Angular/TypeScript Nx monorepo (mcs-products-mono-ui)
+    for RLS (Reference Lab System) frontend applications. The library code is organized
+    into three main domains: pearls_features (clinical lab features including specimen
+    accessioning, sendouts, auto-accession, order system viewer, and HL7 admin), shared_libraries
+    (shared UI components, data access services, state management, core utilities,
+    and testing helpers), and product_catalog (product viewer and product details
+    features). Synthetic stories should ask the agent to implement realistic front-end
+    engineering tasks such as adding Angular components, updating NgRx state and effects,
+    extending data access services, wiring up new routes, or improving shared UI pattern
+    library elements — spanning the relevant feature and shared layers.
+
+    '
+  manifest_hash: 3788934acac1ad6a86c30561cc81e9226273fa9e7668740bc3efc19d70dddc08

@@ -5,8 +5,11 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import json
+import shutil
 import subprocess
 import sys
+import tempfile
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,22 +19,43 @@ from workflow_inputs import resolve_workflow_input
 
 if __package__ in {None, ""}:  # pragma: no cover - exercised by direct CLI use.
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from eval.check_helpers import run_check
     from eval.metrics import EvalScoreMetric, eval_score_results
     from eval.models import CheckResult, EvalStory, ScoreSummary, SuiteManifest
     from eval.scoring import summarize_scores
-    from eval.story_checks import run_story_checks
+    from eval.story_checks import get_story_checks, run_story_checks
     from eval.suite_io import load_eval_story, load_suite_manifest, workflow_fixture_from_story
 else:
+    from .check_helpers import run_check
     from .metrics import EvalScoreMetric, eval_score_results
     from .models import CheckResult, EvalStory, ScoreSummary, SuiteManifest
     from .scoring import summarize_scores
-    from .story_checks import run_story_checks
+    from .story_checks import get_story_checks, run_story_checks
     from .suite_io import load_eval_story, load_suite_manifest, workflow_fixture_from_story
 
 DEFAULT_TESTING_BRANCH = "codex/eval-run"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BASELINE_DIR = Path(__file__).resolve().parent / ".baselines"
 TRANSIENT_FIXTURE_DIR = Path(__file__).resolve().parent / ".run_fixtures"
+REPO_CHECK_SUBJECT = "repo"
+FALLBACK_COPY_IGNORES = frozenset(
+    {
+        ".DS_Store",
+        ".angular",
+        ".idea",
+        ".next",
+        ".pytest_cache",
+        ".turbo",
+        "__pycache__",
+        "build",
+        "coverage",
+        "dist",
+        "out",
+        "reports",
+        "storybook-static",
+        "tmp",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -58,6 +82,13 @@ class EvalRunResult:
     regression_breached: bool
     opik_logged: bool
     workflow_failed: bool = False
+
+
+@dataclass(frozen=True)
+class TrialRunSpec:
+    run_index: int
+    runner: str
+    model: str | None = None
 
 
 def _positive_int(value: str) -> int:
@@ -87,7 +118,8 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument("--story", help="Path to a single eval story manifest or workflow JSON fixture")
     parser.add_argument("--change-id", help="Compatibility lookup for eval/stories/<id>.json or suite story YAML")
     parser.add_argument("--repo", "--mono-root", dest="repo", required=True, help="Target repository path")
-    parser.add_argument("--runner", choices=["claude", "copilot", "gemini"], default="claude")
+    parser.add_argument("--runner", default="claude", metavar="RUNNER",
+                        help="Runner: 'claude', 'copilot', 'gemini', or a copilot alias like 'copilot-gemma4'")
     parser.add_argument("--model")
     parser.add_argument("--runs", type=_positive_int, default=1)
     parser.add_argument("--max-concurrent", type=_positive_int, default=1)
@@ -202,6 +234,146 @@ def load_story(path: Path) -> EvalStory:
     return load_eval_story(path)
 
 
+def _safe_slug(value: str, *, limit: int = 48) -> str:
+    slug = "".join(char if char.isalnum() else "-" for char in value).strip("-")
+    slug = slug[:limit].strip("-")
+    return slug or "eval-run"
+
+
+def _build_preflight_failure(
+    *,
+    story: EvalStory,
+    story_path: Path,
+    fixture_path: Path,
+    change_id: str,
+    checks: Sequence[Any],
+    message: str,
+) -> StoryRun:
+    synthetic_results = [
+        CheckResult(
+            check_id=check.id,
+            passed=False,
+            attempted=False,
+            mechanism=check.mechanism,
+            subject=check.subject,
+            difficulty=check.difficulty,
+            failure_reason="NO_ATTEMPT",
+            message=message,
+            metadata={"label": check.label, **dict(check.metadata)},
+        )
+        for check in checks
+    ]
+    return StoryRun(
+        story=story,
+        story_path=story_path,
+        fixture_path=fixture_path,
+        change_id=change_id,
+        subprocess_returncode=2,
+        artifact_text=message,
+        checks=synthetic_results,
+        summary=summarize_scores(synthetic_results),
+    )
+
+
+def _repo_grounded_command_checks(
+    *,
+    story: EvalStory,
+    plugin: object | None,
+    difficulty_overrides: dict[str, Any],
+) -> tuple[list[Any], list[Any]]:
+    all_checks = list(
+        get_story_checks(
+            story.story_id,
+            plugin=plugin,
+            difficulty_overrides=difficulty_overrides,
+            suite_story=story,
+        )
+    )
+    repo_checks = [
+        check
+        for check in all_checks
+        if check.mechanism == "command" and check.subject == REPO_CHECK_SUBJECT
+    ]
+    return all_checks, repo_checks
+
+
+def _calibration_actionability_error(
+    *,
+    story: EvalStory,
+    plugin: object | None,
+    difficulty_overrides: dict[str, Any],
+    repo_path: str,
+) -> str | None:
+    all_checks, repo_checks = _repo_grounded_command_checks(
+        story=story,
+        plugin=plugin,
+        difficulty_overrides=difficulty_overrides,
+    )
+    if not all_checks:
+        return (
+            "Multi-run pipeline evaluation requires at least one acceptance check. "
+            f"Story {story.story_id} defined none."
+        )
+    if len(repo_checks) != len(all_checks):
+        return (
+            "Multi-run pipeline evaluation requires every acceptance criterion to be a repo-grounded "
+            "command check (check_mechanism=command, check_subject=repo) so the runner can detect "
+            f"stale or already-satisfied stories before calibration. Story {story.story_id} exposed "
+            f"{len(repo_checks)}/{len(all_checks)} repo-grounded command checks."
+        )
+    preflight_results = [run_check(check, repo_path=repo_path) for check in repo_checks]
+    if preflight_results and all(result.passed for result in preflight_results):
+        return (
+            "Calibration preflight rejected the story because every repo-grounded acceptance check "
+            f"already passes against the starting repository for {story.story_id}. "
+            "Regenerate the story with checks that fail on the pristine repo and turn green only "
+            "after the requested change."
+        )
+    return None
+
+
+def _copy_repo_for_run(repo: str, *, change_id: str) -> tuple[str, Path]:
+    source_repo = Path(repo).expanduser().resolve()
+    try:
+        temp_root = Path(
+            tempfile.mkdtemp(
+                prefix=f"{_safe_slug(change_id)}-repo-",
+                dir=str(source_repo.parent),
+            )
+        )
+    except OSError:
+        temp_root = Path(tempfile.mkdtemp(prefix=f"{_safe_slug(change_id)}-repo-"))
+    destination = temp_root / source_repo.name
+    if _clone_repo_tree(source_repo, destination):
+        return str(destination), temp_root
+    shutil.copytree(
+        source_repo,
+        destination,
+        symlinks=True,
+        ignore=shutil.ignore_patterns(*sorted(FALLBACK_COPY_IGNORES)),
+    )
+    return str(destination), temp_root
+
+
+def _clone_repo_tree(source_repo: Path, destination: Path) -> bool:
+    clone_commands: list[list[str]] = []
+    if sys.platform == "darwin":
+        clone_commands.append(["cp", "-cR", str(source_repo), str(destination)])
+    else:
+        clone_commands.append(["cp", "--reflink=auto", "-a", str(source_repo), str(destination)])
+
+    for command in clone_commands:
+        try:
+            completed = subprocess.run(command, capture_output=True, text=True, check=False)
+        except FileNotFoundError:
+            continue
+        if completed.returncode == 0:
+            return True
+        if destination.exists():
+            shutil.rmtree(destination, ignore_errors=True)
+    return False
+
+
 def _workflow_change_id(story: EvalStory, run_index: int, *, isolate: bool) -> str:
     base_change_id = story.change_id or story.story_id
     if isolate:
@@ -241,6 +413,9 @@ def _run_workflow(
     runner: str,
     model: str | None,
     skip_materialize: bool,
+    skip_lessons_optimizer: bool = False,
+    calibration_fast_mode: bool = False,
+    stream_output: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     command = [
         sys.executable,
@@ -256,7 +431,49 @@ def _run_workflow(
         command.extend(["--model", model])
     if skip_materialize:
         command.append("--skip-materialize")
+    if skip_lessons_optimizer:
+        command.append("--skip-lessons-optimizer")
+    if calibration_fast_mode:
+        command.append("--calibration-fast-mode")
+    if stream_output:
+        return _run_subprocess_live(command, cwd=str(REPO_ROOT))
     return subprocess.run(command, cwd=str(REPO_ROOT), text=True, capture_output=True, check=False)
+
+
+def _run_subprocess_live(command: list[str], *, cwd: str) -> subprocess.CompletedProcess[str]:
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+
+    def _pump(pipe, chunks: list[str], target) -> None:
+        if pipe is None:
+            return
+        try:
+            for line in iter(pipe.readline, ""):
+                chunks.append(line)
+                print(line, end="", file=target, flush=True)
+        finally:
+            pipe.close()
+
+    stdout_thread = threading.Thread(target=_pump, args=(process.stdout, stdout_chunks, sys.stdout))
+    stderr_thread = threading.Thread(target=_pump, args=(process.stderr, stderr_chunks, sys.stderr))
+    stdout_thread.start()
+    stderr_thread.start()
+    returncode = process.wait()
+    stdout_thread.join()
+    stderr_thread.join()
+    return subprocess.CompletedProcess(
+        args=command,
+        returncode=returncode,
+        stdout="".join(stdout_chunks),
+        stderr="".join(stderr_chunks),
+    )
 
 
 def _candidate_artifact_files(change_id: str) -> list[Path]:
@@ -366,10 +583,13 @@ def _run_story_once(
     suite: SuiteManifest | None,
     run_index: int,
     args: argparse.Namespace,
+    run_spec: TrialRunSpec | None = None,
 ) -> StoryRun:
     story = load_story(story_path)
     isolate_workflow = not args.skip_pipeline and args.runs > 1
     change_id = _workflow_change_id(story, run_index, isolate=isolate_workflow)
+    effective_runner = run_spec.runner if run_spec is not None else args.runner
+    effective_model = run_spec.model if run_spec is not None else args.model
     if story_path.suffix.lower() == ".json" and not isolate_workflow:
         fixture_path = story_path
     elif story_path.suffix.lower() == ".json":
@@ -377,27 +597,58 @@ def _run_story_once(
     else:
         fixture_path = _write_workflow_fixture(story, run_index, change_id)
     transient_path = fixture_path if fixture_path.parent == TRANSIENT_FIXTURE_DIR else None
+    transient_repo_root: Path | None = None
+    plugin = _metadata_plugin(story, suite, story_path)
+    difficulty_overrides = _difficulty_overrides(story, suite)
     try:
-        _validate_fixture(fixture_path, args.repo, change_id)
+        if getattr(args, "enforce_repo_actionability", False):
+            all_checks, _ = _repo_grounded_command_checks(
+                story=story,
+                plugin=plugin,
+                difficulty_overrides=difficulty_overrides,
+            )
+            actionability_error = _calibration_actionability_error(
+                story=story,
+                plugin=plugin,
+                difficulty_overrides=difficulty_overrides,
+                repo_path=args.repo,
+            )
+            if actionability_error is not None:
+                return _build_preflight_failure(
+                    story=story,
+                    story_path=story_path,
+                    fixture_path=fixture_path,
+                    change_id=change_id,
+                    checks=all_checks,
+                    message=actionability_error,
+                )
+
+        repo_path = args.repo
+        if getattr(args, "isolate_repo", False):
+            repo_path, transient_repo_root = _copy_repo_for_run(repo_path, change_id=change_id)
+
+        _validate_fixture(fixture_path, repo_path, change_id)
         completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
         if not args.skip_pipeline:
             completed = _run_workflow(
                 fixture_path=fixture_path,
-                repo=args.repo,
-                runner=args.runner,
-                model=args.model,
+                repo=repo_path,
+                runner=effective_runner,
+                model=effective_model,
                 skip_materialize=args.skip_materialize,
+                skip_lessons_optimizer=True,
+                calibration_fast_mode=getattr(args, "calibration_fast_mode", False),
+                stream_output=getattr(args, "stream_output", False),
             )
         process_text = "\n".join(part for part in (completed.stdout, completed.stderr) if part)
         artifact_text = load_best_artifact_text(change_id, process_text)
-        plugin = _metadata_plugin(story, suite, story_path)
         checks = run_story_checks(
             story.story_id,
             artifact_text,
             plugin=plugin,
-            difficulty_overrides=_difficulty_overrides(story, suite),
+            difficulty_overrides=difficulty_overrides,
             suite_story=story,
-            repo_path=args.repo,
+            repo_path=repo_path,
         )
         summary = summarize_scores(checks)
         return StoryRun(
@@ -416,6 +667,116 @@ def _run_story_once(
                 transient_path.unlink()
             except FileNotFoundError:
                 pass
+        if transient_repo_root is not None:
+            shutil.rmtree(transient_repo_root, ignore_errors=True)
+
+
+def run_story_trials(
+    *,
+    story_path: Path,
+    repo: str,
+    runner: str,
+    model: str | None = None,
+    runs: int = 1,
+    max_concurrent: int = 1,
+    run_indices: Sequence[int] | None = None,
+    run_specs: Sequence[TrialRunSpec] | None = None,
+    skip_pipeline: bool = False,
+    skip_materialize: bool = False,
+    calibration_fast_mode: bool = False,
+    stream_output: bool = False,
+    suite: SuiteManifest | None = None,
+) -> list[StoryRun]:
+    return _run_story_trials_for_paths(
+        story_paths=[story_path],
+        repo=repo,
+        runner=runner,
+        model=model,
+        runs=runs,
+        max_concurrent=max_concurrent,
+        run_indices=run_indices,
+        run_specs=run_specs,
+        skip_pipeline=skip_pipeline,
+        skip_materialize=skip_materialize,
+        calibration_fast_mode=calibration_fast_mode,
+        stream_output=stream_output,
+        suite=suite,
+    )
+
+
+def _run_story_trials_for_paths(
+    *,
+    story_paths: Sequence[Path],
+    repo: str,
+    runner: str,
+    model: str | None = None,
+    runs: int = 1,
+    max_concurrent: int = 1,
+    run_indices: Sequence[int] | None = None,
+    run_specs: Sequence[TrialRunSpec] | None = None,
+    skip_pipeline: bool = False,
+    skip_materialize: bool = False,
+    calibration_fast_mode: bool = False,
+    stream_output: bool = False,
+    suite: SuiteManifest | None = None,
+) -> list[StoryRun]:
+    if run_specs is not None:
+        selected_run_specs = list(run_specs)
+        seen_run_indices: set[int] = set()
+        for run_spec in selected_run_specs:
+            if run_spec.run_index in seen_run_indices:
+                raise ValueError(f"Duplicate run_index in run_specs: {run_spec.run_index}")
+            seen_run_indices.add(run_spec.run_index)
+    else:
+        selected_run_indices = list(run_indices) if run_indices is not None else list(range(1, runs + 1))
+        selected_run_specs = [
+            TrialRunSpec(run_index=run_index, runner=runner, model=model)
+            for run_index in selected_run_indices
+        ]
+    planned_run_count = max(
+        max((run_spec.run_index for run_spec in selected_run_specs), default=0),
+        runs,
+        1,
+    )
+    jobs = [(run_spec, story_path) for run_spec in selected_run_specs for story_path in story_paths]
+    planned_jobs_count = len(story_paths) * planned_run_count
+    args = argparse.Namespace(
+        repo=repo,
+        runner=runner,
+        model=model,
+        runs=planned_run_count,
+        max_concurrent=max_concurrent,
+        skip_pipeline=skip_pipeline,
+        skip_materialize=skip_materialize,
+        calibration_fast_mode=calibration_fast_mode,
+        stream_output=stream_output,
+        isolate_repo=not skip_pipeline and planned_jobs_count > 1,
+        enforce_repo_actionability=not skip_pipeline and planned_run_count > 1,
+    )
+    if max_concurrent > 1 and len(jobs) > 1:
+        with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+            return list(
+                executor.map(
+                    lambda job: _run_story_once(
+                        story_path=job[1],
+                        suite=suite,
+                        run_index=job[0].run_index,
+                        args=args,
+                        run_spec=job[0],
+                    ),
+                    jobs,
+                )
+            )
+    return [
+        _run_story_once(
+            story_path=path,
+            suite=suite,
+            run_index=run_spec.run_index,
+            args=args,
+            run_spec=run_spec,
+        )
+        for run_spec, path in jobs
+    ]
 
 
 def _opik_evaluate(*args: Any, **kwargs: Any) -> Any:
@@ -487,20 +848,18 @@ def run_eval(args: argparse.Namespace) -> EvalRunResult:
 
     story_runs: list[StoryRun] = []
     all_checks: list[CheckResult] = []
-    jobs = [(run_index, story_path) for run_index in range(1, args.runs + 1) for story_path in story_paths]
-    if args.max_concurrent > 1 and len(jobs) > 1:
-        with ThreadPoolExecutor(max_workers=args.max_concurrent) as executor:
-            results = list(
-                executor.map(
-                    lambda job: _run_story_once(story_path=job[1], suite=suite, run_index=job[0], args=args),
-                    jobs,
-                )
-            )
-    else:
-        results = [
-            _run_story_once(story_path=story_path, suite=suite, run_index=run_index, args=args)
-            for run_index, story_path in jobs
-        ]
+    results = _run_story_trials_for_paths(
+        story_paths=story_paths,
+        repo=args.repo,
+        runner=args.runner,
+        model=args.model,
+        runs=args.runs,
+        max_concurrent=args.max_concurrent,
+        skip_pipeline=args.skip_pipeline,
+        skip_materialize=args.skip_materialize,
+        stream_output=False,
+        suite=suite,
+    )
     for story_run in results:
         story_runs.append(story_run)
         all_checks.extend(story_run.checks)

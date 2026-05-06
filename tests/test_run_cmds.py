@@ -44,6 +44,31 @@ class RunCopilotCmdEnvironmentTests(unittest.TestCase):
         called_env = run_subprocess.call_args.kwargs["env"]
         self.assertNotIn("CLAUDE_CODE_API_KEY", called_env)
 
+    def test_medium__copilot_retries_transient_alias_failure_until_success(self):
+        transient = subprocess.CompletedProcess(
+            args=["copilot-gemma4"], returncode=1, stdout="", stderr='Error: Post "https://ollama.com:443/api/show": http2: server sent GOAWAY'
+        )
+        success = subprocess.CompletedProcess(args=["copilot-gemma4"], returncode=0, stdout="ok", stderr="")
+        with (
+            patch.object(run_cmds, "_run_cli", side_effect=[transient, success]) as run_cli,
+            patch.object(run_cmds.time, "sleep") as sleep,
+        ):
+            result = run_cmds.run_copilot_cmd(prompt="Do the work", agent="intake-agent", cli_cmd="copilot-gemma4")
+        self.assertEqual(result, "ok")
+        self.assertEqual(run_cli.call_count, 2)
+        sleep.assert_called_once_with(5)
+
+    def test_medium__copilot_does_not_retry_nontransient_failure(self):
+        failed = subprocess.CompletedProcess(args=["copilot"], returncode=1, stdout="", stderr="validation error")
+        with (
+            patch.object(run_cmds, "_run_cli", return_value=failed) as run_cli,
+            patch.object(run_cmds.time, "sleep") as sleep,
+            self.assertRaises(subprocess.CalledProcessError),
+        ):
+            run_cmds.run_copilot_cmd(prompt="Do the work", agent="intake-agent")
+        run_cli.assert_called_once()
+        sleep.assert_not_called()
+
 
 class RunGeminiCmdShapeTests(unittest.TestCase):
     def _run(self):
@@ -258,8 +283,24 @@ class RunAgentCmdDispatchTests(unittest.TestCase):
             extra_skills=None,
         )
 
+    def test_medium__agent_cmd_forwards_stream_output_to_copilot(self):
+        with patch.object(run_cmds, "run_copilot_cmd", return_value="copilot output") as run_copilot:
+            run_cmds.run_agent_cmd(
+                runner="copilot",
+                prompt="Implement the task",
+                agent="software-engineer-hyperagent",
+                stream_output=True,
+            )
+        run_copilot.assert_called_once_with(
+            prompt="Implement the task",
+            agent="software-engineer-hyperagent",
+            model="gpt-5-mini",
+            cli_cmd="copilot",
+            stream_output=True,
+        )
+
     def test_easy__agent_cmd_rejects_unknown_runner_with_value_error(self):
-        with self.assertRaisesRegex(ValueError, "claude', 'copilot', or 'gemini"):
+        with self.assertRaisesRegex(ValueError, "copilot alias"):
             run_cmds.run_agent_cmd(runner="unknown", prompt="prompt", agent="agent")
 
 

@@ -1,9 +1,0 @@
-# Auto-created placeholder UoW spec for EVAL-003 UOW-003
-uow_id: "UOW-003"
-title: "Evaluator placeholder: implement UOW-003"
-description: "UoW spec was missing. Placeholder created by Software Engineer Hyperagent for evaluation continuity. Original spec must be provided by planner."
-definition_of_done:
-  - "impl_report.yaml exists at execution/UOW-003/impl_report.yaml"
-  - "library_research documented"
-  - "tests present if code changes made"
-implementation_hints: []

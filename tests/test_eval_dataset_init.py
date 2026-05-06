@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from eval.dataset_manifest import ManifestValidationError, load_dataset_lock, load_dataset_manifest
-from eval.dataset_sources import DatasetSourceError, read_source
+from eval.dataset_sources import DatasetSourceError, read_source, resolve_source_path
 from eval.init_dataset import initialize_dataset, sample_records
 from eval.yaml_io import dump_yaml
 
@@ -52,6 +52,65 @@ class EvalDatasetInitTests(unittest.TestCase):
 
         self.assertEqual(result.records[0]["name"], "Ada")
         self.assertEqual(result.metadata["fields"], ["id", "name"])
+
+    def test_manifest_validation_accepts_code_repository_source(self):
+        repo_root = self.workdir / "repo"
+        repo_root.mkdir()
+        manifest_path = self.write_manifest(
+            {
+                "dataset_id": "repo_claims",
+                "display_name": "Repo Claims",
+                "source": {
+                    "type": "code_repository",
+                    "path": "repo",
+                    "include_extensions": [".ts"],
+                    "exclude_patterns": ["/node_modules/", ".spec.ts"],
+                    "layer_map": {"product-catalog": "product_catalog"},
+                },
+                "sampling": {"strategy": "head", "sample_size": 1, "seed": 1},
+                "domain_context": "Repo domain",
+            }
+        )
+
+        manifest = load_dataset_manifest(manifest_path)
+
+        self.assertEqual(manifest.source["type"], "code_repository")
+
+    def test_code_repository_source_reader_catalogs_files_and_layers(self):
+        libs_root = self.workdir / "repo" / "libs"
+        (libs_root / "product-catalog" / "feature-a").mkdir(parents=True)
+        (libs_root / "shared-ui" / "button").mkdir(parents=True)
+        (libs_root / "product-catalog" / "feature-a" / "item.ts").write_text("export const item = 1;\n", encoding="utf-8")
+        (libs_root / "shared-ui" / "button" / "button.tsx").write_text("export const Button = () => null;\n", encoding="utf-8")
+        (libs_root / "shared-ui" / "button" / "button.spec.ts").write_text("test('x', () => {});\n", encoding="utf-8")
+
+        result = read_source(
+            {
+                "type": "code_repository",
+                "path": "repo/libs",
+                "include_extensions": [".ts", ".tsx"],
+                "exclude_patterns": [".spec.ts"],
+                "layer_map": {"product-catalog": "product_catalog"},
+            },
+            self.workdir / "dataset.yaml",
+        )
+
+        self.assertEqual(len(result.records), 2)
+        self.assertEqual(result.records[0]["file"], "product-catalog/feature-a/item.ts")
+        self.assertEqual(result.records[0]["project"], "product-catalog")
+        self.assertEqual(result.records[0]["layer"], "product_catalog")
+        self.assertEqual(result.records[0]["sub_path"], "feature-a/item.ts")
+        self.assertEqual(result.records[1]["layer"], "presentation")
+        self.assertEqual(result.metadata["total_files"], 2)
+        self.assertEqual(result.metadata["layer_distribution"], {"presentation": 1, "product_catalog": 1})
+
+    def test_source_path_expands_user_home_before_relative_resolution(self):
+        resolved = resolve_source_path(
+            {"path": "~/nonexistent.csv"},
+            self.workdir / "dataset.yaml",
+        )
+
+        self.assertEqual(resolved, (Path.home() / "nonexistent.csv").resolve())
 
     def test_jsonl_source_reader_rejects_non_object_lines(self):
         jsonl_path = self.workdir / "records.jsonl"
@@ -158,6 +217,33 @@ class EvalDatasetInitTests(unittest.TestCase):
         self.assertIn("stable_hash", lock.schema)
         loaded_lock = load_dataset_lock(lock_path)
         self.assertEqual(loaded_lock.source_fingerprint, lock.source_fingerprint)
+
+    def test_initialize_dataset_with_code_repository_source_writes_expected_schema(self):
+        libs_root = self.workdir / "repo" / "libs"
+        (libs_root / "product-catalog" / "feature-a").mkdir(parents=True)
+        (libs_root / "product-catalog" / "feature-a" / "item.ts").write_text("export const item = 1;\n", encoding="utf-8")
+        (libs_root / "shared-ui" / "button").mkdir(parents=True)
+        (libs_root / "shared-ui" / "button" / "button.tsx").write_text("export const Button = () => null;\n", encoding="utf-8")
+        manifest_path = self.write_manifest(
+            {
+                "dataset_id": "repo_claims",
+                "display_name": "Repo Claims",
+                "source": {
+                    "type": "code_repository",
+                    "path": "repo/libs",
+                    "include_extensions": [".ts", ".tsx"],
+                    "layer_map": {"product-catalog": "product_catalog"},
+                },
+                "sampling": {"strategy": "stratified", "sample_size": 2, "seed": 42, "stratify_by": "layer"},
+                "domain_context": "Repo domain",
+            }
+        )
+
+        lock, summary = initialize_dataset(manifest_path)
+
+        self.assertEqual(summary["source_type"], "code_repository")
+        self.assertEqual(lock.schema["fields"], ["file", "filename", "layer", "project", "size_bytes", "sub_path"])
+        self.assertEqual(lock.schema["source_metadata"]["layer_distribution"], {"presentation": 1, "product_catalog": 1})
 
     def test_lock_hash_changes_when_schema_changes(self):
         first_csv = self.workdir / "first.csv"

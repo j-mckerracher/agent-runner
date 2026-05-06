@@ -1,0 +1,10 @@
+{
+  "change_id": "TEST-AC-001",
+  "title": "Synthetic local fixture smoke test",
+  "description": "Verify the workflow handles a bundled synthetic fixture without Azure DevOps metadata.",
+  "acceptance_criteria": [
+    "Use the local synthetic fixture inputs when no external story source is supplied.",
+    "Preserves the normalized synthetic metadata and fixture payload in intake artifacts.",
+    "Skip ado-specific operations because the story has no Azure DevOps provenance."
+  ]
+}

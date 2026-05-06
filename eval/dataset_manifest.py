@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Union
+from typing import Any, Iterable, Mapping, Sequence, Union
 
 from .models import DatasetLock, DatasetManifest
 from .yaml_io import dump_yaml, load_yaml_mapping
@@ -27,9 +27,9 @@ def parse_dataset_manifest(data: Mapping[str, Any]) -> DatasetManifest:
     if not isinstance(source_type, str) or not source_type.strip():
         raise ManifestValidationError("dataset manifest source.type must be a non-empty string")
     source_type = source_type.strip()
-    if source_type not in {"csv", "jsonl", "sqlite", "parquet", "postgres", "s3_glob"}:
+    if source_type not in {"code_repository", "csv", "jsonl", "sqlite", "parquet", "postgres", "s3_glob"}:
         raise ManifestValidationError(
-            "dataset manifest source.type must be one of: csv, jsonl, parquet, postgres, s3_glob, sqlite"
+            "dataset manifest source.type must be one of: code_repository, csv, jsonl, parquet, postgres, s3_glob, sqlite"
         )
     _validate_source_settings(source_type, manifest.source)
 
@@ -76,6 +76,29 @@ def _first_present(data: Mapping[str, Any], keys: Iterable[str]) -> Any:
 
 
 def _validate_source_settings(source_type: str, source: Mapping[str, Any]) -> None:
+    if source_type == "code_repository":
+        path = source.get("path")
+        if not isinstance(path, str) or not path.strip():
+            raise ManifestValidationError("code_repository source requires a non-empty source.path")
+        _validate_optional_string_sequence(
+            source.get("include_extensions"),
+            field_name="code_repository source.include_extensions",
+        )
+        _validate_optional_string_sequence(
+            source.get("exclude_patterns"),
+            field_name="code_repository source.exclude_patterns",
+        )
+        layer_map = source.get("layer_map")
+        if layer_map is not None:
+            if not isinstance(layer_map, Mapping):
+                raise ManifestValidationError("code_repository source.layer_map must be a mapping when provided")
+            for key, value in layer_map.items():
+                if not isinstance(key, str) or not key.strip() or not isinstance(value, str) or not value.strip():
+                    raise ManifestValidationError(
+                        "code_repository source.layer_map must use non-empty string keys and values"
+                    )
+        return
+
     if source_type in {"csv", "jsonl", "parquet"}:
         path = source.get("path")
         if not isinstance(path, str) or not path.strip():
@@ -109,6 +132,16 @@ def _validate_source_settings(source_type: str, source: Mapping[str, Any]) -> No
         has_pattern = isinstance(source.get("pattern"), str) and bool(source.get("pattern", "").strip())
         if not (has_uri or has_pattern):
             raise ManifestValidationError("s3_glob source requires source.uri or source.pattern")
+
+
+def _validate_optional_string_sequence(value: Any, *, field_name: str) -> None:
+    if value is None:
+        return
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise ManifestValidationError(f"{field_name} must be a sequence of non-empty strings when provided")
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ManifestValidationError(f"{field_name} must contain only non-empty strings")
 
 
 def load_dataset_manifest(path: PathLike) -> DatasetManifest:
