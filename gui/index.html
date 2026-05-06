@@ -6,6 +6,7 @@
 <title>agent-runner</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Crect width='32' height='32' rx='6' fill='%23c4873a'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='central' text-anchor='middle' font-family='monospace' font-size='20' font-weight='700' fill='%2307080b'%3Ea%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -361,7 +362,57 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .agent-detail-path{margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--t3);word-break:break-all}
 .agent-detail-tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .agent-tag{padding:3px 8px;border:1px solid var(--brb);border-radius:999px;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--t2);background:rgba(28,32,40,.7)}
-.agent-prompt-body{flex:1;overflow:auto;padding:18px 20px;background:rgba(20,23,32,.45);font-family:var(--mono);font-size:12px;line-height:1.7;white-space:pre-wrap;word-break:break-word;tab-size:2}
+.agent-prompt-body{flex:1;overflow:auto;padding:24px 28px;background:rgba(20,23,32,.45);font-family:var(--font);font-size:13px;line-height:1.75;word-break:break-word}
+/* Markdown rendered elements inside agent prompt */
+.agent-prompt-body h1,.agent-prompt-body h2,.agent-prompt-body h3,
+.agent-prompt-body h4,.agent-prompt-body h5,.agent-prompt-body h6{
+  font-family:'DM Sans','Trebuchet MS','Segoe UI',sans-serif;
+  font-weight:600;color:var(--t1);margin:1.4em 0 .5em;line-height:1.2;
+}
+.agent-prompt-body h1{font-size:1.6em;border-bottom:1px solid var(--br);padding-bottom:.35em}
+.agent-prompt-body h2{font-size:1.3em;border-bottom:1px solid rgba(255,255,255,.05);padding-bottom:.25em}
+.agent-prompt-body h3{font-size:1.1em;color:var(--acc)}
+.agent-prompt-body h4{font-size:1em;color:var(--t2)}
+.agent-prompt-body h5,.agent-prompt-body h6{font-size:.9em;color:var(--t3)}
+.agent-prompt-body p{margin:.6em 0}
+.agent-prompt-body ul,.agent-prompt-body ol{margin:.5em 0 .5em 1.4em;padding:0}
+.agent-prompt-body li{margin:.25em 0}
+.agent-prompt-body li>ul,.agent-prompt-body li>ol{margin:.2em 0 .2em 1.2em}
+.agent-prompt-body code{
+  font-family:var(--mono);font-size:.88em;
+  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.08);
+  border-radius:3px;padding:.15em .4em;color:#f0c080;
+}
+.agent-prompt-body pre{
+  background:rgba(7,8,11,.7);border:1px solid var(--br);border-radius:6px;
+  padding:14px 16px;overflow-x:auto;margin:1em 0;
+}
+.agent-prompt-body pre code{
+  background:none;border:none;padding:0;color:var(--t1);font-size:.9em;line-height:1.55;
+}
+.agent-prompt-body blockquote{
+  margin:.8em 0;padding:.5em 1em;
+  border-left:3px solid var(--acc);background:var(--acc-lo);
+  color:var(--t2);border-radius:0 4px 4px 0;
+}
+.agent-prompt-body blockquote p{margin:0}
+.agent-prompt-body table{
+  width:100%;border-collapse:collapse;margin:1em 0;font-size:.92em;
+}
+.agent-prompt-body thead tr{border-bottom:2px solid var(--brb)}
+.agent-prompt-body th{
+  font-family:var(--mono);font-size:.8em;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--t3);padding:7px 12px;text-align:left;font-weight:400;
+}
+.agent-prompt-body tbody tr{border-bottom:1px solid var(--br);transition:background .12s}
+.agent-prompt-body tbody tr:last-child{border-bottom:none}
+.agent-prompt-body tbody tr:hover{background:rgba(255,255,255,.03)}
+.agent-prompt-body td{padding:7px 12px;color:var(--t1);vertical-align:top}
+.agent-prompt-body a{color:var(--acc);text-decoration:none}
+.agent-prompt-body a:hover{text-decoration:underline}
+.agent-prompt-body hr{border:none;border-top:1px solid var(--br);margin:1.5em 0}
+.agent-prompt-body strong{color:var(--t1);font-weight:600}
+.agent-prompt-body em{color:var(--t2)}
 .submit-section{padding:14px 16px;border-bottom:1px solid var(--br);overflow-y:auto;max-height:60%}
 .section-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--t3);margin-bottom:10px}
 .field{margin-bottom:8px}
@@ -801,7 +852,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
             <div class="agent-detail-path" id="agent-detail-path" style="display:none"></div>
             <div class="agent-detail-tags" id="agent-detail-tags"></div>
           </div>
-          <pre class="agent-prompt-body" id="agent-prompt-body">Select an agent to view its latest prompt.</pre>
+          <div class="agent-prompt-body" id="agent-prompt-body">Select an agent to view its latest prompt.</div>
         </div>
       </div>
     </section>
@@ -1850,7 +1901,7 @@ function setAgentPromptEmpty(message="Select an agent to view its latest prompt.
   path.style.display = "none";
   path.textContent = "";
   $("#agent-detail-tags").innerHTML = "";
-  $("#agent-prompt-body").textContent = message;
+  $("#agent-prompt-body").innerHTML = `<span style="color:var(--t3)">${escapeHtml(message)}</span>`;
 }
 function setActiveAgent(name){
   activeAgentName = name || null;
@@ -1881,7 +1932,10 @@ async function selectAgent(name){
       path.textContent = "";
     }
     renderAgentTags(detail.tags);
-    $("#agent-prompt-body").textContent = detail.prompt_text || "Prompt file is empty.";
+    const rawMd = detail.prompt_text || "Prompt file is empty.";
+    $("#agent-prompt-body").innerHTML = typeof marked !== "undefined"
+      ? marked.parse(rawMd)
+      : `<pre style="white-space:pre-wrap">${escapeHtml(rawMd)}</pre>`;
   }catch(e){
     setActiveAgent(null);
     setAgentPromptEmpty("Unable to load the selected agent prompt.");
