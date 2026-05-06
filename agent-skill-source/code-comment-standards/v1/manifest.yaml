@@ -1,0 +1,5 @@
+name: code-comment-standards
+version: v1
+description: "Canonical code-comment-standards skill source"
+source: "agent-skill-source/code-comment-standards/v1/SKILL.md"
+skill_file: "SKILL.md"

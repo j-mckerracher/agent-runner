@@ -96,6 +96,7 @@ Bootstrap does **not** try to automate vendor install/login flows for those CLIs
 
 | Dependency | When you need it |
 |---|---|
+| `ztk` | Recommended for the `claude` runner — compresses Bash tool output before it reaches the LLM, reducing token consumption by ~78%. Install: `brew install codejunkie99/ztk/ztk` ([source](https://github.com/codejunkie99/ztk)). Also buildable from source on Linux and other platforms. |
 | Azure CLI (`az`) | Required only for live Azure DevOps work-item mode |
 | `azure-devops` Azure CLI extension | Required only for live Azure DevOps work-item mode |
 
@@ -426,7 +427,6 @@ Optional fields: `examples`, `constraints`, `non_functional_requirements`, `raw_
 
 ```
 agent-context/<change-id>/
-├── events.jsonl            # Structured job/stage/CLI events for API replay + SSE
 ├── intake/
 │   ├── story.yaml        # Normalized story + acceptance criteria
 │   ├── config.yaml       # Workflow config (includes project_type marker)
@@ -434,7 +434,16 @@ agent-context/<change-id>/
 ├── planning/             # tasks.yaml, assignments.json
 ├── execution/            # impl_report.yaml per UoW
 ├── qa/                   # qa_report.yaml
-└── logs/
+└── summary/
+
+logs/<change-id>/
+├── events.jsonl          # Structured job/stage/CLI events for API replay + SSE
+├── intake/
+├── task_generator/
+├── assignment/
+├── software_engineer/
+├── qa/
+└── ...other agent/evaluator log directories
 ```
 
 ---
@@ -448,7 +457,7 @@ agent-context/<change-id>/
 5. **QA** — Validates outputs, writes `qa_report.yaml`
 6. **Lessons Optimization** — Captures learnings and best practices
 
-When runs are launched through the local API, each stage also emits structured `job.start`, `stage.start`, `stage.end`, `cli.invoke`, `cli.exit`, and `job.end` events into `agent-context/<change-id>/events.jsonl`. The Runs view replays that file and then switches to live SSE for in-progress jobs.
+When runs are launched through the local API, each stage also emits structured `job.start`, `stage.start`, `stage.end`, `cli.invoke`, `cli.exit`, and `job.end` events into `logs/<change-id>/events.jsonl`. The Runs view replays that file and then switches to live SSE for in-progress jobs.
 
 ---
 

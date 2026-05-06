@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -340,6 +341,8 @@ def run_claude_cmd(
     if not prompt:
         raise ValueError(f"prompt must not be empty (agent={agent})")
     logger.info("run_claude_cmd: agent=%s model=%s prompt_len=%d", agent, model, len(prompt))
+    if not shutil.which("ztk"):
+        logger.warning("run_claude_cmd: ztk not found — Bash output compression disabled (install: brew install codejunkie99/ztk/ztk)")
     print(f"Starting Claude Code via {agent}...")
     print(f"Prompt: {prompt}")
     print(f"Model: {model}")

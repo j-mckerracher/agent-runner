@@ -62,7 +62,7 @@ Follow the **librarian-query-protocol** skill protocol in full. Additionally:
 Follow the **artifact-io** skill protocol. This agent's specific paths:
 
 - **Inputs**: `{CHANGE-ID}/intake/story.yaml`, `{CHANGE-ID}/planning/tasks.yaml`, `{CHANGE-ID}/planning/assignments.json`, `{CHANGE-ID}/execution/*/impl_report.yaml`, `{CHANGE-ID}/intake/constraints.md`, code repository (read-only)
-- **Outputs**: `{CHANGE-ID}/qa/qa_report.yaml`, `{CHANGE-ID}/qa/evidence/`, `{CHANGE-ID}/logs/qa/`
+- **Outputs**: `{CHANGE-ID}/qa/qa_report.yaml`, `{CHANGE-ID}/qa/evidence/`, `logs/{CHANGE-ID}/qa/`
 
 ## QA Execution Workflow
 
@@ -185,7 +185,7 @@ Include the following fields:
 
 Follow the **session-logging** skill protocol. Agent-specific details:
 
-- **Log directory**: `{CHANGE-ID}/logs/qa/`
+- **Log directory**: `logs/{CHANGE-ID}/qa/`
 - **Log identifier**: `session` (e.g., `20260127_180000_session.json`)
 - **Additional fields**: `acs_validated`, `acs_passed`, `acs_failed`, `evidence_files_created`, `validation_summary`, `regression_assessment`, `execution_blockers` (array of objects with `blocker` and `resolution`), `context_confidence_score` (integer 1-10 indicating confidence in available context)
 
@@ -194,7 +194,7 @@ Follow the **session-logging** skill protocol. Agent-specific details:
 Follow the **scope-and-security** skill protocol. This agent's specific access:
 
 - **MAY read**: All execution, planning, and intake artifacts; code repository (read-only for validation)
-- **MAY write**: `{CHANGE-ID}/qa/qa_report.yaml`, `{CHANGE-ID}/qa/evidence/`, `{CHANGE-ID}/logs/qa/`, `agent-context/lessons.md` (append-only capture writes; no direct read)
+- **MAY write**: `{CHANGE-ID}/qa/qa_report.yaml`, `{CHANGE-ID}/qa/evidence/`, `logs/{CHANGE-ID}/qa/`, `agent-context/lessons.md` (append-only capture writes; no direct read)
 - **MUST NOT modify**: Source code, tests, planning/execution artifacts, environment files
 - You validate, not implement. If you discover issues requiring code changes, document them for remediation routing.
   </agent>

@@ -88,7 +88,7 @@ Follow the **scope-and-security** skill protocol. This agent's specific access:
 
 ### Allowed Writes
 
-- `{CHANGE-ID}/logs/information_explorer/*` (exploration logs only)
+- `logs/{CHANGE-ID}/information_explorer/*` (exploration logs only)
 - `agent-context/lessons.md` (append-only capture writes only; no direct read for lesson retrieval)
 
 ### Additional Prohibited Actions (beyond scope-and-security skill)
@@ -140,7 +140,7 @@ Follow the **scope-and-security** skill protocol. This agent's specific access:
 
 ### Exploration Report
 
-Write the exploration report to `{CHANGE-ID}/logs/information_explorer/{timestamp}_exploration.yaml`.  
+Write the exploration report to `logs/{CHANGE-ID}/information_explorer/{timestamp}_exploration.yaml`.  
 The report must be YAML and include:
 
 - `exploration_id`
@@ -159,7 +159,7 @@ The report must be YAML and include:
 
 Follow the **session-logging** skill protocol. Agent-specific details:
 
-- **Log directory**: `{CHANGE-ID}/logs/information_explorer/`
+- **Log directory**: `logs/{CHANGE-ID}/information_explorer/`
 - **Log identifier**: `session` (e.g., `20260127_143100_session.json`)
 - **Additional fields**: knowledge_mode, query received, source search sequence, sources used, confidence, unresolved gaps, duration estimate, `execution_blockers` (array of objects with `blocker` and `resolution`), `context_confidence_score` (integer 1-10 indicating confidence in available context)
 

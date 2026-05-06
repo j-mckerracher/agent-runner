@@ -1,0 +1,5 @@
+name: artifact-io
+version: v1
+description: "Canonical artifact-io skill source"
+source: "agent-skill-source/artifact-io/v1/SKILL.md"
+skill_file: "SKILL.md"

@@ -73,7 +73,7 @@ Follow the **artifact-io** skill protocol. This agent's specific paths:
 - **Inputs**: runner-supplied workflow context, optional planning doc paths referenced in that context
 - **Inputs** may describe either a live Azure DevOps story or a local synthetic story fixture used for workflow testing
 - **Outputs**: `{CHANGE-ID}/intake/story.yaml`, `{CHANGE-ID}/intake/config.yaml`, `{CHANGE-ID}/intake/constraints.md`
-- **Logs**: `{CHANGE-ID}/logs/intake/`
+- **Logs**: `logs/{CHANGE-ID}/intake/`
 
 ## Intake Processing Rules
 
@@ -162,7 +162,7 @@ Before finishing:
 
 Follow the **session-logging** skill protocol. Agent-specific details:
 
-- **Log directory**: `{CHANGE-ID}/logs/intake/`
+- **Log directory**: `logs/{CHANGE-ID}/intake/`
 - **Log identifier**: `session`
 - **Additional fields**: `project_type`, `acceptance_criteria_count`, `planning_docs_ingested`, `open_questions_count`, `context_confidence_score`, `execution_blockers`
 
@@ -171,7 +171,7 @@ Follow the **session-logging** skill protocol. Agent-specific details:
 Follow the **scope-and-security** skill protocol. This agent's specific access:
 
 - **MAY read**: runner-supplied context, explicitly referenced planning docs, `{CHANGE-ID}/intake/*`
-- **MAY write**: `{CHANGE-ID}/intake/*`, `{CHANGE-ID}/logs/intake/*`
+- **MAY write**: `{CHANGE-ID}/intake/*`, `logs/{CHANGE-ID}/intake/*`
 - **MUST NOT**: write planning, execution, QA, summary, or workflow-runner logs
 
 ## Response Contract

@@ -1,0 +1,5 @@
+name: lessons-capture
+version: v1
+description: "Canonical lessons-capture skill source"
+source: "agent-skill-source/lessons-capture/v1/SKILL.md"
+skill_file: "SKILL.md"

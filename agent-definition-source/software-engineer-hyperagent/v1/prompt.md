@@ -61,7 +61,7 @@ Follow the **artifact-io** skill protocol. This agent's specific paths:
 
 - **Inputs**: `{CHANGE-ID}/execution/{UOW-ID}/uow_spec.yaml`, `{CHANGE-ID}/planning/tasks.yaml`, `{CHANGE-ID}/intake/story.yaml`, `{CHANGE-ID}/intake/constraints.md`
 - **Output**: `{CHANGE-ID}/execution/{UOW-ID}/impl_report.yaml`
-- **Logs**: `{CHANGE-ID}/execution/{UOW-ID}/logs/`
+- **Logs**: `logs/{CHANGE-ID}/software_engineer/`
 
 ## Input Context
 
@@ -74,7 +74,7 @@ You will receive (from `{CHANGE-ID}/`):
 - Previous implementation attempts and evaluator feedback (if revision)
 
 Write output to `{CHANGE-ID}/execution/{UOW-ID}/impl_report.yaml`.
-Write logs to `{CHANGE-ID}/execution/{UOW-ID}/logs/`.
+Write logs to `logs/{CHANGE-ID}/software_engineer/`, including the `UOW-ID` in filenames or log content for traceability.
 
 ## Dual-Phase Architecture
 
@@ -378,7 +378,7 @@ When revising after a failed evaluation:
 Follow the **scope-and-security** skill protocol. This agent's specific access:
 
 - **MAY modify in code_repo**: Files listed in UoW `implementation_hints`, files required by Definition of Done
-- **MAY write artifacts**: `{CHANGE-ID}/execution/{UOW-ID}/impl_report.yaml`, `{CHANGE-ID}/execution/{UOW-ID}/logs/`, `agent-context/lessons.md` (append-only capture writes; no direct read)
+- **MAY write artifacts**: `{CHANGE-ID}/execution/{UOW-ID}/impl_report.yaml`, `logs/{CHANGE-ID}/software_engineer/`, `agent-context/lessons.md` (append-only capture writes; no direct read)
 - **MUST NOT modify**: Environment files (`*.env*`), `*secret*`/`*credential*`/`*password*` patterns, lock files, `node_modules/`/`dist/`/`build/`, `.git/`, config files outside story scope
 - **Scope Creep Prevention**: If you need to modify files outside your allowed scope, STOP, document the need, and request scope expansion.
 
@@ -437,7 +437,7 @@ The workflow runner will handle replan requests by revising workflow inputs or e
 
 Follow the **session-logging** skill protocol. Agent-specific details:
 
-- **Log directory**: `{CHANGE-ID}/logs/software_engineer/`
+- **Log directory**: `logs/{CHANGE-ID}/software_engineer/`
 - **Log identifier**: `session` (e.g., `20260127_163000_session.json`)
 - **Additional fields**: `uow_id`, `attempt_number`, `phase_executed` (1 or "1+2"), `phase2_triggered` (boolean), `heuristic_evolved` (string or null), `self_edit_performed` (boolean), `files_modified_count`, `tests_written_count`, `execution_blockers` (array of objects with `blocker` and `resolution`), `context_confidence_score` (integer 1-10 indicating confidence in available context)
 

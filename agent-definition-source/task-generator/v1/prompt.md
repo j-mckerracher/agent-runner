@@ -57,7 +57,7 @@ Follow the **artifact-io** skill protocol. This agent's specific paths:
 
 - **Inputs**: `{CHANGE-ID}/intake/story.yaml`, `{CHANGE-ID}/intake/constraints.md`
 - **Output**: `{CHANGE-ID}/planning/tasks.yaml`
-- **Logs**: `{CHANGE-ID}/logs/task_generator/`
+- **Logs**: `logs/{CHANGE-ID}/task_generator/`
 
 ## Input Context
 
@@ -186,7 +186,7 @@ If you receive evaluator feedback:
 
 Follow the **scope-and-security** skill protocol. This agent's specific access:
 
-- **MAY access**: `{CHANGE-ID}/intake/story.yaml`, `{CHANGE-ID}/intake/constraints.md` (read), PRD/plan docs via librarian, `{CHANGE-ID}/planning/tasks.yaml` (write), `{CHANGE-ID}/logs/task_generator/` (write), `agent-context/lessons.md` (append-only capture writes; no direct read)
+- **MAY access**: `{CHANGE-ID}/intake/story.yaml`, `{CHANGE-ID}/intake/constraints.md` (read), PRD/plan docs via librarian, `{CHANGE-ID}/planning/tasks.yaml` (write), `logs/{CHANGE-ID}/task_generator/` (write), `agent-context/lessons.md` (append-only capture writes; no direct read)
 - **MUST NOT modify**: Source code files, environment files, lock files, files outside artifact root
 - You only plan, not implement. Do NOT execute code or run tests.
 
@@ -196,7 +196,7 @@ Follow the **scope-and-security** skill protocol. This agent's specific access:
 
 Follow the **session-logging** skill protocol. Agent-specific details:
 
-- **Log directory**: `{CHANGE-ID}/logs/task_generator/`
+- **Log directory**: `logs/{CHANGE-ID}/task_generator/`
 - **Log identifier**: `session` (e.g., `20260127_143500_session.json`)
 - **Additional fields**: `ac_count`, `tasks_generated`, `reference_librarian_queries`, `librarian_exploration_summaries_received`, `decisions_made`, `execution_blockers` (array of objects with `blocker` and `resolution`), `context_confidence_score` (integer 1-10 indicating confidence in available context)
 

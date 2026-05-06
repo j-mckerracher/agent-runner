@@ -1,0 +1,5 @@
+name: mcs-products-mono-ui-onboarding
+version: v1
+description: "Canonical mcs-products-mono-ui-onboarding skill source"
+source: "agent-skill-source/mcs-products-mono-ui-onboarding/v1/SKILL.md"
+skill_file: "SKILL.md"

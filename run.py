@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 RUNNER_ROOT = Path(__file__).resolve().parent
 AGENT_CONTEXT_ROOT = RUNNER_ROOT / "agent-context"
+LOGS_ROOT = RUNNER_ROOT / "logs"
 RUNNER_LABELS = {
     "claude": "Claude Code",
     "copilot": "GitHub Copilot",
@@ -250,36 +251,37 @@ def _write_workflow_status(
 
 
 def clean_workspace(change_id: str) -> None:
-    """Remove stale agent-context directories for this change_id before the pipeline starts.
+    """Remove stale artifact and log directories for this change_id before the pipeline starts.
 
     Removes:
-      - agent-context/{change_id}/ (ensures a fresh start)
-      - agent-context/{base}-RUN-*/ (stale multi-run artifacts from previous runs)
+      - agent-context/{change_id}/ and logs/{change_id}/ (ensures a fresh start)
+      - agent-context/{base}-RUN-*/ and logs/{base}-RUN-*/ (stale multi-run artifacts)
         Only when change_id is a bare ID (not already a -RUN-NN variant), to avoid
         interfering with concurrent isolated multi-run evaluations.
     """
     logger.info("clean_workspace: change_id=%s", change_id)
-    if not AGENT_CONTEXT_ROOT.is_dir():
-        logger.debug("clean_workspace: AGENT_CONTEXT_ROOT does not exist; skipping")
-        return
-
     base = re.sub(r"-RUN-\d+$", "", change_id)
     is_isolated_run = base != change_id
     logger.debug("clean_workspace: base=%s is_isolated_run=%s", base, is_isolated_run)
 
-    target = AGENT_CONTEXT_ROOT / change_id
-    if target.is_dir():
-        logger.info("clean_workspace: removing stale workspace %s", target)
-        print(f"[cleanup] Removing stale workspace: {target.name}")
-        shutil.rmtree(target)
+    for root, label in ((AGENT_CONTEXT_ROOT, "workspace"), (LOGS_ROOT, "log directory")):
+        target = root / change_id
+        if target.is_dir():
+            logger.info("clean_workspace: removing stale %s %s", label, target)
+            print(f"[cleanup] Removing stale {label}: {target.name}")
+            shutil.rmtree(target)
 
     if not is_isolated_run:
         pattern = re.compile(rf"^{re.escape(base)}-RUN-\d+$")
-        for entry in AGENT_CONTEXT_ROOT.iterdir():
-            if entry.is_dir() and pattern.match(entry.name):
-                logger.info("clean_workspace: removing stale multi-run workspace %s", entry)
-                print(f"[cleanup] Removing stale multi-run workspace: {entry.name}")
-                shutil.rmtree(entry)
+        for root, label in ((AGENT_CONTEXT_ROOT, "workspace"), (LOGS_ROOT, "log directory")):
+            if not root.is_dir():
+                logger.debug("clean_workspace: %s root does not exist; skipping", root)
+                continue
+            for entry in root.iterdir():
+                if entry.is_dir() and pattern.match(entry.name):
+                    logger.info("clean_workspace: removing stale multi-run %s %s", label, entry)
+                    print(f"[cleanup] Removing stale multi-run {label}: {entry.name}")
+                    shutil.rmtree(entry)
 
 
 def _extract_batches_from_duplicate_yaml(raw: str) -> list[dict]:

@@ -6,6 +6,7 @@ from pathlib import Path
 
 RUNNER_ROOT = Path(__file__).resolve().parent.parent
 AGENT_CONTEXT_ROOT = RUNNER_ROOT / "agent-context"
+LOGS_ROOT = RUNNER_ROOT / "logs"
 AGENT_SOURCES_ROOT = RUNNER_ROOT / "agent-definition-source"
 EVAL_STORIES_ROOT = RUNNER_ROOT / "eval" / "stories"
 GUI_ROOT = RUNNER_ROOT / "gui"
@@ -41,7 +42,17 @@ def cassettes_dir() -> Path:
     return d
 
 
+def logs_dir_for(change_id: str) -> Path:
+    p = LOGS_ROOT / change_id
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def events_path_for(change_id: str) -> Path:
+    return logs_dir_for(change_id) / "events.jsonl"
+
+
+def legacy_events_path_for(change_id: str) -> Path:
     p = AGENT_CONTEXT_ROOT / change_id
     p.mkdir(parents=True, exist_ok=True)
     return p / "events.jsonl"

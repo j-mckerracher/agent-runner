@@ -1,0 +1,5 @@
+name: nx-cli
+version: v1
+description: "Canonical nx-cli skill source"
+source: "agent-skill-source/nx-cli/v1/SKILL.md"
+skill_file: "SKILL.md"

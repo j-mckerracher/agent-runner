@@ -134,6 +134,48 @@ def _warn_if_no_ai_backend() -> None:
     )
 
 
+def _register_ztk_global_permission() -> None:
+    """Add Bash(ztk *) to ~/.claude/settings.json permissions.allow if not already present."""
+    import json as _json
+
+    settings_path = Path.home() / ".claude" / "settings.json"
+    try:
+        settings: dict = _json.loads(settings_path.read_text(encoding="utf-8")) if settings_path.exists() else {}
+    except Exception as exc:
+        print(f"[bootstrap] Warning: could not read {settings_path}: {exc}", flush=True)
+        return
+
+    allow: list = settings.setdefault("permissions", {}).setdefault("allow", [])
+    if "Bash(ztk *)" not in allow:
+        allow.append("Bash(ztk *)")
+        try:
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            settings_path.write_text(_json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+            print(f"[bootstrap] Added Bash(ztk *) to {settings_path}", flush=True)
+        except Exception as exc:
+            print(f"[bootstrap] Warning: could not write {settings_path}: {exc}", flush=True)
+    else:
+        print(f"[bootstrap] Bash(ztk *) already present in {settings_path}", flush=True)
+
+
+def _check_ztk() -> None:
+    if not _find_command("ztk"):
+        print(
+            "[bootstrap] Warning: ztk not found. Token compression will be disabled for the claude runner.\n"
+            "  Install: brew install codejunkie99/ztk/ztk\n"
+            "  See: https://github.com/codejunkie99/ztk",
+            flush=True,
+        )
+        return
+    print("[bootstrap] ztk found — running ztk init -g to register global Claude Code hook.", flush=True)
+    try:
+        subprocess.run(["ztk", "init", "-g"], check=True, capture_output=True, text=True)
+        print("[bootstrap] ztk init -g completed.", flush=True)
+    except subprocess.CalledProcessError as exc:
+        print(f"[bootstrap] Warning: ztk init -g failed: {exc.stderr or exc}. Hook may not be registered.", flush=True)
+    _register_ztk_global_permission()
+
+
 def _check_docker() -> None:
     _require_command("docker", install_hint="Install Docker Desktop and make sure it is running.")
     try:
@@ -325,6 +367,7 @@ def main() -> int:
         _ensure_virtualenv()
         _check_docker()
         _warn_if_no_ai_backend()
+        _check_ztk()
         _install_requirements()
         _materialize_agents()
         opik_dir = _opik_repo_dir()

@@ -1,0 +1,5 @@
+name: ov
+version: v1
+description: "Canonical ov skill source"
+source: "agent-skill-source/open-viking-cli/v1/SKILL.md"
+skill_file: "SKILL.md"

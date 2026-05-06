@@ -1,0 +1,212 @@
+{
+  "agents": [
+    {
+      "name": "assignment-evaluator",
+      "version": "v1"
+    },
+    {
+      "name": "implementation-evaluator",
+      "version": "v1"
+    },
+    {
+      "name": "information-explorer",
+      "version": "v1"
+    },
+    {
+      "name": "intake",
+      "version": "v1"
+    },
+    {
+      "name": "lessons-optimizer-hyperagent",
+      "version": "v1"
+    },
+    {
+      "name": "qa",
+      "version": "v1"
+    },
+    {
+      "name": "qa-evaluator",
+      "version": "v1"
+    },
+    {
+      "name": "reference-librarian",
+      "version": "v1"
+    },
+    {
+      "name": "software-engineer-hyperagent",
+      "version": "v1"
+    },
+    {
+      "name": "task-assigner",
+      "version": "v1"
+    },
+    {
+      "name": "task-generator",
+      "version": "v1"
+    },
+    {
+      "name": "task-plan-evaluator",
+      "version": "v1"
+    }
+  ],
+  "skills": [
+    {
+      "name": "agentic-eval",
+      "version": "v1"
+    },
+    {
+      "name": "artifact-io",
+      "version": "v1"
+    },
+    {
+      "name": "azure-devops-cli",
+      "version": "v1"
+    },
+    {
+      "name": "code-comment-standards",
+      "version": "v1"
+    },
+    {
+      "name": "cypress",
+      "version": "v1"
+    },
+    {
+      "name": "evaluator-framework",
+      "version": "v1"
+    },
+    {
+      "name": "execution-discipline",
+      "version": "v1"
+    },
+    {
+      "name": "frontend-design",
+      "version": "v1"
+    },
+    {
+      "name": "lessons-capture",
+      "version": "v1"
+    },
+    {
+      "name": "librarian-query-protocol",
+      "version": "v1"
+    },
+    {
+      "name": "mcs-products-mono-ui-onboarding",
+      "version": "v1"
+    },
+    {
+      "name": "nx-cli",
+      "version": "v1"
+    },
+    {
+      "name": "ov",
+      "version": "v1"
+    },
+    {
+      "name": "scope-and-security",
+      "version": "v1"
+    },
+    {
+      "name": "session-logging",
+      "version": "v1"
+    },
+    {
+      "name": "storybook",
+      "version": "v1"
+    }
+  ],
+  "target_dir": "/Users/mckerracher.joshua/Code/agent-workbench/.gemini",
+  "content_hashes": {
+    "agent:assignment-evaluator@v1": "1ded3017b7c1a33444e23d9bc14a04a56a44fd930ddcfd5fc064b7c7dc373a17",
+    "agent:implementation-evaluator@v1": "e46b789c5f34f845a59c6a54f24e4dba8a1d0ebb32dbfe89ff363d547fdf2279",
+    "agent:information-explorer@v1": "ef143dca543f42cf0bc493f839e8c740c9c286738cfca18e07c9b9c94381d64c",
+    "agent:intake@v1": "f23c34ac92b2914d87eecc96ec080129f3530920318a4d9f8a517768fd160845",
+    "agent:lessons-optimizer-hyperagent@v1": "ba338c310a00d529912c699dc21d0a232c4a1b6dc97857c66ef716ae52932452",
+    "agent:qa@v1": "89e673acfafa076c3a7d4502c571fc0134ffb6f19a1970a8ce2cb5a74887f77e",
+    "agent:qa-evaluator@v1": "6b57d48666213f1543780050c23f7955d119942a05559150abaf5312c999dcc4",
+    "agent:reference-librarian@v1": "6ab127f80d8a7b61087395eecd220d33354cf8a882babdd4cef9b610b1cbf236",
+    "agent:software-engineer-hyperagent@v1": "a3bdf44afa63fde76c1145e81e4bb4e85897f7da4c98f0ea454da22b44b00ea8",
+    "agent:task-assigner@v1": "533b80726d9c589f47fe105faf6cba55f34eb0e5b7db4b11cccac318d5aaff80",
+    "agent:task-generator@v1": "762262a7ef6f648a59710260ee535201de657366900e0f4f3f9e16b214a4a9a9",
+    "agent:task-plan-evaluator@v1": "f866a32eb6a99fd00380a36e1870bbf95d0036acf36723e2aef178002c57a04d",
+    "skill:azure-devops-cli@v1": "4d430b7d743499113d99a2f76eb0fba9068b86dc457fe909f0e6f638566b683c",
+    "skill:frontend-design@v1": "b81e2ff87ed8fa4d6c377ccb127a7254c9e6a77e3ae94f21e6b514f7bb2945a0",
+    "skill:agentic-eval@v1": "7f05cf94e15bee6fcfa4340593a7b6984a08b5279ff906fb39cfd92dd267e831",
+    "skill:artifact-io@v1": "3785dd4461eca43b8ad58f03dc6c3d5d3de91a664d6e00849e3c2df779edc33a",
+    "skill:code-comment-standards@v1": "fe853fc9a03d20cbea01a083d138592b05894f3cb79fe495232c90f16032dfb3",
+    "skill:cypress@v1": "64e695b4ce0b6a9ad923d31256429738a416b5a54c1e57ac4c2da58c536445af",
+    "skill:evaluator-framework@v1": "b070a744a41b7d4fbe6b016b457bb5acd8b0fa85b887782de9ea0afc194703cb",
+    "skill:execution-discipline@v1": "176c056e80afffd788105c52b2c71955761f21c4b15a7397a7d8bcdf0512367f",
+    "skill:lessons-capture@v1": "70d1654ca7e766b8b3e74be93a141c4d4eea002e621e7c4422cc8e0ec4aae17c",
+    "skill:librarian-query-protocol@v1": "8906b39f1fbfceff09f5cf864c3b65db1fc9c44df32dc82f2684475e3e14b71a",
+    "skill:mcs-products-mono-ui-onboarding@v1": "a956187945af631b8a2f4b631673edc3f99643067a991b0b3a83e689400098aa",
+    "skill:nx-cli@v1": "94a1041056a1a56b60ea4fb167afdde0db9091422302f3e468447d7107abefff",
+    "skill:ov@v1": "e60cd662a3156cf15d5a48947a722fee7be54feefd0f838533793e575f4b573b",
+    "skill:scope-and-security@v1": "71a8a9e8d5550234b34d6c347c0b7aac111b2f6866550ea411595f91dc53ce1e",
+    "skill:session-logging@v1": "911b7c681bec0fb9614475bd4f55698f612fb37d2acb13e9f34de0d4938a03fb",
+    "skill:storybook@v1": "ca01c34f52e82be52bd7f71b2db0cca07db82363de1d54ac6fbb85ea0f71a3b5",
+    "script:check-ac-coverage.py@source": "924f9d93ff225fbe4f07cabcd2ae7152737f100c042cf977664d4e94d1f1e550",
+    "script:check-dependency-cycles.py@source": "a1c2772327bedfad843229c481f1a9f625cdd37ddea9ee6bf411fe01ad0cbef4",
+    "script:check-test-harnesses.py@source": "2787b044b4df7caf1ab4e3c15a41ecfb093c1482f3a91c798172461c4b4fe00d",
+    "script:detect-ui-changes.py@source": "0c96a78969c6b5fadc463c911db395e4c090e60aa99dacee448ad0b9ef70ed3e",
+    "script:generate-obsidian-archive.py@source": "e40cb571cad4f35e56cf685af31ce5bd44fb406574a00762c90a37e8ec05b8d2",
+    "script:init-artifact-dirs.py@source": "d63966a3b221299670e9c363dfb763546c62c28ee243e812a5f0a5ff28fae43b",
+    "script:init-session-log.py@source": "fe5b534ad5581886882af72846fc6f9a07f6e5a781a144926f3686f41938838e",
+    "script:parse-lessons.py@source": "d2d42bb9c96e7b01fe0baefba3035753185193f140a2c86d1d54495aadb96340",
+    "script:parse-test-steps.py@source": "cb4b587d1e2fd7bdab76edecb8f6ef92c0e6a7b943631bef1ca99cf71dd0d1c1",
+    "script:validate-artifact-schema.py@source": "cedf70d4d04d5bee79182eea24c4792051174c708cf4476313ce37f9203441c9",
+    "script:validate-diff-size.py@source": "d22f20f6eba1a6d32163a7d7a88c1110de4ab9a6a4c3794345d128ffc5a63880",
+    "script:validate-scope.py@source": "acdd22b90d0bde7897de5fadc41480f8960a2c25b86fce494a3fefcdc06d7383"
+  },
+  "materialized_at": "2026-05-06T21:04:20Z",
+  "scripts": [
+    {
+      "name": "check-ac-coverage.py",
+      "version": "source"
+    },
+    {
+      "name": "check-dependency-cycles.py",
+      "version": "source"
+    },
+    {
+      "name": "check-test-harnesses.py",
+      "version": "source"
+    },
+    {
+      "name": "detect-ui-changes.py",
+      "version": "source"
+    },
+    {
+      "name": "generate-obsidian-archive.py",
+      "version": "source"
+    },
+    {
+      "name": "init-artifact-dirs.py",
+      "version": "source"
+    },
+    {
+      "name": "init-session-log.py",
+      "version": "source"
+    },
+    {
+      "name": "parse-lessons.py",
+      "version": "source"
+    },
+    {
+      "name": "parse-test-steps.py",
+      "version": "source"
+    },
+    {
+      "name": "validate-artifact-schema.py",
+      "version": "source"
+    },
+    {
+      "name": "validate-diff-size.py",
+      "version": "source"
+    },
+    {
+      "name": "validate-scope.py",
+      "version": "source"
+    }
+  ]
+}

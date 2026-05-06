@@ -168,7 +168,7 @@ metacognitive_context:
 
 Follow the **session-logging** skill protocol. Agent-specific details:
 
-- **Log directory**: `{CHANGE-ID}/logs/lessons_optimizer/`
+- **Log directory**: `logs/{CHANGE-ID}/lessons_optimizer/`
 - **Log identifier**: `session` (e.g., `20260127_190000_session.json`)
 - **Additional fields**: lessons parsed, signatures extracted, baseline/post repeat rates, iteration count, recommendations generated, escalations, `execution_blockers` (array of objects with `blocker` and `resolution`), `context_confidence_score` (integer 1-10), `injections_performed` (array of injection records)
 
@@ -176,8 +176,8 @@ Follow the **session-logging** skill protocol. Agent-specific details:
 
 Follow the **scope-and-security** skill protocol. This agent's specific access:
 
-- **MAY read**: `agent-context/lessons.md`, `{workflow_assets_root}/agents/*.agent.md`, `agent-context/rule-recommendations.md`, `agent-context/mistake-rate-tracker.json`, `{CHANGE-ID}/execution/*/impl_report.yaml`, `{CHANGE-ID}/execution/*/eval_impl_k.json`, `{CHANGE-ID}/planning/*`, `{CHANGE-ID}/qa/*`, `{CHANGE-ID}/logs/*/*`, `{CHANGE-ID}/intake/story.yaml`
-- **MAY write**: `agent-context/rule-recommendations.md`, `agent-context/mistake-rate-tracker.json`, `{CHANGE-ID}/summary/*`, `{CHANGE-ID}/logs/lessons_optimizer/*`
+- **MAY read**: `agent-context/lessons.md`, `{workflow_assets_root}/agents/*.agent.md`, `agent-context/rule-recommendations.md`, `agent-context/mistake-rate-tracker.json`, `{CHANGE-ID}/execution/*/impl_report.yaml`, `{CHANGE-ID}/execution/*/eval_impl_k.json`, `{CHANGE-ID}/planning/*`, `{CHANGE-ID}/qa/*`, `logs/{CHANGE-ID}/*/*`, `{CHANGE-ID}/intake/story.yaml`
+- **MAY write**: `agent-context/rule-recommendations.md`, `agent-context/mistake-rate-tracker.json`, `{CHANGE-ID}/summary/*`, `logs/{CHANGE-ID}/lessons_optimizer/*`
 - **MAY edit** (scoped): `{workflow_assets_root}/agents/*.agent.md` — ONLY within `### Optimizer-Injected Rules` sub-sections of `--- EVOLVING PROBLEM-SOLVING PIPELINES ---` blocks
 - **MUST NOT modify**: Anything above the `--- EVOLVING PROBLEM-SOLVING PIPELINES ---` divider in any agent file, source code, environment files, credentials
 

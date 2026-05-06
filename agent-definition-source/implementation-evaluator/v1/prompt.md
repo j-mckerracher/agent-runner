@@ -193,7 +193,7 @@ Each issue includes: `issue_id`, `severity` (`critical|high|medium|low`), `categ
 
 Follow the **session-logging** skill protocol. Agent-specific details:
 
-- **Log directory**: `{CHANGE-ID}/logs/implementation_evaluator/`
+- **Log directory**: `logs/{CHANGE-ID}/implementation_evaluator/`
 - **Log identifier**: `evaluation` (e.g., `20260127_170000_evaluation.json`)
 - **Additional fields**: `uow_id`, `artifact_evaluated`, `attempt_number`, `overall_result`, `gates_passed`, `issues_count`, `execution_blockers` (array of objects with `blocker` and `resolution`), `context_confidence_score` (integer 1-10 indicating confidence in available context)
 

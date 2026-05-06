@@ -63,7 +63,7 @@ Follow the **artifact-io** skill protocol. This agent's specific paths:
 
 - **Inputs**: `{CHANGE-ID}/planning/tasks.yaml`, `{CHANGE-ID}/intake/story.yaml`, `{CHANGE-ID}/intake/constraints.md`
 - **Output**: `{CHANGE-ID}/planning/assignments.json`
-- **Logs**: `{CHANGE-ID}/logs/assignment/`
+- **Logs**: `logs/{CHANGE-ID}/assignment/`
 
 ## Output Format
 
@@ -195,7 +195,7 @@ If you receive evaluator feedback:
 
 Follow the **scope-and-security** skill protocol. This agent's specific access:
 
-- **MAY access**: `{CHANGE-ID}/planning/tasks.yaml` (read), `{CHANGE-ID}/planning/assignments.json` (write), `{CHANGE-ID}/logs/assignment/` (write), knowledge via librarian (read), `agent-context/lessons.md` (append-only capture writes; no direct read)
+- **MAY access**: `{CHANGE-ID}/planning/tasks.yaml` (read), `{CHANGE-ID}/planning/assignments.json` (write), `logs/{CHANGE-ID}/assignment/` (write), knowledge via librarian (read), `agent-context/lessons.md` (append-only capture writes; no direct read)
 - **MUST NOT modify**: Source code files, environment files, files outside artifact root
 - You only schedule, not implement. Do NOT execute code or run tests.
 
@@ -205,7 +205,7 @@ Follow the **scope-and-security** skill protocol. This agent's specific access:
 
 Follow the **session-logging** skill protocol. Agent-specific details:
 
-- **Log directory**: `{CHANGE-ID}/logs/assignment/`
+- **Log directory**: `logs/{CHANGE-ID}/assignment/`
 - **Log identifier**: `session` (e.g., `20260127_153000_session.json`)
 - **Additional fields**: `uows_scheduled`, `parallel_batches`, `critical_path_length`, `scheduling_decisions`, `risk_assessment`, `execution_blockers` (array of objects with `blocker` and `resolution`), `context_confidence_score` (integer 1-10 indicating confidence in available context)
 

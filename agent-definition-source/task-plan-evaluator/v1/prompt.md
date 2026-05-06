@@ -172,7 +172,7 @@ Every issue MUST include an actionable fix that:
 
 Follow the **session-logging** skill protocol. Agent-specific details:
 
-- **Log directory**: `{CHANGE-ID}/logs/task_plan_evaluator/`
+- **Log directory**: `logs/{CHANGE-ID}/task_plan_evaluator/`
 - **Log identifier**: `evaluation` (e.g., `20260127_160000_evaluation.json`)
 - **Additional fields**: `artifact_evaluated`, `attempt_number`, `overall_result`, `gates_passed`, `issues_count`, `execution_blockers` (array of objects with `blocker` and `resolution`), `context_confidence_score` (integer 1-10 indicating confidence in available context)
 

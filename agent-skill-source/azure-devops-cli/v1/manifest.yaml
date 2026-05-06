@@ -1,0 +1,5 @@
+name: azure-devops-cli
+version: v1
+description: "Canonical Azure DevOps CLI skill source"
+source: ".github/skills/azure-devops-cli/SKILL.md"
+skill_file: "SKILL.md"

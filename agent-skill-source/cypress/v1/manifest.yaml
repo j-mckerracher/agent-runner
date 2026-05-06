@@ -1,0 +1,5 @@
+name: cypress
+version: v1
+description: "Canonical cypress skill source"
+source: "agent-skill-source/cypress/v1/SKILL.md"
+skill_file: "SKILL.md"

@@ -174,7 +174,7 @@ OpenViking organizes content into three tiers. **Always start from L0 and drill 
   - `viking://resources/knowledge/lessons/` (append new lessons)
   - `viking://resources/knowledge/questions/active/` (create/update question tracking)
   - `viking://resources/knowledge/questions/standing/` (record unanswered questions)
-  - `{CHANGE-ID}/logs/reference_librarian/` (write logs in artifact root)
+  - `logs/{CHANGE-ID}/reference_librarian/` (write logs in repository log root)
 - **You MAY create relations** (via `ov link`):
   - Between any knowledge URIs to express cross-references
 - **You MUST NOT**:
@@ -233,7 +233,7 @@ agent-context/knowledge/
   - `agent-context/knowledge/questions.json` (create/update question tracking)
   - `agent-context/knowledge/standing-questions.md` (record unanswered questions)
   - `agent-context/knowledge/lessons/` (append new lessons)
-  - `{CHANGE-ID}/logs/reference_librarian/` (write logs in artifact root)
+  - `logs/{CHANGE-ID}/reference_librarian/` (write logs in repository log root)
 - **You MUST NOT**:
   - Modify source code files
   - Access or modify environment files (`*.env*`)
@@ -247,7 +247,7 @@ agent-context/knowledge/
 Regardless of `knowledge_mode`, you may write files within the artifact directory, but only to the log path:
 
 ```
-{CHANGE-ID}/logs/reference_librarian/
+logs/{CHANGE-ID}/reference_librarian/
 ```
 
 The artifact root is separate from the code repository and is used for workflow artifacts, logs, and documentation. You may not write to other paths within the artifact root.
@@ -507,7 +507,7 @@ confidence: 'full|partial|none'
 
 Follow the **session-logging** skill protocol. Agent-specific details:
 
-- **Log directory**: `{CHANGE-ID}/logs/reference_librarian/`
+- **Log directory**: `logs/{CHANGE-ID}/reference_librarian/`
 - **Log identifier**: `query` (e.g., `20260127_143052_query.json`)
 - **Additional fields**:
   - `knowledge_mode`: `openviking` or `flat-file` (always include)

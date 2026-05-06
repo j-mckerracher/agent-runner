@@ -1,0 +1,5 @@
+name: agentic-eval
+version: v1
+description: "Canonical agentic-eval skill source"
+source: "agent-skill-source/agentic-eval/v1/SKILL.md"
+skill_file: "SKILL.md"

@@ -1,0 +1,5 @@
+name: execution-discipline
+version: v1
+description: "Canonical execution-discipline skill source"
+source: "agent-skill-source/execution-discipline/v1/SKILL.md"
+skill_file: "SKILL.md"

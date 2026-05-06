@@ -1,0 +1,5 @@
+name: evaluator-framework
+version: v1
+description: "Canonical evaluator-framework skill source"
+source: "agent-skill-source/evaluator-framework/v1/SKILL.md"
+skill_file: "SKILL.md"

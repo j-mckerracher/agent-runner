@@ -1,0 +1,5 @@
+name: scope-and-security
+version: v1
+description: "Canonical scope-and-security skill source"
+source: "agent-skill-source/scope-and-security/v1/SKILL.md"
+skill_file: "SKILL.md"

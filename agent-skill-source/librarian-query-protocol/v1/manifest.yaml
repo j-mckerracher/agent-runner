@@ -1,0 +1,5 @@
+name: librarian-query-protocol
+version: v1
+description: "Canonical librarian-query-protocol skill source"
+source: "agent-skill-source/librarian-query-protocol/v1/SKILL.md"
+skill_file: "SKILL.md"

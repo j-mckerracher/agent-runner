@@ -1,0 +1,5 @@
+name: storybook
+version: v1
+description: "Canonical storybook skill source"
+source: "agent-skill-source/storybook-link/v1/SKILL.md"
+skill_file: "SKILL.md"
