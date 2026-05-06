@@ -94,7 +94,21 @@ class RunGeminiCmdShapeTests(unittest.TestCase):
             patch.object(run_cmds.subprocess, "run", return_value=completed),
         ):
             run_cmds.run_gemini_cmd(prompt="Do the work", agent="intake-agent")
-        load_prompt.assert_called_once_with("intake-agent")
+        load_prompt.assert_called_once_with("intake-agent", runner="gemini")
+
+    def test_medium__gemini_prompt_argument_includes_required_skill_content(self):
+        completed, env = self._run()
+        agent_rules = """# Agent\n\n## Required Skills\n| **frontend-design** | Purpose |\n\n## Role\nDo the work."""
+        with (
+            patch.dict(os.environ, env, clear=False),
+            patch.object(run_cmds, "load_agent_system_prompt", return_value=agent_rules),
+            patch.object(run_cmds, "_load_skill_content", return_value="Frontend skill body") as load_skill,
+            patch.object(run_cmds.subprocess, "run", return_value=completed) as run_subprocess,
+        ):
+            run_cmds.run_gemini_cmd(prompt="Do the work", agent="intake-agent")
+        called_cmd = run_subprocess.call_args.args[0]
+        self.assertIn("Frontend skill body", called_cmd[2])
+        load_skill.assert_called_once_with("frontend-design", runner="gemini")
 
     def test_medium__gemini_argv_starts_with_gemini_dash_p(self):
         completed, env = self._run()

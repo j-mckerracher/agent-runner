@@ -8,12 +8,13 @@
 
 # Manual local server startup
 python3 -m pip install -r requirements.txt
-python3 server_main.py
-python3 server_main.py --reload
+python3 server/main.py
+python3 server/main.py --reload
 
-# Re-materialize agent prompts after editing agent-sources/*
-python3 materialize.py
-python3 materialize.py --check
+# Re-materialize runner assets after editing agent-definition-source/*,
+# agent-skill-source/*, or agent-script-source/*
+python3 core/materialize.py
+python3 core/materialize.py --check
 
 # Run the workflow runner against a target repo
 python3 run.py --repo /absolute/path/to/target/repo
@@ -34,14 +35,14 @@ python3 eval/run_eval.py --change-id EVAL-001 --mono-root /path/to/target/repo -
 
 - `run.py` is the workflow orchestrator. It resolves either a synthetic fixture or an Azure DevOps work item, materializes agents, then runs the six pipeline stages: `materialize -> intake -> task-generation -> task-assignment -> execution -> qa -> lessons-optimizer`. Task generation, assignment, and QA each use evaluator/optimizer loops; execution runs units of work batch-by-batch and can parallelize within a batch.
 - `steps.py` contains the stage entrypoints. Stage outputs are written under `agent-context/<change_id>/` and form the contract between stages: intake writes `intake/story.yaml`, `intake/config.yaml`, and `intake/constraints.md`; planning writes `planning/tasks.yaml` and `planning/assignments.json`; execution writes `execution/*/impl_report.yaml`; QA writes `qa/qa_report.yaml`.
-- `agent-sources/<agent>/vN/` is the source of truth for agent definitions. `materialize.py` copies the latest version into `.claude/agents/` and records hashes in `.claude/agents/.materialization.json`. Runtime prompt loading goes through `agent_prompts.py`, which reads the materialized files.
+- `agent-definition-source/<agent>/vN/` is the source of truth for agent definitions, `agent-skill-source/<skill>/vN/` is the source of truth for skills, and `agent-script-source/` is the source of truth for helper scripts. `core/materialize.py` copies those assets into runner-specific `.claude/`, `.github/`, and `.gemini/` directories and records hashes in each runner root's `.materialization.json`. Runtime prompt loading goes through `agent_prompts.py`, which reads the materialized files.
 - `run_cmds.py` is the runner abstraction over the external CLIs (`claude`, `copilot`, `gemini`). It also owns event emission and hermetic cassette recording hooks. Gemini is special: because its CLI has no top-level `--agent` flag, the materialized agent prompt is embedded directly into the prompt payload.
-- `server_main.py` and `server/app.py` wrap the runner in a local FastAPI service plus browser UI (`gui/`). `server/jobs.py` queues jobs, `server/runner_proc.py` spawns `run.py` as a subprocess, `server/events.py` tails `agent-context/<change_id>/events.jsonl` into SSE streams, and `server/db.py` stores run metadata in `~/.agent-runner/jobs.db`.
+- `server/main.py` and `server/app.py` wrap the runner in a local FastAPI service plus browser UI (`gui/`). `server/jobs.py` queues jobs, `server/runner_proc.py` spawns `run.py` as a subprocess, `server/events.py` tails `agent-context/<change_id>/events.jsonl` into SSE streams, and `server/db.py` stores run metadata in `~/.agent-runner/jobs.db`.
 - `eval/` is a separate evaluation harness. `eval/run_eval.py` runs fixtures from `eval/stories/`, can fan out isolated multi-run evaluations, and logs/scans results for the GUI's Corpus and Evaluate views.
 
 ## Key conventions
 
-- Edit agent prompts in `agent-sources/*/v*/prompt.md` and `manifest.yaml`, not in `.claude/agents/*`. The `.claude/agents/` files are generated artifacts; re-run `python3 materialize.py` after changing sources.
+- Edit agent prompts in `agent-definition-source/*/v*/prompt.md`, skills in `agent-skill-source/*/v*/SKILL.md`, and helper scripts in `agent-script-source/*`. The `.claude/`, `.github/`, and `.gemini/` files are generated artifacts; re-run `python3 core/materialize.py` after changing sources.
 - `change_id` is the stable join key across the whole system: artifact directories, event logs, SSE streams, Opik thread IDs, evaluation fixtures, and hermetic cassette filenames all key off it. Preserve it exactly.
 - Synthetic mode is the default path. If `run.py` gets neither `--ado-url` nor `--story-file`, it falls back to `agent-context/test-fixtures/synthetic_story.json` (`TEST-AC-001`). `workflow_inputs.py` validates fixture shape and rejects mismatched `change_id` values early.
 - Synthetic fixture `acceptance_criteria` may start as either a list or a keyed object, but intake normalizes downstream artifacts to `AC1`, `AC2`, ... in `intake/story.yaml`.

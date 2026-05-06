@@ -1,12 +1,17 @@
 """
-materialize.py — Build script for agent prompt materialization.
+materialize.py — Build script for agent + skill materialization.
 
-Reads every agent-sources/{name}/v{n}/manifest.yaml + prompt.md and writes
-the prompt to .claude/agents/{claude_code_agent_file}, then updates
-.claude/agents/.materialization.json with content hashes and a timestamp.
+Reads canonical sources from:
+  - agent-definition-source/{name}/v{n}/manifest.yaml + prompt.md
+  - agent-skill-source/{name}/v{n}/manifest.yaml + SKILL.md
+  - agent-script-source/**/*
+
+Then writes runner-specific generated artifacts for Claude, Copilot, and Gemini
+into their respective directories and records content hashes + timestamps in a
+per-runner `.materialization.json` file.
 
 Usage:
-    python materialize.py               # materialize all agents (latest version)
+    python materialize.py               # materialize all agents/skills/scripts
     python materialize.py --check       # check for drift only, exit 1 if stale
     python materialize.py --agent intake --agent task-generator  # specific agents only
 """
@@ -19,17 +24,28 @@ import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import cast
 
 import yaml
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from core.materialized_paths import (
+    RUNNER_AGENT_DIRS,
+    RUNNER_METADATA_FILES,
+    RUNNER_ROOT,
+    RUNNER_SCRIPT_DIRS,
+    RUNNER_SKILL_DIRS,
+)
 
 logger = logging.getLogger(__name__)
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
-RUNNER_ROOT = Path(__file__).resolve().parent.parent
-AGENT_SOURCES_ROOT = RUNNER_ROOT / "agent-sources"
-AGENTS_DIR = RUNNER_ROOT / ".claude" / "agents"
-MATERIALIZATION_FILE = AGENTS_DIR / ".materialization.json"
+AGENT_SOURCES_ROOT: Path = RUNNER_ROOT / "agent-definition-source"
+SKILL_SOURCES_ROOT: Path = RUNNER_ROOT / "agent-skill-source"
+SCRIPT_SOURCES_ROOT: Path = RUNNER_ROOT / "agent-script-source"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -59,26 +75,33 @@ def load_manifest(manifest_path: Path) -> dict:
         return yaml.safe_load(f)
 
 
-def load_materialization() -> dict:
-    logger.debug("load_materialization: checking %s", MATERIALIZATION_FILE)
-    if MATERIALIZATION_FILE.exists():
-        with MATERIALIZATION_FILE.open("r", encoding="utf-8") as f:
+def load_materialization(metadata_file: Path) -> dict:
+    logger.debug("load_materialization: checking %s", metadata_file)
+    if metadata_file.exists():
+        with metadata_file.open("r", encoding="utf-8") as f:
             data = json.load(f)
-        logger.debug("load_materialization: loaded %d agent(s)", len(data.get("agents", [])))
+        logger.debug(
+            "load_materialization: loaded %d agent(s), %d skill(s), %d script(s)",
+            len(data.get("agents", [])),
+            len(data.get("skills", [])),
+            len(data.get("scripts", [])),
+        )
         return data
     logger.debug("load_materialization: file absent; returning empty state")
     return {
         "agents": [],
-        "target_dir": str(AGENTS_DIR),
+        "skills": [],
+        "scripts": [],
+        "target_dir": str(metadata_file.parent),
         "content_hashes": {},
         "materialized_at": None,
     }
 
 
-def save_materialization(data: dict) -> None:
-    logger.debug("save_materialization: writing to %s", MATERIALIZATION_FILE)
-    MATERIALIZATION_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with MATERIALIZATION_FILE.open("w", encoding="utf-8") as f:
+def save_materialization(metadata_file: Path, data: dict) -> None:
+    logger.debug("save_materialization: writing to %s", metadata_file)
+    metadata_file.parent.mkdir(parents=True, exist_ok=True)
+    with metadata_file.open("w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
         f.write("\n")
     logger.debug("save_materialization: written OK")
@@ -86,14 +109,45 @@ def save_materialization(data: dict) -> None:
 
 # ── Core logic ────────────────────────────────────────────────────────────────
 
+def _agent_target_filename(manifest: dict, runner: str) -> str:
+    if runner == "claude":
+        return manifest["claude_code_agent_file"]
+    if runner == "copilot":
+        return (
+            manifest.get("github_copilot_agent_file")
+            or manifest.get("copilot_agent_file")
+            or manifest["claude_code_agent_file"]
+        )
+    if runner == "gemini":
+        return manifest.get("gemini_agent_file") or manifest["claude_code_agent_file"]
+    raise ValueError(f"Unsupported runner for agent target filename: {runner}")
+
+
+def _skill_target_filename(manifest: dict, runner: str) -> str:
+    if runner == "claude":
+        return manifest.get("claude_skill_file") or manifest.get("skill_file") or "SKILL.md"
+    if runner == "copilot":
+        return (
+            manifest.get("github_copilot_skill_file")
+            or manifest.get("copilot_skill_file")
+            or manifest.get("skill_file")
+            or "SKILL.md"
+        )
+    if runner == "gemini":
+        return manifest.get("gemini_skill_file") or manifest.get("skill_file") or "SKILL.md"
+    raise ValueError(f"Unsupported runner for skill target filename: {runner}")
+
+
 def discover_agents(filter_names: list[str] | None = None) -> list[dict]:
     """
-    Walk agent-sources/ and return a list of agent descriptors:
+    Walk agent-definition-source/ and return a list of agent descriptors:
       { name, version, prompt_path, target_filename }
     """
-    logger.debug("discover_agents: scanning %s filter=%s", AGENT_SOURCES_ROOT, filter_names)
+    agent_sources_root = cast(Path, AGENT_SOURCES_ROOT)
     agents = []
-    for agent_dir in sorted(AGENT_SOURCES_ROOT.iterdir()):
+    agent_dirs: list[Path] = list(agent_sources_root.iterdir())
+    agent_dirs.sort(key=lambda path: path.name)
+    for agent_dir in agent_dirs:
         if not agent_dir.is_dir():
             continue
         version = latest_version(agent_dir)
@@ -112,82 +166,188 @@ def discover_agents(filter_names: list[str] | None = None) -> list[dict]:
             logger.debug("discover_agents: %s not in filter; skipping", name)
             continue
         agents.append({
+            "kind": "agent",
             "name": name,
             "source_name": agent_dir.name,
             "version": version,
-            "prompt_path": prompt_path,
-            "target_filename": manifest["claude_code_agent_file"],
+            "source_path": prompt_path,
+            "runner_targets": {
+                runner: _agent_target_filename(manifest, runner)
+                for runner in RUNNER_AGENT_DIRS
+            },
         })
         logger.debug("discover_agents: found agent name=%s version=%s", name, version)
     logger.info("discover_agents: %d agent(s) discovered", len(agents))
     return agents
 
 
-def materialize(agents: list[dict], check_only: bool = False) -> bool:
+def discover_skills(filter_names: list[str] | None = None) -> list[dict]:
+    """Walk agent-skill-source/ and return a list of skill descriptors."""
+    skill_sources_root = cast(Path, SKILL_SOURCES_ROOT)
+    logger.debug("discover_skills: scanning %s filter=%s", str(skill_sources_root), filter_names)
+    if not skill_sources_root.exists():
+        logger.info("discover_skills: source root is absent; returning empty list")
+        return []
+
+    skills = []
+    skill_dirs: list[Path] = list(skill_sources_root.iterdir())
+    skill_dirs.sort(key=lambda path: path.name)
+    for skill_dir in skill_dirs:
+        if not skill_dir.is_dir():
+            continue
+        version = latest_version(skill_dir)
+        if not version:
+            logger.debug("discover_skills: %s has no versions; skipping", skill_dir.name)
+            continue
+        manifest_path = skill_dir / version / "manifest.yaml"
+        skill_path = skill_dir / version / "SKILL.md"
+        if not manifest_path.exists() or not skill_path.exists():
+            logger.warning("discover_skills: skipping %s/%s — missing manifest or SKILL.md", skill_dir.name, version)
+            print(f"  [WARN] Skipping {skill_dir.name}/{version} — missing manifest or SKILL.md")
+            continue
+        manifest = load_manifest(manifest_path)
+        name = manifest.get("name") or skill_dir.name
+        if filter_names and name not in filter_names and skill_dir.name not in filter_names:
+            logger.debug("discover_skills: %s not in filter; skipping", name)
+            continue
+        skills.append({
+            "kind": "skill",
+            "name": name,
+            "source_name": skill_dir.name,
+            "version": version,
+            "source_path": skill_path,
+            "runner_targets": {
+                runner: f"{name}/{_skill_target_filename(manifest, runner)}"
+                for runner in RUNNER_SKILL_DIRS
+            },
+        })
+        logger.debug("discover_skills: found skill name=%s version=%s", name, version)
+    logger.info("discover_skills: %d skill(s) discovered", len(skills))
+    return skills
+
+
+def discover_scripts(filter_names: list[str] | None = None) -> list[dict]:
+    """Walk agent-script-source/ and return a list of script descriptors."""
+    script_sources_root = cast(Path, SCRIPT_SOURCES_ROOT)
+    logger.debug("discover_scripts: scanning %s filter=%s", str(script_sources_root), filter_names)
+    if not script_sources_root.exists():
+        logger.info("discover_scripts: source root is absent; returning empty list")
+        return []
+
+    scripts = []
+    script_files = [
+        path for path in sorted(script_sources_root.rglob("*"), key=lambda path: str(path.relative_to(script_sources_root)))
+        if path.is_file()
+    ]
+    for script_path in script_files:
+        relative_path = script_path.relative_to(SCRIPT_SOURCES_ROOT)
+        script_name = relative_path.as_posix()
+        if filter_names and script_name not in filter_names and script_path.stem not in filter_names:
+            logger.debug("discover_scripts: %s not in filter; skipping", script_name)
+            continue
+        scripts.append({
+            "kind": "script",
+            "name": script_name,
+            "source_name": script_name,
+            "version": "source",
+            "source_path": script_path,
+            "runner_targets": {
+                runner: script_name
+                for runner in RUNNER_SCRIPT_DIRS
+            },
+        })
+        logger.debug("discover_scripts: found script path=%s", script_name)
+    logger.info("discover_scripts: %d script(s) discovered", len(scripts))
+    return scripts
+
+
+def _target_dir_for_item(item: dict, runner: str) -> Path:
+    if item["kind"] == "agent":
+        return RUNNER_AGENT_DIRS[runner]
+    if item["kind"] == "skill":
+        return RUNNER_SKILL_DIRS[runner]
+    return RUNNER_SCRIPT_DIRS[runner]
+
+
+def materialize(agents: list[dict], skills: list[dict], scripts: list[dict], check_only: bool = False) -> bool:
     """
-    Copy prompt.md → .claude/agents/{target_filename} for each agent.
-    If check_only=True, only report drift without writing.
+    Copy canonical agent + skill + script source files into all runner-specific generated
+    directories. If check_only=True, only report drift without writing.
+
     Returns True if everything is up-to-date (or was successfully materialized).
     """
-    logger.info("materialize: %d agent(s) check_only=%s", len(agents), check_only)
-    current = load_materialization()
-    existing_hashes: dict[str, str] = current.get("content_hashes", {})
+    items = [*agents, *skills, *scripts]
+    logger.info(
+        "materialize: %d agent(s), %d skill(s), %d script(s) check_only=%s",
+        len(agents),
+        len(skills),
+        len(scripts),
+        check_only,
+    )
+    any_drift = False
 
-    new_agents_list = []
-    new_hashes = {}
-    drift_detected = False
-    all_clean = True
+    for runner, metadata_file in RUNNER_METADATA_FILES.items():
+        current = load_materialization(metadata_file)
+        existing_hashes: dict[str, str] = current.get("content_hashes", {})
+        new_hashes: dict[str, str] = {}
+        new_agents_list: list[dict] = []
+        new_skills_list: list[dict] = []
+        new_scripts_list: list[dict] = []
+        runner_drift = False
 
-    for agent in agents:
-        key = f"{agent['name']}@{agent['version']}"
-        target_path = AGENTS_DIR / agent["target_filename"]
-        prompt_hash = sha256_of_file(agent["prompt_path"])
-        new_hashes[key] = prompt_hash
+        for item in items:
+            key = f"{item['kind']}:{item['name']}@{item['version']}"
+            target_dir = _target_dir_for_item(item, runner)
+            target_path = target_dir / item["runner_targets"][runner]
+            source_hash = sha256_of_file(item["source_path"])
+            new_hashes[key] = source_hash
 
-        existing_hash = existing_hashes.get(key)
-        target_exists = target_path.exists()
-        target_hash = sha256_of_file(target_path) if target_exists else None
+            existing_hash = existing_hashes.get(key)
+            target_exists = target_path.exists()
+            target_hash = sha256_of_file(target_path) if target_exists else None
+            is_stale = not target_exists or source_hash != existing_hash or source_hash != target_hash
 
-        is_stale = (
-            not target_exists
-            or prompt_hash != existing_hash
-            or prompt_hash != target_hash
-        )
-
-        if is_stale:
-            drift_detected = True
-            all_clean = False
-            if check_only:
-                logger.warning("materialize: DRIFT %s → %s", key, agent["target_filename"])
-                print(f"  [DRIFT]  {key} → {agent['target_filename']}")
+            if item["kind"] == "agent":
+                new_agents_list.append({"name": item["name"], "version": item["version"]})
+            elif item["kind"] == "skill":
+                new_skills_list.append({"name": item["name"], "version": item["version"]})
             else:
-                AGENTS_DIR.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(agent["prompt_path"], target_path)
-                logger.info("materialize: WRITE %s → %s", key, agent["target_filename"])
-                print(f"  [WRITE]  {key} → {agent['target_filename']}")
-        else:
-            logger.debug("materialize: OK (up-to-date) %s", key)
-            print(f"  [OK]     {key} → {agent['target_filename']}")
+                new_scripts_list.append({"name": item["name"], "version": item["version"]})
 
-        new_agents_list.append({"name": agent["name"], "version": agent["version"]})
+            display_target = target_path.relative_to(RUNNER_ROOT)
+            if is_stale:
+                any_drift = True
+                runner_drift = True
+                if check_only:
+                    logger.warning("materialize: DRIFT runner=%s %s → %s", runner, key, display_target)
+                    print(f"  [DRIFT]  {runner}:{key} → {display_target}")
+                else:
+                    target_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(item["source_path"], target_path)
+                    logger.info("materialize: WRITE runner=%s %s → %s", runner, key, display_target)
+                    print(f"  [WRITE]  {runner}:{key} → {display_target}")
+            else:
+                logger.debug("materialize: OK runner=%s %s", runner, key)
+                print(f"  [OK]     {runner}:{key} → {display_target}")
 
-    if not check_only and drift_detected:
-        current["agents"] = new_agents_list
-        current["target_dir"] = str(AGENTS_DIR)
-        current["content_hashes"] = {**existing_hashes, **new_hashes}
-        current["materialized_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        save_materialization(current)
-        logger.info("materialize: complete, updated %s", MATERIALIZATION_FILE)
-        print(f"\n  Materialization complete. Updated {MATERIALIZATION_FILE.relative_to(RUNNER_ROOT)}")
-        all_clean = True
+        if not check_only and runner_drift:
+            current["agents"] = new_agents_list
+            current["skills"] = new_skills_list
+            current["scripts"] = new_scripts_list
+            current["target_dir"] = str(metadata_file.parent)
+            current["content_hashes"] = {**existing_hashes, **new_hashes}
+            current["materialized_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            save_materialization(metadata_file, current)
+            logger.info("materialize: complete for runner=%s, updated %s", runner, metadata_file)
+            print(f"\n  Materialization complete. Updated {metadata_file.relative_to(RUNNER_ROOT)}")
 
-    return all_clean or not drift_detected
+    return not any_drift or not check_only
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Materialize agent prompts into .claude/agents/")
+    parser = argparse.ArgumentParser(description="Materialize agents, skills, and scripts for Claude, Copilot, and Gemini.")
     parser.add_argument(
         "--check",
         action="store_true",
@@ -206,19 +366,28 @@ def parse_args() -> argparse.Namespace:
 def run_materialization(filter_names: list[str] | None = None, check_only: bool = False) -> bool:
     """
     Importable entry point used by run.py.
-    Returns True if all agents are up-to-date after the operation.
+    Returns True if all runner-specific generated artifacts are up-to-date after
+    the operation.
     """
-    print("Discovering agents in agent-sources/...")
+    print("Discovering agents in agent-definition-source/, skills in agent-skill-source/, and scripts in agent-script-source/...")
     agents = discover_agents(filter_names)
-    if not agents:
-        print("  No agents found.")
+    skills = discover_skills(filter_names)
+    scripts = discover_scripts(filter_names)
+    if not agents and not skills and not scripts:
+        print("  No agents, skills, or scripts found.")
         return True
-    print(f"  Found {len(agents)} agent(s).\n")
+    print(f"  Found {len(agents)} agent(s), {len(skills)} skill(s), and {len(scripts)} script(s).\n")
     label = "Checking" if check_only else "Materializing"
-    print(f"{label} agents into {AGENTS_DIR.relative_to(RUNNER_ROOT)}/...")
-    logger.info("run_materialization: %d agent(s) check_only=%s", len(agents), check_only)
-    result = materialize(agents, check_only=check_only)
-    logger.info("run_materialization: complete, all agents up-to-date=%s", result)
+    print(f"{label} runner artifacts into .claude/, .github/, and .gemini/...")
+    logger.info(
+        "run_materialization: %d agent(s), %d skill(s), %d script(s) check_only=%s",
+        len(agents),
+        len(skills),
+        len(scripts),
+        check_only,
+    )
+    result = materialize(agents, skills, scripts, check_only=check_only)
+    logger.info("run_materialization: complete, all generated artifacts up-to-date=%s", result)
     return result
 
 

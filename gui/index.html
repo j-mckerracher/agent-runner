@@ -1945,9 +1945,9 @@ async function selectAgent(name){
 async function loadAgents(){
   const r = await api("/agents"); const wrap = $("#agents-list"); wrap.innerHTML="";
   if(!r.items.length){
-    wrap.innerHTML='<div class="empty">No materialized agents found in agent-sources/.</div>';
+    wrap.innerHTML='<div class="empty">No materialized agents found in agent-definition-source/.</div>';
     setActiveAgent(null);
-    setAgentPromptEmpty("No materialized agents found in agent-sources/.");
+    setAgentPromptEmpty("No materialized agents found in agent-definition-source/.");
   }
   r.items.forEach(a=>{
     const d = document.createElement("div");

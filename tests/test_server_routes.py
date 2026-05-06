@@ -110,7 +110,7 @@ class ServerRoutesTests(unittest.TestCase):
         payload = r.json()
         self.assertEqual(payload["name"], "intake")
         self.assertTrue(payload["version"].startswith("v"))
-        self.assertTrue(payload["prompt_file"].endswith("agent-sources/intake/v1/prompt.md"))
+        self.assertTrue(payload["prompt_file"].endswith("agent-definition-source/intake/v1/prompt.md"))
         self.assertIn("Intake Agent Prompt", payload["prompt_text"])
         self.assertIn("tags", payload)
 

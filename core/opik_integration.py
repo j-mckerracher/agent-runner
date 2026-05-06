@@ -30,9 +30,8 @@ import anthropic
 import httpx
 from opik import opik_context
 from google import genai as google_genai
-from .agent_prompts import load_agent_system_prompt
 from .ui_trace_bridge import track_with_ui
-from .run_cmds import run_copilot_cmd
+from .run_cmds import build_runner_agent_instructions, run_copilot_cmd
 from .runner_models import is_copilot_runner
 
 logger = logging.getLogger(__name__)
@@ -148,7 +147,7 @@ def call_evaluator_sdk(
         The raw text response from the model.
     """
     logger.info("call_evaluator_sdk: agent_name=%s runner=%s model=%s runner_model=%s", agent_name, runner, model, runner_model)
-    system_prompt = load_agent_system_prompt(agent_name)
+    system_prompt = build_runner_agent_instructions(agent_name, runner=runner)
     file_block = inject_file_contents(context)
     user_message = (
         f"{context}\n\n## Referenced File Contents\n\n{file_block}"

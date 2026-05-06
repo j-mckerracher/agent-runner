@@ -105,8 +105,9 @@ class JobProcess:
             cmd += ["--model", self.job["model"]]
         if self.job.get("copilot_effort"):
             cmd += ["--copilot-effort", self.job["copilot_effort"]]
-        if self.job.get("skip_materialize"):
-            cmd += ["--skip-materialize"]
+        # The server materializes agents once at startup; skip it for every
+        # spawned run to avoid redundant work and noisy stage-0 output.
+        cmd += ["--skip-materialize"]
         if self.job.get("extra_context"):
             cmd += ["--extra-context", self.job["extra_context"]]
         logger.debug("JobProcess._build_cmd: job_id=%s cmd=%s", self.id, cmd)

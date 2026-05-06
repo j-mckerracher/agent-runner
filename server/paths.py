@@ -6,7 +6,7 @@ from pathlib import Path
 
 RUNNER_ROOT = Path(__file__).resolve().parent.parent
 AGENT_CONTEXT_ROOT = RUNNER_ROOT / "agent-context"
-AGENT_SOURCES_ROOT = RUNNER_ROOT / "agent-sources"
+AGENT_SOURCES_ROOT = RUNNER_ROOT / "agent-definition-source"
 EVAL_STORIES_ROOT = RUNNER_ROOT / "eval" / "stories"
 GUI_ROOT = RUNNER_ROOT / "gui"
 

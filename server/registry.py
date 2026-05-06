@@ -1,4 +1,4 @@
-"""Read agent registry from agent-sources/<name>/v*/."""
+"""Read agent registry from agent-definition-source/<name>/v*/."""
 from __future__ import annotations
 
 import hashlib

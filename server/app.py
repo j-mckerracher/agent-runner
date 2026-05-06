@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 import time
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,6 +19,7 @@ from .routes import corpus as corpus_routes
 from .routes import evaluate as evaluate_routes
 from .routes import runs as runs_routes
 from .routes import settings as settings_routes
+from core.materialize import run_materialization
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,12 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        logger.info("Lifespan: materializing agents and skills from source trees")
+        try:
+            run_materialization()
+            logger.info("Lifespan: agent materialization complete")
+        except Exception:
+            logger.exception("Lifespan: agent materialization failed — continuing startup")
         logger.info("Lifespan: starting JobManager (version=%s)", __version__)
         await mgr.start()
         logger.info("Lifespan: JobManager started")

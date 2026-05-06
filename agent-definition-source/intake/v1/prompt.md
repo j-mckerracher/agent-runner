@@ -130,6 +130,18 @@ Create or refresh `intake/constraints.md` with:
 - referenced planning docs and what they contributed
 - open questions for anything materially missing or ambiguous
 
+## Git Branch Setup
+
+Before writing any intake artifacts, set up the working branch in the **code repository** (`code_repo`):
+
+1. **Checkout `develop`**: Run `git checkout develop` in the code repo directory. If the branch does not exist, record a blocking open question in `constraints.md` and skip the remaining branch steps — do **not** abort intake.
+2. **Pull latest**: Run `git pull` (fast-forward only; use `--ff-only`) to bring the branch up to date. If the pull fails (e.g. diverged history), record the failure in `constraints.md` as a blocking open question and continue intake with the current HEAD.
+3. **Derive a short description**: Use 2–5 lowercase hyphenated words summarising the story title (e.g. `add-user-auth`, `fix-payment-timeout`). Strip punctuation and special characters; keep only `a-z`, `0-9`, and `-`.
+4. **Cut the feature branch**: Run `git checkout -b feature/-{change_id}-{short-description}` (substituting the actual `change_id` and derived short description). If the branch already exists, check it out with `git checkout feature/-{change_id}-{short-description}` and record a note in `constraints.md` that the branch was pre-existing.
+5. **Record the branch name** in `intake/config.yaml` under `run_metadata.feature_branch`.
+
+These steps run against the **code repo** path supplied by the runner, not the agent-workbench repository itself.
+
 ## Greenfield vs Brownfield Handling
 
 - **Brownfield**: Normalize explicit story requirements and repo-specific constraints.
@@ -141,6 +153,7 @@ Before finishing:
 
 - ensure all three intake artifacts exist
 - ensure acceptance criteria are numbered consistently when they exist
+- ensure `run_metadata.feature_branch` is set in `config.yaml` (or a blocking open question is recorded explaining why it could not be created)
 - preserve explicit source data rather than rewriting it speculatively
 - record unresolved ambiguities under open questions
 - keep the artifact contract compatible with downstream stages
@@ -167,6 +180,7 @@ Return a concise status summary that states:
 
 1. whether intake artifacts were created or refreshed
 2. how many acceptance criteria were normalized
-3. whether any open questions remain
+3. the feature branch that was created (or the reason it could not be created)
+4. whether any open questions remain
 
 </agent>

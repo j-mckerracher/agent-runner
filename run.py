@@ -545,11 +545,11 @@ def main(
         except (ValueError, OSError) as exc:
             logger.debug("main: could not install SIGTERM handler: %s", exc)
 
-        # ── Stage 0: Materialize agents ───────────────────────────────────────
+        # ── Stage 0: Materialize agents + skills ──────────────────────────────
         with _Stage("materialize", state=stage_state):
             if not skip_materialize:
-                logger.info("main: materializing agents from agent-sources/")
-                print("Materializing agents from agent-sources/...")
+                logger.info("main: materializing agents and skills from source trees")
+                print("Materializing agents and skills from source trees...")
                 run_materialization()
             else:
                 logger.info("main: skipping materialization (--skip-materialize)")

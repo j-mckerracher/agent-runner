@@ -64,7 +64,7 @@ The bootstrap flow will:
 
 - create or reuse `.venv/`
 - install `requirements.txt`
-- materialize agents from `agent-sources/`
+- materialize agents from `agent-definition-source/`, skills from `agent-skill-source/`, and scripts from `agent-script-source/`
 - clone or update a local Opik checkout under `~/.agent-runner/opik`
 - start the local self-hosted Opik Docker stack
 - persist local Opik dashboard metadata into `~/.agent-runner/config.json`
@@ -316,7 +316,7 @@ python server/main.py --reload   # dev hot reload
 The GUI (served at `/`) provides 5 views:
 
 - **Runs** — submit a job, watch live SSE event streams, cancel running jobs, and open the current run in Opik with trace filters already applied.
-- **Agents** — lists materialized agents from `agent-sources/*/v*/`; click an agent to read its latest prompt alongside bundle metadata.
+- **Agents** — lists materializable agents from `agent-definition-source/*/v*/`; click an agent to read its latest prompt alongside bundle metadata.
 - **Corpus** — lists `eval/stories/*.json` with per-story pass-rate history.
 - **Evaluate** — gives a compact local summary and a prominent bridge into the Opik evaluation workspace.
 - **Settings** — edit `~/.agent-runner/config.json` (host, port, defaults, concurrency, Opik project metadata).
@@ -352,7 +352,7 @@ The CLI (`python run.py ...`) is unchanged when used standalone. Event emission 
 | `GET` | `/runs/{job_id}/events` | Replay the full event log as a JSON array |
 | `GET` | `/runs/{job_id}/stream` | SSE stream of live events; supports `Last-Event-ID` and `?after=<seq>` |
 | `POST` | `/runs/{job_id}/cancel` | Cancel a queued/running job |
-| `GET` | `/agents` | Agent catalog from `agent-sources/*/v*/` |
+| `GET` | `/agents` | Agent catalog from `agent-definition-source/*/v*/` |
 | `GET` | `/agents/{name}` | Latest prompt text and metadata for a selected agent |
 | `GET` | `/corpus` | Eval stories with history-derived pass rates |
 | `GET` | `/evaluate/summary` | Aggregated pass-rate and regression summary |

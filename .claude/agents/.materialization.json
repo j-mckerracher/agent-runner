@@ -54,7 +54,7 @@
     "assignment-evaluator@v1": "6b2d80684ef9ebefc15c4660bd9d50a4ba7ff07ac5fa33d50af2feea0eed69b2",
     "implementation-evaluator@v1": "79dd26836c5daa084b45263c00fca287f39aebaebce34fbe76950b58e1d044f5",
     "information-explorer@v1": "8dbe45f212c2b40ca99e0ad6d018c38cc4c4e33cfb7bb6992f2e1e3314006ecf",
-    "intake@v1": "621ab2b04d9cfc5f62a6eef0ef4d93ed41ae0712e1f95a319b3389db69c62885",
+    "intake@v1": "38c5db486c2228516a51f29a3dcd26631a7ef33850a417c89ab862b663639b23",
     "lessons-optimizer-hyperagent@v1": "c7b315bd3f95c20f8ed2f4be8b2201a4373e9d50d9a28037e3539bf2773da51d",
     "qa@v1": "08805bd2cae4b6648eb0abaacd9c277674576dc04fc5861d7d2d24bc9b9cd35d",
     "qa-evaluator@v1": "8d6e6e3619db6252fbfeaa1b05a776fa175b95f02616134bcde29ab3d4bd5786",
@@ -64,5 +64,5 @@
     "task-generator@v1": "55f98c63f18366426f6712e9fc68eb435d314093d2ddb93a9e00c9741a599763",
     "task-plan-evaluator@v1": "c7f82745a6dfb478931a060d23f559f7318ed64e1127ed7a454caef0a5c117ce"
   },
-  "materialized_at": "2026-05-06T15:43:58Z"
+  "materialized_at": "2026-05-06T19:39:50Z"
 }

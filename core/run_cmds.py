@@ -6,9 +6,9 @@ import subprocess
 import sys
 import threading
 import time
-from pathlib import Path
 
 from .agent_prompts import load_agent_system_prompt
+from .materialized_paths import normalize_runner, runner_skill_dir
 from .runner_models import DEFAULT_GEMINI_MODEL, DEFAULT_COPILOT_MODEL, is_copilot_runner
 
 logger = logging.getLogger(__name__)
@@ -187,9 +187,6 @@ def _run_cli_live(cmd: list[str], *, env: dict | None = None) -> subprocess.Comp
         stderr="".join(stderr_chunks),
     )
 
-RUNNER_ROOT = Path(__file__).resolve().parent.parent
-SKILLS_ROOT = RUNNER_ROOT / ".github" / "skills"
-
 CLAUDE_AUTH_ENV_VARS = frozenset({
     "ANTHROPIC_API_KEY",
     "CLAUDE_CODE_API_KEY",
@@ -204,14 +201,24 @@ def _without_claude_auth_env() -> dict[str, str]:
     return env
 
 
-def _load_skill_content(skill_name: str) -> str | None:
-    """Load skill content from .github/skills/<skill>/SKILL.md if it exists."""
-    skill_file = SKILLS_ROOT / skill_name / "SKILL.md"
+def _load_skill_content(skill_name: str, *, runner: str = "copilot") -> str | None:
+    """Load skill content from the selected runner's materialized skills directory."""
+    skill_file = runner_skill_dir(runner) / skill_name / "SKILL.md"
     if skill_file.exists():
         content = skill_file.read_text(encoding="utf-8")
-        logger.debug("_load_skill_content: loaded skill=%s (%d chars)", skill_name, len(content))
+        logger.debug(
+            "_load_skill_content: loaded skill=%s runner=%s (%d chars)",
+            skill_name,
+            normalize_runner(runner),
+            len(content),
+        )
         return content
-    logger.debug("_load_skill_content: skill file not found for %s at %s", skill_name, skill_file)
+    logger.debug(
+        "_load_skill_content: skill file not found for %s at %s (runner=%s)",
+        skill_name,
+        skill_file,
+        normalize_runner(runner),
+    )
     return None
 
 
@@ -233,41 +240,77 @@ def _extract_required_skills(agent_spec: str) -> list[str]:
     return skills
 
 
+def _merge_skill_names(agent_spec: str, extra_skills: list[str] | None = None) -> list[str]:
+    merged: list[str] = []
+    for skill_name in [*_extract_required_skills(agent_spec), *(extra_skills or [])]:
+        if skill_name not in merged:
+            merged.append(skill_name)
+    logger.debug("_merge_skill_names: merged skills=%s", merged)
+    return merged
+
+
+def _render_embedded_skills(skill_names: list[str], *, runner: str) -> str:
+    if not skill_names:
+        return ""
+
+    skill_blocks: list[str] = []
+    for skill_name in skill_names:
+        content = _load_skill_content(skill_name, runner=runner)
+        if content:
+            skill_blocks.append(f"### Skill: {skill_name}\n\n{content}")
+        else:
+            logger.warning(
+                "_render_embedded_skills: skill=%s not found for runner=%s; skipping embed",
+                skill_name,
+                normalize_runner(runner),
+            )
+
+    if not skill_blocks:
+        return ""
+
+    logger.debug(
+        "_render_embedded_skills: embedding %d skill(s) for runner=%s",
+        len(skill_blocks),
+        normalize_runner(runner),
+    )
+    return (
+        "\n\n## Embedded Skill References\n\n"
+        "The following skills are embedded for your use. Follow each skill's "
+        "protocol as instructed by the agent specification above.\n\n"
+        + "\n\n---\n\n".join(skill_blocks)
+    )
+
+
+def build_runner_agent_instructions(
+    agent: str,
+    *,
+    runner: str,
+    extra_skills: list[str] | None = None,
+) -> str:
+    """Return the runner-specific materialized agent prompt plus embedded skills."""
+    agent_prompt = load_agent_system_prompt(agent, runner=runner)
+    skill_names = _merge_skill_names(agent_prompt, extra_skills)
+    return f"{agent_prompt}{_render_embedded_skills(skill_names, runner=runner)}"
+
+
 def _build_gemini_prompt(prompt: str, agent: str, extra_skills: list[str] | None = None) -> str:
     """
     Build a combined prompt for Gemini CLI headless mode.
 
-    Because Gemini CLI has no activate_skill mechanism, any explicitly-requested
-    skill content is embedded directly. Required skills from the agent spec are NOT
-    auto-embedded to avoid excessively large contexts — only pass extra_skills that
-    are strictly needed for the task (e.g., tool-use skills the agent must follow).
+    Gemini has no native activate_skill mechanism, so both the runner-specific
+    materialized agent prompt and its required skills are embedded directly.
     """
     logger.debug("_build_gemini_prompt: agent=%s extra_skills=%s", agent, extra_skills)
-    agent_prompt = load_agent_system_prompt(agent)
-
-    skills_section = ""
-    if extra_skills:
-        skill_blocks: list[str] = []
-        for skill_name in extra_skills:
-            content = _load_skill_content(skill_name)
-            if content:
-                skill_blocks.append(f"### Skill: {skill_name}\n\n{content}")
-            else:
-                logger.warning("_build_gemini_prompt: skill=%s not found; skipping embed", skill_name)
-        if skill_blocks:
-            logger.debug("_build_gemini_prompt: embedding %d skill(s) for agent=%s", len(skill_blocks), agent)
-            skills_section = (
-                "\n\n## Embedded Skill References\n\n"
-                "The following skills are embedded for your use. Follow each skill's "
-                "protocol as instructed by the agent specification above.\n\n"
-                + "\n\n---\n\n".join(skill_blocks)
-            )
+    agent_instructions = build_runner_agent_instructions(
+        agent,
+        runner="gemini",
+        extra_skills=extra_skills,
+    )
 
     combined = (
         f"You are running as the '{agent}' specialist in the agent-runner workflow.\n"
         f"Treat the following agent specification as your governing instructions for this run.\n\n"
-        f"## Agent specification\n{agent_prompt}"
-        f"{skills_section}\n\n"
+        f"## Agent specification\n{agent_instructions}\n\n"
         f"## Task to execute\n{prompt}"
     )
     logger.debug("_build_gemini_prompt: combined prompt length=%d chars for agent=%s", len(combined), agent)
@@ -402,17 +445,17 @@ def run_copilot_cmd(
         cmd.extend(extra_flags)
     for attempt in range(_COPILOT_MAX_ATTEMPTS):
         logger.debug("run_copilot_cmd: attempt %d/%d agent=%s cli_cmd=%s", attempt + 1, _COPILOT_MAX_ATTEMPTS, agent, cli_cmd)
-        result = _run_cli(cmd, runner=cli_cmd, agent=agent, env=_without_claude_auth_env(), stream_output=stream_output)
-        if result.stdout:
-            logger.debug("run_copilot_cmd: stdout length=%d for agent=%s", len(result.stdout), agent)
-            print(result.stdout)
-        if result.stderr:
-            logger.debug("run_copilot_cmd: stderr length=%d for agent=%s", len(result.stderr), agent)
-            print(result.stderr)
-        if result.returncode == 0:
+        attempt_result = _run_cli(cmd, runner=cli_cmd, agent=agent, env=_without_claude_auth_env(), stream_output=stream_output)
+        if attempt_result.stdout:
+            logger.debug("run_copilot_cmd: stdout length=%d for agent=%s", len(attempt_result.stdout), agent)
+            print(attempt_result.stdout)
+        if attempt_result.stderr:
+            logger.debug("run_copilot_cmd: stderr length=%d for agent=%s", len(attempt_result.stderr), agent)
+            print(attempt_result.stderr)
+        if attempt_result.returncode == 0:
             logger.info("run_copilot_cmd: agent=%s completed OK on attempt %d", agent, attempt + 1)
-            return result.stdout
-        combined = (result.stdout or "") + (result.stderr or "")
+            return attempt_result.stdout
+        combined = (attempt_result.stdout or "") + (attempt_result.stderr or "")
         is_transient = is_transient_runner_failure_text(combined, runner=cli_cmd)
         if is_transient and attempt < _COPILOT_MAX_ATTEMPTS - 1:
             delay = 5 * (2 ** attempt)
@@ -427,9 +470,14 @@ def run_copilot_cmd(
             print(f"[run_copilot_cmd] Transient error (attempt {attempt + 1}/{_COPILOT_MAX_ATTEMPTS}). Retrying in {delay}s...")
             time.sleep(delay)
             continue
-        logger.error("run_copilot_cmd: agent=%s exited %d after %d attempt(s)", agent, result.returncode, attempt + 1)
-        raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
-    return result.stdout  # unreachable
+        logger.error("run_copilot_cmd: agent=%s exited %d after %d attempt(s)", agent, attempt_result.returncode, attempt + 1)
+        raise subprocess.CalledProcessError(
+            attempt_result.returncode,
+            attempt_result.args,
+            attempt_result.stdout,
+            attempt_result.stderr,
+        )
+    return ""  # unreachable
 
 
 def run_gemini_cmd(
@@ -463,23 +511,23 @@ def run_gemini_cmd(
         cmd.extend(extra_flags)
     for _attempt in range(5):
         logger.debug("run_gemini_cmd: attempt %d/5 agent=%s", _attempt + 1, agent)
-        result = _run_cli(
+        attempt_result = _run_cli(
             cmd,
             runner="gemini",
             agent=agent,
             env=_without_claude_auth_env(),
             stream_output=stream_output,
         )
-        if result.stdout:
-            logger.debug("run_gemini_cmd: stdout length=%d for agent=%s", len(result.stdout), agent)
-            print(result.stdout)
-        if result.stderr:
-            logger.debug("run_gemini_cmd: stderr length=%d for agent=%s", len(result.stderr), agent)
-            print(result.stderr)
-        if result.returncode == 0:
+        if attempt_result.stdout:
+            logger.debug("run_gemini_cmd: stdout length=%d for agent=%s", len(attempt_result.stdout), agent)
+            print(attempt_result.stdout)
+        if attempt_result.stderr:
+            logger.debug("run_gemini_cmd: stderr length=%d for agent=%s", len(attempt_result.stderr), agent)
+            print(attempt_result.stderr)
+        if attempt_result.returncode == 0:
             logger.info("run_gemini_cmd: agent=%s completed OK on attempt %d", agent, _attempt + 1)
-            return result.stdout
-        combined = (result.stdout or "") + (result.stderr or "")
+            return attempt_result.stdout
+        combined = (attempt_result.stdout or "") + (attempt_result.stderr or "")
         is_transient = any(
             marker in combined
             for marker in ("503", "UNAVAILABLE", "high demand", "rate limit", "429")
@@ -495,10 +543,15 @@ def run_gemini_cmd(
         else:
             logger.error(
                 "run_gemini_cmd: agent=%s failed after %d attempt(s) exit_code=%d",
-                agent, _attempt + 1, result.returncode,
+                agent, _attempt + 1, attempt_result.returncode,
             )
-            raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
-    return result.stdout  # unreachable
+            raise subprocess.CalledProcessError(
+                attempt_result.returncode,
+                attempt_result.args,
+                attempt_result.stdout,
+                attempt_result.stderr,
+            )
+    return ""  # unreachable
 
 
 def run_agent_cmd(
