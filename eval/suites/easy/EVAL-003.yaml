@@ -1,0 +1,57 @@
+story_id: EVAL-003
+title: "Add isTimeoutError utility to ErrorUtils"
+description: >
+  Add a new public static method `isTimeoutError` to the `ErrorUtils` class in
+  `libs/shared/core/src/lib/utils/error.utils.ts`. The method should accept an
+  `unknown` error parameter and return a `boolean`. It must return `true` when:
+  
+  - The error is an `HttpErrorResponse` with status 0 (network cancelled / timeout)
+  - The error is an Error instance whose name includes 'Timeout' or 'Abort' (case-insensitive)
+  - The error is an object with a `name` property matching the same pattern
+  
+  For all other cases it returns `false`.
+  
+  Add JSDoc for the new method following the existing style in the file. Do not
+  modify any existing methods.
+change_id: EVAL-003
+suite_tier: easy
+dataset_id: mcs-products-mono-ui
+acceptance_criteria:
+  - ac_id: AC-01
+    text: >
+      A new `isTimeoutError` method is added to the `ErrorUtils` class and the
+      implementation report mentions successfully implementing it.
+    tier: easy
+    check:
+      id: implementation-reported
+      label: "Agent reports implementing isTimeoutError"
+      mechanism: contains
+      subject: agent_output
+      expected: "isTimeoutError"
+      difficulty: low
+  - ac_id: AC-02
+    text: >
+      The `error.utils.ts` file contains the `isTimeoutError` method definition
+      and the TypeScript compiles without errors.
+    tier: easy
+    check:
+      id: file-contains-method
+      label: "error.utils.ts contains isTimeoutError"
+      mechanism: command
+      subject: repo
+      command: grep -q "isTimeoutError" libs/shared/core/src/lib/utils/error.utils.ts
+      difficulty: low
+      timeout_seconds: 5
+  - ac_id: AC-03
+    text: >
+      The implementation report includes a summary of changes made.
+    tier: easy
+    check:
+      id: report-has-summary
+      label: "Implementation report contains summary or changes"
+      mechanism: matches
+      subject: agent_output
+      expected: "(?i)(summary|changed|added|implemented|created|modified)"
+      difficulty: low
+metadata:
+  eval_story_id: EVAL-003

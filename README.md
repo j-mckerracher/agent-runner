@@ -76,7 +76,7 @@ Bootstrap assumes these tools are already installed on the machine:
 
 | Dependency | Required for | Notes |
 |---|---|---|
-| Python 3.9+ | bootstrap, `run.py`, `server/main.py`, eval tools | Bootstrap creates `.venv/`, but it does **not** install Python itself. |
+| Python 3.9+ | bootstrap, `run.py`, `server_main.py`, eval tools | Bootstrap creates `.venv/`, but it does **not** install Python itself. |
 | `git` | bootstrap, normal repo workflows | Used for the repo itself and for cloning/updating the local Opik checkout. |
 | Docker Desktop | bootstrap + local self-hosted Opik | Must be running before bootstrap starts the Opik stack. |
 | PowerShell | Windows bootstrap | Used by `bootstrap.ps1` and Opik's upstream `opik.ps1`. |
@@ -299,19 +299,19 @@ A local-first FastAPI server + single-file GUI wraps the headless runner so you 
 
 ```bash
 pip install -r requirements.txt
-python server/main.py
+python server_main.py
 # -> http://localhost:8742
 ```
 
-If you also want the bundled local Opik stack configured automatically, prefer the OS bootstrap wrapper above instead of starting `server/main.py` directly.
+If you also want the bundled local Opik stack configured automatically, prefer the OS bootstrap wrapper above instead of starting `server_main.py` directly.
 
-Manual `server/main.py` startup only requires Python dependencies. Docker is only needed when you want the local self-hosted Opik stack as well.
+Manual `server_main.py` startup only requires Python dependencies. Docker is only needed when you want the local self-hosted Opik stack as well.
 
 You can override the bind address at startup:
 
 ```bash
-python server/main.py --host 127.0.0.1 --port 8742
-python server/main.py --reload   # dev hot reload
+python server_main.py --host 127.0.0.1 --port 8742
+python server_main.py --reload   # dev hot reload
 ```
 
 The GUI (served at `/`) provides 5 views:
@@ -495,7 +495,7 @@ The new server tests cover:
 | `change_id does not match` | `--change-id` and fixture `change_id` conflict | Remove one, or make them match |
 | `Provide either ado_url or story_file, not both` | Both flags passed | Pick one mode |
 | `api.port must be an integer between 1 and 65535` | Invalid Settings value or bad `--port` override | Choose a valid TCP port |
-| Browser shows `API offline` | `server/main.py` is not running or host/port changed | Start the server and open the configured host/port |
+| Browser shows `API offline` | `server_main.py` is not running or host/port changed | Start the server and open the configured host/port |
 
 ---
 

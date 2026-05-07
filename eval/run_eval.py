@@ -417,8 +417,10 @@ def _run_workflow(
     calibration_fast_mode: bool = False,
     stream_output: bool = False,
 ) -> subprocess.CompletedProcess[str]:
+    venv_python = REPO_ROOT / "venv" / "bin" / "python3"
+    python_exe = str(venv_python) if venv_python.is_file() else sys.executable
     command = [
-        sys.executable,
+        python_exe,
         str(REPO_ROOT / "run.py"),
         "--story-file",
         str(fixture_path),
