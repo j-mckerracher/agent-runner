@@ -1,0 +1,90 @@
+{
+  "change_id": "EVAL-003",
+  "title": "Enforce maximum date range on order search to protect database performance",
+  "description": "The order search endpoint currently allows unbounded date ranges for CollectedDateTime, OrderedDateTime, and ReceiptedDateTime. Queries spanning years degrade database performance. Add a 12-month (365-day) maximum span validation to each date pair in OrderSearchValidator, and cover the new rules with unit tests in OrderSearchValidatorTests.",
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC1",
+      "text": "OrderSearchValidator rejects a CollectedDateTimeFrom/To pair whose span exceeds 365 days with a clear validation message.",
+      "tier": "medium",
+      "check": {
+        "id": "check-ac1-collected-365-rule",
+        "label": "365-day max-span rule present in OrderSearchValidator",
+        "mechanism": "command",
+        "subject": "repo",
+        "command": "grep -q \"365\" src/Mayo.MCS.RLS.OrdersConsumer.BLL/Validators/SearchOrderValidation/OrderSearchValidator.cs"
+      }
+    },
+    {
+      "ac_id": "AC2",
+      "text": "OrderSearchValidator rejects an OrderedDateTimeFrom/To pair whose span exceeds 365 days with a clear validation message.",
+      "tier": "medium",
+      "check": {
+        "id": "check-ac2-three-365-rules",
+        "label": "At least 3 occurrences of 365 in OrderSearchValidator (one per date pair)",
+        "mechanism": "command",
+        "subject": "repo",
+        "command": "bash -c \"count=$(grep -c '365' src/Mayo.MCS.RLS.OrdersConsumer.BLL/Validators/SearchOrderValidation/OrderSearchValidator.cs); [ $count -ge 3 ]\""
+      }
+    },
+    {
+      "ac_id": "AC3",
+      "text": "OrderSearchValidator rejects a ReceiptedDateTimeFrom/To pair whose span exceeds 365 days with a clear validation message.",
+      "tier": "medium",
+      "check": {
+        "id": "check-ac3-validation-message",
+        "label": "Validation error message mentioning date range limit in OrderSearchValidator",
+        "mechanism": "command",
+        "subject": "repo",
+        "command": "grep -qi \"date range\\|span\\|exceed\\|maximum\\|365\" src/Mayo.MCS.RLS.OrdersConsumer.BLL/Validators/SearchOrderValidation/OrderSearchValidator.cs"
+      }
+    },
+    {
+      "ac_id": "AC4",
+      "text": "Date ranges of exactly 365 days are accepted (boundary is inclusive).",
+      "tier": "medium",
+      "check": {
+        "id": "check-ac4-boundary-test",
+        "label": "Boundary or 365-day span test present in OrderSearchValidatorTests",
+        "mechanism": "command",
+        "subject": "repo",
+        "command": "grep -qi \"365\" src/Mayo.MCS.RLS.OrdersConsumer.Tests/_Bll/Validators/SearchOrderValidators/OrderSearchValidatorTests.cs"
+      }
+    },
+    {
+      "ac_id": "AC5",
+      "text": "The existing passing tests in OrderSearchValidatorTests are not broken by the new rules.",
+      "tier": "medium",
+      "check": {
+        "id": "check-ac5-unit-tests-pass",
+        "label": "Dotnet unit tests pass for OrderSearchValidatorTests",
+        "mechanism": "command",
+        "subject": "repo",
+        "command": "dotnet test src/Mayo.MCS.RLS.OrdersConsumer.Tests/Mayo.MCS.RLS.OrdersConsumer.Tests.csproj --filter FullyQualifiedName~OrderSearchValidatorTests --verbosity quiet",
+        "timeout_seconds": 120
+      }
+    },
+    {
+      "ac_id": "AC6",
+      "text": "New unit tests covering >365 days (invalid), exactly 365 days (valid), and <365 days (valid) are added to OrderSearchValidatorTests.",
+      "tier": "medium",
+      "check": {
+        "id": "check-ac6-new-test-count",
+        "label": "At least 3 new test methods related to 365-day span in OrderSearchValidatorTests",
+        "mechanism": "command",
+        "subject": "repo",
+        "command": "bash -c \"count=$(grep -ci '365\\|maxspan\\|maxrange\\|exceeddate\\|spanexceed' src/Mayo.MCS.RLS.OrdersConsumer.Tests/_Bll/Validators/SearchOrderValidators/OrderSearchValidatorTests.cs); [ $count -ge 3 ]\""
+      }
+    }
+  ],
+  "metadata": {
+    "eval_story_id": "EVAL-003",
+    "suite_tier": "medium",
+    "dataset_id": "rls-orders-cnsmr-api",
+    "mono_root": "/Users/mckerracher.joshua/Code/rls-orders-cnsmr-api",
+    "primary_files": [
+      "src/Mayo.MCS.RLS.OrdersConsumer.BLL/Validators/SearchOrderValidation/OrderSearchValidator.cs",
+      "src/Mayo.MCS.RLS.OrdersConsumer.Tests/_Bll/Validators/SearchOrderValidators/OrderSearchValidatorTests.cs"
+    ]
+  }
+}

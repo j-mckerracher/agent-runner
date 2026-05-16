@@ -1,6 +1,8 @@
 import logging
 import json as _json
+import os
 from copy import deepcopy
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -94,17 +96,36 @@ def _merge_dict(base: dict[str, Any], override: dict[str, Any]) -> None:
             base[key] = value
 
 
+def _repo_path_options(cfg: dict[str, Any]) -> list[str]:
+    base_dir = ((cfg.get("repo_paths") or {}).get("base_dir") or "").strip()
+    if not base_dir:
+        return []
+    root = Path(os.path.expandvars(base_dir)).expanduser()
+    try:
+        if not root.is_dir():
+            return []
+        options = [
+            str(Path(entry.path).resolve())
+            for entry in os.scandir(root)
+            if entry.is_dir(follow_symlinks=False) and not entry.name.startswith(".")
+        ]
+    except OSError as exc:
+        logger.warning("get_settings: could not list repo path base_dir=%s: %s", root, exc)
+        return []
+    return sorted(options)
+
+
 @router.get("")
 async def get_settings() -> dict[str, Any]:
     logger.debug("get_settings: loading config and runner choices")
     cfg = load_config()
-    rc = runner_choices()
+    rc = runner_choices(cfg)
     logger.debug("get_settings: config loaded api.port=%s", cfg.get("api", {}).get("port"))
     return {
         **cfg,
         "runner_models": rc["models"],
-        "copilot_efforts": rc["copilot_effort"],
         "runner_defaults": rc["defaults"],
+        "repo_path_options": _repo_path_options(cfg),
     }
 
 

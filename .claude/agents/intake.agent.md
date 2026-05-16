@@ -132,15 +132,20 @@ Create or refresh `intake/constraints.md` with:
 
 ## Git Branch Setup
 
-Before writing any intake artifacts, set up the working branch in the **code repository** (`code_repo`):
+The workflow runner prepares the working branch in the **code repository** (`code_repo`) before intake starts:
 
-1. **Checkout `develop`**: Run `git checkout develop` in the code repo directory. If the branch does not exist, record a blocking open question in `constraints.md` and skip the remaining branch steps — do **not** abort intake.
-2. **Pull latest**: Run `git pull` (fast-forward only; use `--ff-only`) to bring the branch up to date. If the pull fails (e.g. diverged history), record the failure in `constraints.md` as a blocking open question and continue intake with the current HEAD.
-3. **Derive a short description**: Use 2–5 lowercase hyphenated words summarising the story title (e.g. `add-user-auth`, `fix-payment-timeout`). Strip punctuation and special characters; keep only `a-z`, `0-9`, and `-`.
-4. **Cut the feature branch**: Run `git checkout -b feature/-{change_id}-{short-description}` (substituting the actual `change_id` and derived short description). If the branch already exists, check it out with `git checkout feature/-{change_id}-{short-description}` and record a note in `constraints.md` that the branch was pre-existing.
-5. **Record the branch name** in `intake/config.yaml` under `run_metadata.feature_branch`.
+1. **Checkout `develop`**
+2. **Pull latest with fast-forward only** via `git pull --ff-only`
+3. **Derive a short description** from the story using 2–5 lowercase hyphenated words with only `a-z`, `0-9`, and `-`
+4. **Create or switch to** `feature/{change-id}-brief-description`
 
-These steps run against the **code repo** path supplied by the runner, not the agent-workbench repository itself.
+During intake, do **not** redo that setup unless you detect the repo is no longer on the expected branch. Instead:
+
+1. **Verify the current branch** in the code repo still matches `feature/{change-id}-brief-description`
+2. **If it does not match**, fix it by repeating the same sequence: checkout `develop`, pull `--ff-only`, then create or switch to the correctly named feature branch
+3. **Record the actual branch name** in `intake/config.yaml` under `run_metadata.feature_branch`
+
+These steps apply to the **code repo** path supplied by the runner, not the agent-workbench repository itself.
 
 ## Greenfield vs Brownfield Handling
 

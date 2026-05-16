@@ -48,6 +48,35 @@ if __name__ == "__main__":
             "issues": issues
         }, indent=2))
         sys.exit(0 if valid else 1)
+    elif sys.argv[1] == "--type" and sys.argv[2] == "impl_report":
+        # Validate a generated impl_report.yaml (basic checks)
+        if len(sys.argv) < 4:
+            print(json.dumps({"error": "Missing file path"}))
+            sys.exit(1)
+        impl_path = sys.argv[3]
+        try:
+            with open(impl_path, 'r') as f:
+                data = yaml.safe_load(f)
+        except Exception as e:
+            print(json.dumps({"schema_valid": False, "issues": [str(e)]}))
+            sys.exit(1)
+        issues = []
+        if not isinstance(data, dict):
+            issues.append("Top-level impl_report must be a mapping/object")
+        else:
+            for key in ['uow_id', 'status', 'implementation_summary']:
+                if key not in data:
+                    issues.append(f"Missing required key: {key}")
+            dod = data.get('definition_of_done_status') or data.get('definition_of_done')
+            if dod is None:
+                issues.append("Missing 'definition_of_done_status' or 'definition_of_done'")
+            else:
+                if not isinstance(dod, list):
+                    issues.append("'definition_of_done_status' should be a list (see Self-Evolved Rules)")
+        valid = len(issues) == 0
+        print(json.dumps({"schema_valid": valid, "issues": issues}, indent=2))
+        sys.exit(0 if valid else 1)
     else:
         print(json.dumps({"error": "Unsupported type"}))
         sys.exit(1)
+

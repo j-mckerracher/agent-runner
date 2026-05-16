@@ -19,13 +19,13 @@ if __package__ in {None, ""}:  # pragma: no cover - exercised by direct CLI use.
     from eval.models import AcceptanceCriterion, CheckResult, EvalStory, SuiteTier
     from eval.scoring import score_for_difficulty
     from eval.suite_io import load_eval_story, load_suite_manifest
-    from core.run_cmds import run_agent_cmd
+    from core.agent_cmd import run_agent_cmd
 else:
     from .check_helpers import run_check
     from .models import AcceptanceCriterion, CheckResult, EvalStory, SuiteTier
     from .scoring import score_for_difficulty
     from .suite_io import load_eval_story, load_suite_manifest
-    from core.run_cmds import run_agent_cmd
+    from core.agent_cmd import run_agent_cmd
 
 
 CalibrationClassification = Literal[

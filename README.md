@@ -1,366 +1,249 @@
 # agent-workbench
 
-**Agent Workbench is a local mission-control UI for AI software delivery.** It turns a story, work item, or synthetic fixture into a traceable multi-agent workflow you can launch, watch, evaluate, and inspect without losing the thread.
+**Agent Workbench is a local mission-control UI for AI-assisted software delivery.** It turns a synthetic story or Azure DevOps work item into a traceable multi-agent workflow you can launch, monitor, inspect, and evaluate locally.
 
-The pipeline runs six coordinated stages, with implementation enhanced by an **evaluator-optimizer loop** that iterates up to three times per unit of work:
+The current runner executes a six-stage workflow:
 
 ```text
-intake → task generation → assignment → implementation ⟳ QA → lessons optimization
-                                              ↑__ evaluator feedback __|
+intake → task generation → task assignment → implementation ⟳ QA → lessons
+                                                    ↑ evaluator feedback |
 ```
 
-During implementation each unit of work (UoW) is executed by a software-engineer agent, then immediately scored by an implementation-evaluator agent. If the evaluator returns a **PASS**, the loop exits early; otherwise the evaluator's structured feedback is injected into the next iteration's prompt, giving the producer a chance to self-correct before QA. A generic `run_eval_optimizer_loop` primitive makes the same pattern available to any producer/evaluator agent pair in the pipeline.
-
-It can run fully local synthetic stories for offline iteration or live Azure DevOps work items for integrated delivery.
+Implementation and QA use evaluator/optimizer loops. A producer agent writes an artifact, an evaluator scores it, and evaluator feedback is injected into the next iteration unless the evaluator returns `PASS`.
 
 | Local Agent Workbench UI | Opik observability command center |
 |---|---|
 | ![Agent Workbench Runs view showing a live multi-stage workflow stream](docs/assets/agent-runner-runs.png) | ![Opik project insights dashboard for agent-workbench traces](docs/assets/opik-insights.png) |
 
+> The repo is named `agent-workbench`, while some runtime paths and UI labels still use the older `agent-runner` name, such as `~/.agent-runner/` and the browser title.
+
 ## What this repository gives you
 
-| Capability | What it means for you |
+| Capability | What it means |
 |---|---|
-| **A browser UI for agent work** | Submit runs, choose Claude/Copilot/Gemini, watch live stage events, cancel jobs, and inspect run history from `http://127.0.0.1:8742`. |
-| **Synthetic + ADO inputs** | Develop safely with local JSON fixtures, then point the same runner at live Azure DevOps work items when you are ready. |
-| **Traceable workflow artifacts** | Every stage writes structured artifacts under `agent-context/<change-id>/`, so downstream agents and reviewers can inspect the chain of decisions. |
-| **Opik tracing and insights** | Bootstrap can start a local self-hosted Opik stack, wire project metadata, and deep-link each selected run to traces filtered for that change ID. |
-| **Evaluation harness** | `eval/synthesize.py` creates empirically calibrated easy/medium/hard eval stories, and `eval/run_eval.py` runs repeatable evaluations with regression checks. |
-| **Hermetic recordings** | Browser-launched runs can record CLI subprocess I/O into local cassettes for later inspection. |
+| **Browser UI for workflow runs** | Submit runs, choose a runner/model, watch live events, cancel jobs, respond to clarification prompts, and inspect history at `http://127.0.0.1:8742`. |
+| **Synthetic + ADO intake** | Work offline with local JSON fixtures, or point the same workflow at a live Azure DevOps work item. |
+| **Traceable artifacts** | Every run writes canonical artifacts under `agent-context/<change-id>/`. |
+| **Opik integration** | Bootstrap can start a local Opik stack and the UI can deep-link runs and evaluation views into Opik. |
+| **Evaluation framework** | `eval/synthesize.py` generates predicted easy/medium/hard stories by default, and `eval/run_eval.py` runs suites with scoring and baseline comparison. |
+| **Hermetic recordings** | Server-launched runs can record subprocess I/O into local cassettes. |
 
-## Why Opik?
+## Quick start
 
-Agent Workbench uses [Opik by Comet](https://github.com/comet-ml/opik) as its observability and evaluation platform. A few things worth knowing:
+### Prerequisites
 
-- **Open source.** Opik is fully open source (Apache 2.0), available on [GitHub](https://github.com/comet-ml/opik). You can run it locally via bootstrap or point Agent Workbench at Comet's hosted offering.
-- **Zero known vulnerabilities.** The [Veracode SCA package summary for Opik](https://sca.analysiscenter.veracode.com/vulnerability-database/libraries/opik/python/pypi/lid-7718138/summary) currently reports **0 known vulnerabilities** for the PyPI library. This is a point-in-time third-party database signal — re-check the link for the latest status.
-- **Self-hostable.** Bootstrap clones and starts the local Opik Docker stack automatically, so traces and evaluation data stay on your machine.
+| Dependency | Required for | Notes |
+|---|---|---|
+| Python 3.9+ | `run.py`, `server_main.py`, bootstrap, eval tools | Bootstrap creates `.venv/`, but does not install Python. |
+| `git` | bootstrap and normal repo workflows | Used for the repo itself and for syncing the local Opik checkout. |
+| Docker Desktop | bundled local Opik stack | Required only when you want bootstrap to start self-hosted Opik. |
+| One AI backend CLI | actual workflow execution | Install and authenticate at least one of `claude`, `copilot`, or `gemini`. |
+| Azure CLI + `azure-devops` extension | live ADO intake mode | Not required for local synthetic stories. |
 
-> **Testing and evaluation details:** see [`eval/README.md`](eval/README.md).
+### Optional tooling
 
----
+| Dependency | What it does |
+|---|---|
+| `rtk` | When `rtk` is available on `PATH`, the workflow routes terminal work through RTK-aware tooling to reduce noisy command output. Falls back to normal execution when absent. Install from the internal [mayo-rtk-ai](https://dev.azure.com/mclm/Mayo%20Open%20Developer%20Network/_git/mayo-rtk-ai) repo — see `requirements.txt` for instructions. |
 
-## Start in 60 seconds
-
-1. Clone this repository.
-2. Make sure **Python 3.9+**, **git**, and **Docker Desktop** are installed. Docker Desktop must be running if you want the bundled local Opik stack.
-3. Run the bootstrap wrapper for your OS.
-4. Open `http://127.0.0.1:8742`.
-5. Install and authenticate at least one AI backend CLI (`claude`, `copilot`, or `gemini`) before launching real agent runs.
-
-### macOS
+### Fastest local setup on macOS
 
 ```bash
 ./bootstrap.sh
 ```
 
-### Windows (PowerShell)
+That flow:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
+- creates or reuses `.venv/`
+- installs `requirements.txt`
+- materializes agents, skills, and helper scripts
+- clones or updates a local Opik checkout under `~/.agent-runner/opik`
+- starts the local Opik stack
+- persists Opik metadata into `~/.agent-runner/config.json`
+- starts the local API + GUI on `http://127.0.0.1:8742`
+
+### Manual server startup
+
+Use this when you want the app without running the full bootstrap flow.
+
+```bash
+python3 -m pip install -r requirements.txt
+python3 server_main.py
+python3 server_main.py --log-level info
 ```
 
-The bootstrap flow will:
+Development reload:
 
-- create or reuse `.venv/`
-- install `requirements.txt`
-- materialize agents from `agent-definition-source/`, skills from `agent-skill-source/`, and scripts from `agent-script-source/`
-- clone or update a local Opik checkout under `~/.agent-runner/opik`
-- start the local self-hosted Opik Docker stack
-- persist local Opik dashboard metadata into `~/.agent-runner/config.json`
-- start the local API + GUI server at `http://127.0.0.1:8742`
+```bash
+python3 server_main.py --reload
+```
 
-### External prerequisites
+Custom bind host/port:
 
-Bootstrap assumes these tools are already installed on the machine:
-
-| Dependency | Required for | Notes |
-|---|---|---|
-| Python 3.9+ | bootstrap, `run.py`, `server_main.py`, eval tools | Bootstrap creates `.venv/`, but it does **not** install Python itself. |
-| `git` | bootstrap, normal repo workflows | Used for the repo itself and for cloning/updating the local Opik checkout. |
-| Docker Desktop | bootstrap + local self-hosted Opik | Must be running before bootstrap starts the Opik stack. |
-| PowerShell | Windows bootstrap | Used by `bootstrap.ps1` and Opik's upstream `opik.ps1`. |
-| Bash-compatible shell | macOS bootstrap | Used by `bootstrap.sh` and Opik's upstream `opik.sh`. |
-
-For actual workflow execution, you also need **at least one** supported AI backend CLI installed and authenticated:
-
-| CLI | Used for |
-|---|---|
-| `claude` | `--runner claude` |
-| `copilot` | `--runner copilot` |
-| `gemini` | `--runner gemini` |
-
-Bootstrap does **not** try to automate vendor install/login flows for those CLIs. If none is installed yet, bootstrap will still start the local services and warn that runs will fail until a backend is ready.
-
-### Optional external dependencies
-
-| Dependency | When you need it |
-|---|---|
-| `ztk` | Recommended for the `claude` runner — compresses Bash tool output before it reaches the LLM, reducing token consumption by ~78%. Install: `brew install codejunkie99/ztk/ztk` ([source](https://github.com/codejunkie99/ztk)). Also buildable from source on Linux and other platforms. |
-| Azure CLI (`az`) | Required only for live Azure DevOps work-item mode |
-| `azure-devops` Azure CLI extension | Required only for live Azure DevOps work-item mode |
-
----
+```bash
+python3 server_main.py --host 127.0.0.1 --port 8742
+```
 
 ## Run your first workflow
 
 ### From the browser
 
-Open `http://127.0.0.1:8742`, fill in the **Runs** form, and click **Submit run**. The terminal pane streams structured stage events in real time.
+Open `http://127.0.0.1:8742`, fill in the **Runs** form, and submit a job. The UI exposes:
 
-When a run is selected and Opik is configured, click **Open current run in Opik**. That link opens the Opik project with traces filtered to the selected run's change ID, so it is clear which trace set you are inspecting.
+- repo path
+- change ID
+- optional Azure DevOps work item URL
+- runner + model
+- mode (`live` or `hermetic`)
+- extra context appended to intake
 
-### Where to find the Opik links
-
-| In Agent Workbench | What opens |
-|---|---|
-| **Runs** -> select any run -> **Open current run in Opik** | The Opik project trace view filtered to that run's `change_id` / `thread_id`. |
-| **Evaluate** -> **Open Opik evaluation workspace** | The Opik project workspace for experiments, evaluation, online scoring, and trace drill-down. |
+When a run is selected and Opik is configured, **Open current run in Opik** opens a filtered trace view for that run's `change_id` / thread ID.
 
 ### From the CLI
 
-Run with the bundled `TEST-AC-001` synthetic story:
+Run with the bundled synthetic fixture:
 
 ```bash
-python run.py --repo /absolute/path/to/target/repo
+python3 run.py --repo /absolute/path/to/target/repo
 ```
 
-Use a custom synthetic story fixture:
+Run with an explicit fixture:
 
 ```bash
-python run.py --repo /absolute/path/to/target/repo --story-file /path/to/custom_story.json
+python3 run.py \
+  --repo /absolute/path/to/target/repo \
+  --story-file /absolute/path/to/agent-workbench/workflow-fixtures/synthetic_story.json
 ```
 
 Run against Azure DevOps:
 
 ```bash
-python run.py --repo /absolute/path/to/target/repo --ado-url 'https://dev.azure.com/<org>/<project>/_workitems/edit/123456'
+python3 run.py \
+  --repo /absolute/path/to/target/repo \
+  --ado-url 'https://dev.azure.com/<org>/<project>/_workitems/edit/123456'
 ```
 
-This mode also requires Azure CLI plus the `azure-devops` extension to already be installed and authenticated.
-
-Watch a live Azure DevOps CI/CD run until it finishes:
+Choose a runner explicitly:
 
 ```bash
-python watch_ado_run.py 'https://dev.azure.com/<org>/<project>/_build/results?buildId=2131917'
+python3 run.py --repo /absolute/path/to/target/repo --runner claude
+python3 run.py --repo /absolute/path/to/target/repo --runner copilot
+python3 run.py --repo /absolute/path/to/target/repo --runner gemini
+python3 run.py --repo /absolute/path/to/target/repo --log-level debug
 ```
 
-The watcher polls Azure DevOps with `az pipelines build show`, prints live status updates, and raises a terminal alert with a bell plus a desktop notification when the run completes or fails.
+Current built-in default models are:
 
-Choose a runner:
+- `claude` → `claude-haiku-4-5-20251001`
+- `copilot` → `gpt-5-mini`
+- `gemini` → `gemini-2.5-flash`
+
+Pass extra context into intake:
 
 ```bash
-python run.py --repo /path/to/repo --runner gemini   # gemini (default model: gemini-2.5-flash)
-python run.py --repo /path/to/repo --runner claude   # default
-python run.py --repo /path/to/repo --runner copilot
+python3 run.py \
+  --repo /absolute/path/to/target/repo \
+  --ado-url 'https://dev.azure.com/<org>/<project>/_workitems/edit/123456' \
+  --extra-context 'Reference PR: https://dev.azure.com/<org>/<project>/_git/<repo>/pullrequest/456'
 ```
 
-Pass extra context to the intake agent:
+Useful workflow flags:
 
-```bash
-python run.py --repo /path/to/repo --ado-url 'https://dev.azure.com/...' \
-  --extra-context "See PR https://dev.azure.com/.../pullrequest/456 for implementation examples."
-```
+| Flag | Purpose |
+|---|---|
+| `--story-file` | Use a local synthetic fixture JSON file |
+| `--ado-url` | Use a live Azure DevOps work item |
+| `--change-id` | Override or supply the workflow change ID |
+| `--runner` / `--model` | Select runner/model or runner alias |
+| `--log-level` | Set CLI logging verbosity (`debug`, `info`, `warning`, `error`, `critical`) |
+| `--extra-context` | Append free-form context to intake |
+| `--skip-lessons-optimizer` | Skip the final lessons stage |
+| `--calibration-fast-mode` | Use a cheaper single-iteration workflow profile for calibration-style runs |
 
-The text is appended verbatim to the intake prompt. The intake agent incorporates it into `story.yaml` and `constraints.md`, so all downstream stages inherit it through those artifacts.
+## Evaluation framework
 
-Run `python run.py --help` for all options.
+The evaluation framework lives under [`eval/`](eval/).
 
----
+- `eval/synthesize.py` generates repository-wide easy/medium/hard stories
+- default synthesis produces **predicted tiers** only
+- empirical calibration is **opt-in** with `--calibrate`
+- `eval/run_eval.py` runs suites or individual stories against a target repo
 
-## Create and run calibrated eval stories
-
-Use this flow when you want to generate the repository-wide eval corpus for a **single dataset** and immediately run it against a target repo.
-
-### Step 1 — Install dependencies
-
-```bash
-python3 -m pip install -r requirements.txt
-```
-
-### Step 2 — Create a dataset manifest
-
-Copy this example into a new file such as `eval/datasets/my-service.yaml`, then replace the paths and domain description with your own:
-
-```bash
-mkdir -p eval/datasets
-cat > eval/datasets/my-service.yaml <<'YAML'
-dataset_id: my-service
-display_name: my-service
-source:
-  type: code_repository
-  path: /absolute/path/to/my-service/src
-  include_extensions:
-    - .py
-    - .ts
-  exclude_patterns:
-    - /node_modules/
-    - /dist/
-    - /coverage/
-sampling:
-  strategy: stratified
-  sample_size: 50
-  seed: 8675309
-  stratify_by: layer
-domain_context: >
-  This is the repository you want to evaluate. Synthetic stories should ask
-  the agent to implement realistic changes that match this codebase.
-metadata:
-  owner: platform-eval
-YAML
-```
-
-### Step 3 — Lock the dataset sample
-
-```bash
-python3 eval/init_dataset.py --dataset eval/datasets/my-service.yaml
-```
-
-This writes:
-
-- `eval/datasets/my-service.lock`
-- `eval/datasets/samples/my-service_sample.jsonl`
-
-### Step 4 — Synthesize and calibrate the eval stories
+Quick example:
 
 ```bash
 python3 eval/synthesize.py \
   --dataset eval/datasets/my-service.yaml \
-  --repo /absolute/path/to/my-service \
   --runner copilot \
-  --model gpt-5-mini \
   --output eval/suites \
   --stories-output eval/stories
+
+python3 eval/run_eval.py \
+  --suite eval/suites/hard \
+  --repo /absolute/path/to/target/repo \
+  --skip-opik
 ```
 
-What this does:
-
-1. Generates one repository-wide story each for **easy**, **medium**, and **hard**.
-2. Keeps the story title and description fixed.
-3. Iteratively rewrites only the ACs.
-4. Runs a faster default calibration profile: **3 workflow trials** per candidate
-   AC set, with cheaper single-iteration workflow loops enabled during
-   calibration.
-5. Accepts the AC set only when the measured pass rate lands in-band:
-   - **Easy:** `>= 75%`
-   - **Medium:** `50% - 74%`
-   - **Hard:** `25% - 49%`
-6. Stops after **5 iterations** by default and automatically resumes from
-   compatible raw-story checkpoints in `eval/suites/raw/` when possible.
-
-While this command runs, it now streams live synthesis and calibration output to
-the terminal. If the selected runner exposes token-by-token response text, you
-will see that too, but hidden model reasoning is not available unless the
-runner CLI itself reveals it.
-
-The command writes:
-
-```text
-eval/suites/easy/
-eval/suites/medium/
-eval/suites/hard/
-eval/suites/raw/
-eval/suites/synthesis_report.json
-eval/stories/story_001_easy.json
-eval/stories/story_002_medium.json
-eval/stories/story_003_hard.json
-```
-
-### Step 5 — Run the generated suites
-
-```bash
-python3 eval/run_eval.py --suite eval/suites/easy   --repo /absolute/path/to/my-service --runner copilot --model gpt-5-mini --skip-opik
-python3 eval/run_eval.py --suite eval/suites/medium --repo /absolute/path/to/my-service --runner copilot --model gpt-5-mini --skip-opik
-python3 eval/run_eval.py --suite eval/suites/hard   --repo /absolute/path/to/my-service --runner copilot --model gpt-5-mini --skip-opik
-```
-
-### Step 6 — Re-synthesize only flagged stories later
-
-If you already have a calibration report or hint file and only want to rework flagged stories:
-
-```bash
-python3 eval/synthesize.py \
-  --dataset eval/datasets/my-service.yaml \
-  --repo /absolute/path/to/my-service \
-  --runner copilot \
-  --model gpt-5-mini \
-  --output eval/suites \
-  --stories-output eval/stories \
-  --ac-hints eval/suites/calibration_report.json
-```
-
-For the full evaluation reference, artifact details, and troubleshooting, see [`eval/README.md`](eval/README.md).
-
----
+For the full evaluation workflow, artifacts, source types, calibration, plugins, baselines, and troubleshooting, see [`eval/README.md`](eval/README.md).
 
 ## Local API + GUI
 
-A local-first FastAPI server + single-file GUI wraps the headless runner so you can submit and monitor jobs from a browser.
+The FastAPI server serves the GUI at `/` and exposes JSON and SSE endpoints for automation.
 
-```bash
-pip install -r requirements.txt
-python server_main.py
-# -> http://localhost:8742
-```
+### UI views
 
-If you also want the bundled local Opik stack configured automatically, prefer the OS bootstrap wrapper above instead of starting `server_main.py` directly.
+The current UI includes five views:
 
-Manual `server_main.py` startup only requires Python dependencies. Docker is only needed when you want the local self-hosted Opik stack as well.
+- **Runs**
+- **Agents**
+- **Evaluations**
+- **Evaluate**
+- **Settings**
 
-You can override the bind address at startup:
+### Local state
 
-```bash
-python server_main.py --host 127.0.0.1 --port 8742
-python server_main.py --reload   # dev hot reload
-```
-
-The GUI (served at `/`) provides 5 views:
-
-- **Runs** — submit a job, watch live SSE event streams, cancel running jobs, and open the current run in Opik with trace filters already applied.
-- **Agents** — lists materializable agents from `agent-definition-source/*/v*/`; click an agent to read its latest prompt alongside bundle metadata.
-- **Corpus** — lists `eval/stories/*.json` with per-story pass-rate history.
-- **Evaluate** — gives a compact local summary and a prominent bridge into the Opik evaluation workspace.
-- **Settings** — edit `~/.agent-runner/config.json` (host, port, defaults, concurrency, Opik project metadata).
-
-State lives under `~/.agent-runner/`:
-
-```
+```text
 ~/.agent-runner/
-├── config.json            # Edited via Settings view
-├── jobs.db                # SQLite job store
-├── cassettes/<id>.jsonl   # Hermetic-mode CLI recordings
-├── memory/                # Reserved for agent session memory
-└── opik/                  # Local self-hosted Opik checkout used by bootstrap
+├── config.json
+├── jobs.db
+├── cassettes/<change-id>.jsonl
+├── memory/
+└── opik/
+```
+
+Server event logs are written in the repo under:
+
+```text
+logs/<change-id>/events.jsonl
 ```
 
 ### Hermetic mode
 
-Selecting **Hermetic** mode on submit records every CLI subprocess invocation (cmd, stdout, stderr, exit code, duration) into `~/.agent-runner/cassettes/{change_id}.jsonl` for later inspection. The CLI still talks to the real backend; only the I/O is captured. Replay is not yet implemented.
+Submitting a run in **Hermetic** mode records subprocess invocations into `~/.agent-runner/cassettes/{change_id}.jsonl`. The workflow still talks to the real backend CLI; this mode captures I/O, it does not replay it.
 
-### CLI compatibility
-
-The CLI (`python run.py ...`) is unchanged when used standalone. Event emission and cassette recording are gated by `AGENT_RUNNER_EVENT_LOG` / `AGENT_RUNNER_CASSETTE` env vars set by the server when it spawns the subprocess.
-
-### Useful API endpoints
+### API endpoints
 
 | Method | Path | Notes |
 |---|---|---|
 | `GET` | `/health` | Liveness + version |
-| `GET` | `/` | Serves the single-file GUI |
-| `POST` | `/runs` | Submit a regular run with the same inputs exposed by `run.py` |
-| `GET` | `/runs` | List recent regular jobs by default; pass `run_kind=evaluation` for evaluation jobs |
-| `GET` | `/runs/{job_id}` | Job detail including status, aggregates, and child jobs |
-| `GET` | `/runs/{job_id}/events` | Replay the full event log as a JSON array |
-| `GET` | `/runs/{job_id}/stream` | SSE stream of live events; supports `Last-Event-ID` and `?after=<seq>` |
-| `POST` | `/runs/{job_id}/cancel` | Cancel a queued/running job |
-| `GET` | `/agents` | Agent catalog from `agent-definition-source/*/v*/` |
-| `GET` | `/agents/{name}` | Latest prompt text and metadata for a selected agent |
-| `GET` | `/corpus` | Eval stories with history-derived pass rates |
-| `GET` | `/evaluate/summary` | Aggregated pass-rate and regression summary |
-| `POST` | `/evaluate/runs` | Submit a run for a selected evaluation story |
+| `GET` | `/` | Serves the GUI |
+| `POST` | `/runs` | Submit a regular workflow run |
+| `GET` | `/runs` | List regular runs by default; pass `run_kind=evaluation` or `all` to widen scope |
+| `GET` | `/runs/{job_id}` | Job detail, children, and Opik link context |
+| `GET` | `/runs/{job_id}/events` | Replay the full event log as JSON |
+| `GET` | `/runs/{job_id}/stream` | SSE stream with `Last-Event-ID` / `?after=` support |
+| `POST` | `/runs/{job_id}/respond` | Submit answers when a run is waiting for user input |
+| `POST` | `/runs/{job_id}/cancel` | Cancel a queued or running job |
+| `GET` | `/agents` | List materialized agents |
+| `GET` | `/agents/{name}` | Read the latest prompt + metadata for one agent |
+| `GET` | `/corpus` | List evaluation stories |
+| `GET` | `/corpus/{change_id}` | Read one evaluation story |
+| `GET` | `/evaluate/summary` | Aggregate evaluation summary |
+| `POST` | `/evaluate/runs` | Start an evaluation run |
 | `GET` / `PUT` | `/settings` | Read/update `~/.agent-runner/config.json` |
+| `POST` | `/settings/opik/connect` | Resolve and save Opik workspace/project metadata |
 
-Example submission:
+Example run submission:
 
 ```bash
 curl -X POST http://127.0.0.1:8742/runs \
@@ -368,151 +251,113 @@ curl -X POST http://127.0.0.1:8742/runs \
   -d '{
     "repo": "/absolute/path/to/target/repo",
     "change_id": "TEST-AC-001",
-    "story_file": "agent-context/test-fixtures/synthetic_story.json",
+    "story_file": "/absolute/path/to/agent-workbench/workflow-fixtures/synthetic_story.json",
     "runner": "claude",
-    "mode": "live",
-    "skip_materialize": false
+    "mode": "live"
   }'
 ```
 
----
-
-## Synthetic Mode vs. ADO Mode
+## Synthetic mode vs. ADO mode
 
 | | Synthetic | ADO |
 |---|---|---|
-| Credentials needed | ❌ None | ✅ Azure CLI |
-| Network required | ❌ No | ✅ Yes |
-| Input source | Local JSON file | Live ADO work item |
-| ADO operations | Skipped | Active |
+| Credentials needed | None | Azure CLI |
+| Network required | No | Yes |
+| Input source | Local JSON fixture | Live Azure DevOps work item |
+| Selected by | `--story-file` or default fixture | `--ado-url` |
 
-**Synthetic mode** is selected automatically when you pass `--story-file` (or use the default fixture). **ADO mode** is selected when you pass `--ado-url`.
+## Synthetic fixture format
 
----
-
-## Synthetic Fixture Format
-
-All synthetic story fixtures must be valid JSON objects with these required fields:
+Synthetic fixtures must be JSON objects with these required fields:
 
 | Field | Type | Notes |
 |---|---|---|
-| `change_id` | string | e.g. `TEST-AC-001`. Can instead be passed via `--change-id`. |
+| `change_id` | string | May also be supplied via `--change-id` |
 | `title` | string | One-line title |
-| `description` | string | Multi-line narrative |
-| `acceptance_criteria` | list or object | See below |
+| `description` | string | Narrative description |
+| `acceptance_criteria` | list or object | Must be non-empty |
 
-### Acceptance Criteria
-
-Either a list of strings or a keyed object — both are normalized to `AC1`, `AC2`, ... during intake:
+Acceptance criteria can be either:
 
 ```json
 { "acceptance_criteria": ["First criterion", "Second criterion"] }
 ```
+
+or:
+
 ```json
 { "acceptance_criteria": { "AC1": "First criterion", "AC2": "Second criterion" } }
 ```
 
-Optional fields: `examples`, `constraints`, `non_functional_requirements`, `raw_input_notes`, `ado_metadata`.
-
-### Bundled Fixtures
+Bundled fixture:
 
 | File | Change ID | Purpose |
-|------|-----------|---------|
-| `agent-context/test-fixtures/synthetic_story.json` | `TEST-AC-001` | Smoke-test — validates workflow stages |
-| `agent-context/test-fixtures/synthetic_story_medium.json` | `TEST-MEDIUM-001` | Multi-task decomposition scenario |
+|---|---|---|
+| `workflow-fixtures/synthetic_story.json` | `TEST-AC-001` | Default smoke-test fixture used when neither `--story-file` nor `--ado-url` is provided |
 
----
+## Artifact layout
 
-## Artifact Layout
-
-```
+```text
 agent-context/<change-id>/
 ├── intake/
-│   ├── story.yaml        # Normalized story + acceptance criteria
-│   ├── config.yaml       # Workflow config (includes project_type marker)
-│   └── constraints.md    # Extracted constraints and open questions
-├── planning/             # tasks.yaml, assignments.json
-├── execution/            # impl_report.yaml per UoW
-├── qa/                   # qa_report.yaml
+│   ├── story.yaml
+│   ├── config.yaml
+│   ├── constraints.md
+│   ├── user_questions.json      # when the workflow asks for user input
+│   └── user_responses.json      # written after /runs/{job_id}/respond
+├── planning/
+│   ├── tasks.yaml
+│   └── assignments.json
+├── execution/
+│   └── <uow-id>/
+│       └── impl_report.yaml
+├── qa/
+│   └── qa_report.yaml
 └── summary/
+    ├── lessons_optimizer_report.yaml
+    └── workflow_status.yaml
 
 logs/<change-id>/
-├── events.jsonl          # Structured job/stage/CLI events for API replay + SSE
-├── intake/
-├── task_generator/
-├── assignment/
-├── software_engineer/
-├── qa/
-└── ...other agent/evaluator log directories
+└── events.jsonl
 ```
 
----
+## Workflow stages
 
-## Workflow Stages
+1. **Intake** — normalizes fixture or ADO input into canonical intake artifacts
+2. **Task Generation** — writes `planning/tasks.yaml`
+3. **Task Assignment** — writes `planning/assignments.json`
+4. **Implementation** — iterates through units of work and writes per-UoW implementation reports
+5. **QA** — validates the implementation and writes `qa/qa_report.yaml`
+6. **Lessons** — writes `summary/lessons_optimizer_report.yaml`
 
-1. **Intake** — Normalizes fixture/ADO context into `intake/*` artifacts
-2. **Task Generation** — Decomposes story into `tasks.yaml`
-3. **Task Assignment** — Schedules units of work into `assignments.json`
-4. **Implementation** — Executes each UoW, writes `impl_report.yaml`
-5. **QA** — Validates outputs, writes `qa_report.yaml`
-6. **Lessons Optimization** — Captures learnings and best practices
-
-When runs are launched through the local API, each stage also emits structured `job.start`, `stage.start`, `stage.end`, `cli.invoke`, `cli.exit`, and `job.end` events into `logs/<change-id>/events.jsonl`. The Runs view replays that file and then switches to live SSE for in-progress jobs.
-
----
+When runs are launched through the local API, the server also records structured events in `logs/<change-id>/events.jsonl` and streams them over SSE.
 
 ## Testing
 
 ```bash
-# Existing command-runner tests
-python3 -m pytest -q tests/test_run_cmds.py
-
-# Local API + GUI smoke coverage
 python3 -m pytest -q tests/test_server_routes.py tests/test_server_events.py
-
-# Whole repository test suite
+python3 -m pytest -q tests/test_workflow_inputs.py tests/test_runner_proc.py
+python3 -m pytest -q tests/test_eval_run_eval.py tests/test_eval_synthesize.py
 python3 -m pytest -q tests/
 ```
-
-The new server tests cover:
-
-- GUI serving from `/`
-- `/health`, `/runs`, `/settings`, `/agents`, `/corpus`, `/evaluate/summary`
-- partial settings updates and validation failures
-- JSONL event emission sequencing
-- env-gated cassette recording
-
----
 
 ## Troubleshooting
 
 | Error | Cause | Fix |
 |---|---|---|
-| `Synthetic story fixture not found` | Bad path | Use an absolute path or `~` expansion |
-| `must be a JSON object` | Array at top level or invalid JSON | Wrap in `{}`, validate syntax |
-| `missing required field(s)` | `change_id`/`title`/`description`/`acceptance_criteria` absent or empty | Add the missing field |
-| `acceptance_criteria must be a non-empty list...` | Empty, `null`, or non-string values | Use a non-empty list or map of strings |
-| `change_id does not match` | `--change-id` and fixture `change_id` conflict | Remove one, or make them match |
-| `Provide either ado_url or story_file, not both` | Both flags passed | Pick one mode |
-| `api.port must be an integer between 1 and 65535` | Invalid Settings value or bad `--port` override | Choose a valid TCP port |
+| `Synthetic story fixture not found` | Bad `--story-file` path | Use an absolute path or `~` expansion |
+| `Synthetic story fixture must be a JSON object` | Top-level JSON is not an object | Wrap the fixture in `{}` |
+| `missing required field(s)` | `title`, `description`, or `acceptance_criteria` missing or empty | Add the missing required fields |
+| `acceptance_criteria must be ...` | Empty / invalid AC values | Use a non-empty list of strings or non-empty string map |
+| `change_id does not match` | `--change-id` and fixture `change_id` conflict | Remove one or make them match |
+| `Provide either ado_url or story_file, not both` | Both modes were requested | Pick one intake mode |
+| `api.port must be an integer between 1 and 65535` | Invalid settings value or bad `--port` override | Choose a valid TCP port |
 | Browser shows `API offline` | `server_main.py` is not running or host/port changed | Start the server and open the configured host/port |
 
----
-
-## Planned Work
-
-| Item | Description |
-|------|-------------|
-| **Meta-evaluation pipeline** | A second-order evaluation loop that assesses the quality of the evaluator agents themselves — checking whether their PASS/FAIL verdicts correlate with actual downstream outcomes. Enables automated tuning of evaluator prompts and scoring rubrics without manual review. |
-| Cassette replay | Execute a full workflow run from a previously recorded cassette without hitting live AI backends. |
-| Streaming token metrics | Real-time token usage and cost display in the metrics bar as each stage completes. |
-
----
-
-## Synthetic Mode Markers
+## Synthetic mode markers
 
 After intake, synthetic runs are identifiable by:
 
-- `config.yaml` → `project_type: 'synthetic-fixture'`
-- `story.yaml` → `raw_input.source_type: synthetic_fixture`
-- `story.yaml` → **no** `ado_provenance` key
+- `intake/story.yaml` with synthetic raw input metadata
+- `intake/config.yaml` marking the run as synthetic-fixture based
+- the absence of ADO provenance metadata

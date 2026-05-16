@@ -77,3 +77,19 @@ google-genai
 # Local API + GUI server (server/ + gui/index.html, started via `python server_main.py`)
 fastapi
 uvicorn[standard]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RTK CLI (optional — token-optimizing terminal proxy)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# RTK is a separate CLI binary (not a Python package). The workflow uses it via
+# core/rtk_terminal.py to compress shell output when present on PATH. When
+# absent, the workflow falls back to raw shell execution automatically.
+#
+# Install from the internal Mayo fork:
+#
+#   git clone git@ssh.dev.azure.com:v3/mclm/Mayo%20Open%20Developer%20Network/mayo-rtk-ai
+#   cd mayo-rtk-ai && cargo build --release
+#   cp target/release/rtk ~/.local/bin/   # or anywhere on PATH
+#   codesign -s - ~/.local/bin/rtk         # macOS Gatekeeper workaround
+#

@@ -7,3 +7,4 @@ __pycache__/
 /agent-context/
 /eval/.run_fixtures/
 /CHANGE-ID/
+/logs/

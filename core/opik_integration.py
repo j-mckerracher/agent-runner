@@ -31,8 +31,8 @@ import httpx
 from opik import opik_context
 from google import genai as google_genai
 from .ui_trace_bridge import track_with_ui
-from .run_cmds import build_runner_agent_instructions, run_copilot_cmd
-from .runner_models import is_copilot_runner
+from .run_cmds import build_runner_agent_instructions, run_copilot_cmd, run_openai_compat_text
+from .runner_models import is_copilot_runner, _provider_for_runner
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +119,6 @@ def call_evaluator_sdk(
     model: str = "claude-haiku-4-5-20251001",
     runner: str = "claude",
     runner_model: str | None = None,
-    copilot_effort: str | None = None,
 ) -> str:
     """
     Run an evaluator agent via Copilot CLI, Anthropic SDK, or Gemini SDK with Opik tracing.
@@ -141,7 +140,6 @@ def call_evaluator_sdk(
         model:         Model ID (Anthropic, Copilot, or Gemini depending on runner).
         runner:        One of "copilot", "claude", or "gemini".
         runner_model:  Explicit model name to use (overrides *model* when runner=="gemini").
-        copilot_effort: Optional effort level for Copilot ("low", "medium", "high").
 
     Returns:
         The raw text response from the model.
@@ -155,28 +153,45 @@ def call_evaluator_sdk(
         else context
     )
     logger.debug("call_evaluator_sdk: user_message length=%d agent=%s", len(user_message), agent_name)
+    provider = _provider_for_runner(runner, _load_runtime_config_for_provider()) if not is_copilot_runner(runner) else None
+    logger.info("call_evaluator_sdk: resolved provider=%s for runner=%s", provider, runner)
 
     if is_copilot_runner(runner):
         if runner == "copilot":
             # Base copilot: pass --model as usual
-            logger.info("call_evaluator_sdk: using Copilot CLI model=%s effort=%s agent=%s", model, copilot_effort, agent_name)
+            logger.info("call_evaluator_sdk: using Copilot CLI model=%s agent=%s", model, agent_name)
             text = run_copilot_cmd(
                 prompt=user_message,
                 agent=agent_name,
                 model=model,
-                effort=copilot_effort,
             )
         else:
             # Alias runner (e.g. "copilot-deepseek"): binary IS the command, no --model flag
-            logger.info("call_evaluator_sdk: using Copilot alias cli_cmd=%s effort=%s agent=%s", runner, copilot_effort, agent_name)
+            logger.info("call_evaluator_sdk: using Copilot alias cli_cmd=%s agent=%s", runner, agent_name)
             text = run_copilot_cmd(
                 prompt=user_message,
                 agent=agent_name,
-                effort=copilot_effort,
                 cli_cmd=runner,
             )
         logger.info("call_evaluator_sdk: Copilot CLI call succeeded agent=%s response_len=%d", agent_name, len(text or ""))
-        _attach_usage_metadata(None, provider="copilot", model=model)
+        # Token metrics are emitted directly by run_copilot_cmd
+        return text
+
+    elif provider == "openai-compat":
+        logger.info("call_evaluator_sdk: using OpenAI-compatible chat API model=%s agent=%s runner=%s", model, agent_name, runner)
+        logger.debug("call_evaluator_sdk: openai-compat system_prompt len=%d, user_message len=%d", len(system_prompt), len(user_message))
+        try:
+            text = run_openai_compat_text(
+                prompt=user_message,
+                system_prompt=system_prompt,
+                model=model,
+                runner=runner,
+            )
+        except Exception as exc:
+            logger.error("call_evaluator_sdk: OpenAI-compatible call FAILED agent=%s: %s: %s", agent_name, type(exc).__name__, exc)
+            raise
+        logger.info("call_evaluator_sdk: OpenAI-compatible call succeeded agent=%s response_len=%d", agent_name, len(text or ""))
+        logger.debug("call_evaluator_sdk: OpenAI-compatible response: %s", (text or "")[:500])
         return text
 
     elif runner == "claude":
@@ -259,6 +274,14 @@ def call_evaluator_sdk(
         raise ValueError(f"Unknown runner={runner} for call_evaluator_sdk; must be one of 'copilot', 'claude', 'gemini', or a copilot alias (copilot-<name>)")
 
 
+def _load_runtime_config_for_provider() -> dict:
+    try:
+        from server.config import load_config
+        return load_config()
+    except Exception:
+        return {}
+
+
 def _attach_usage_metadata(response, *, provider: str, model: str = "") -> None:
     """
     Attach token usage to the current Opik span when the response carries it.
@@ -309,4 +332,3 @@ def _attach_usage_metadata(response, *, provider: str, model: str = "") -> None:
         # Never let observability errors propagate.
         logger.debug("_attach_usage_metadata: swallowed error: %s", exc)
         return
-

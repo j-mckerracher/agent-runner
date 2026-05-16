@@ -1,6 +1,7 @@
 """Runs API: submit, list, detail, events, SSE stream, cancel."""
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import logging
@@ -9,8 +10,9 @@ from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from core.cli_logging import normalize_log_level
 from core.workflow_inputs import resolve_workflow_input
 
 from .. import db
@@ -18,7 +20,7 @@ from ..config import load_config
 from ..events import read_all
 from ..jobs import manager
 from ..paths import user_responses_path_for
-from core.runner_models import canonical_runner, RUNNER_DEFAULT_MODELS
+from core.runner_models import KNOWN_RUNNERS, resolve_runner_model
 
 logger = logging.getLogger(__name__)
 
@@ -68,22 +70,36 @@ class RunSubmit(BaseModel):
     change_id: str
     runner: str = "claude"
     model: Optional[str] = None
-    copilot_effort: Optional[str] = None
+    log_level: str = "warning"
     mode: str = Field("live", pattern="^(live|hermetic)$")
     run_kind: Optional[str] = None
     ado_url: Optional[str] = None
     story_file: Optional[str] = None
     extra_context: Optional[str] = None
-    skip_materialize: bool = False
     parent_job_id: Optional[str] = None
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _normalize_log_level(cls, value: object) -> str:
+        if value is None:
+            return "warning"
+        try:
+            return normalize_log_level(str(value))
+        except argparse.ArgumentTypeError as exc:
+            raise ValueError(str(exc)) from exc
 
 
 @router.post("")
 async def submit_run(payload: RunSubmit) -> dict[str, Any]:
     logger.info("submit_run: change_id=%s runner=%s mode=%s", payload.change_id, payload.runner, payload.mode)
-    if canonical_runner(payload.runner) not in RUNNER_DEFAULT_MODELS:
+    cfg = load_config()
+    valid_runners = set(KNOWN_RUNNERS) | set((cfg.get("runner_aliases") or {}).keys())
+    if payload.runner not in valid_runners:
         logger.warning("submit_run: invalid runner=%s", payload.runner)
-        raise HTTPException(400, "runner must be claude, copilot, gemini, or a copilot alias (copilot-<name>)")
+        raise HTTPException(
+            400,
+            f"runner must be one of: {', '.join(sorted(valid_runners))}"
+        )
     if payload.run_kind and payload.run_kind != "regular":
         logger.warning("submit_run: invalid run_kind=%s", payload.run_kind)
         raise HTTPException(400, "regular runs must be submitted through /runs")

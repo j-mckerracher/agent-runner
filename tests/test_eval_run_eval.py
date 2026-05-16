@@ -113,7 +113,6 @@ class EvalRunEvalTests(unittest.TestCase):
             "runs": 1,
             "max_concurrent": 1,
             "skip_pipeline": True,
-            "skip_materialize": False,
             "skip_opik": True,
             "regression_threshold": 0.0,
             "update_baseline": False,
@@ -142,7 +141,7 @@ class EvalRunEvalTests(unittest.TestCase):
         subprocess_run.assert_not_called()
         self.assertFalse(any(self.fixtures.glob("*.json")))
 
-    def test_pipeline_launch_passes_story_repo_runner_model_and_skip_materialize(self):
+    def test_pipeline_launch_passes_story_repo_runner_and_model(self):
         story_path = self._write_story()
         self._write_suite(story_path)
         self._write_artifact(text="")
@@ -150,7 +149,7 @@ class EvalRunEvalTests(unittest.TestCase):
         completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="implemented needle", stderr="")
         with mock.patch.object(run_eval.subprocess, "run", return_value=completed) as subprocess_run:
             result = run_eval.run_eval(
-                self._args(skip_pipeline=False, skip_materialize=True, model="claude-sonnet")
+                self._args(skip_pipeline=False, model="claude-sonnet")
             )
 
         command = subprocess_run.call_args.args[0]
@@ -161,7 +160,6 @@ class EvalRunEvalTests(unittest.TestCase):
         self.assertIn("claude", command)
         self.assertIn("--model", command)
         self.assertIn("claude-sonnet", command)
-        self.assertIn("--skip-materialize", command)
         self.assertEqual(result.stories[0].subprocess_returncode, 0)
 
     def test_run_story_trials_passes_calibration_fast_mode_to_workflow(self):
@@ -392,6 +390,55 @@ class EvalRunEvalTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertFalse((self.baselines / "hard.json").exists())
 
+    def test_pipeline_failure_without_persisted_artifacts_marks_no_attempt(self):
+        story_path = self._write_story()
+        self._write_suite(story_path)
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=2,
+            stdout="2026-05-13 log line\nI'm sorry, but I cannot assist with that request.",
+            stderr="missing assignments.json",
+        )
+
+        with mock.patch.object(run_eval.subprocess, "run", return_value=completed):
+            result = run_eval.run_eval(self._args(skip_pipeline=False))
+
+        self.assertTrue(result.workflow_failed)
+        self.assertEqual(result.summary.attempted_rate, 0.0)
+        self.assertEqual(result.stories[0].artifact_text, "")
+        self.assertEqual([check.failure_reason for check in result.stories[0].checks], ["NO_ATTEMPT"])
+        self.assertEqual([check.attempted for check in result.stories[0].checks], [False])
+
+    def test_pipeline_failure_with_only_workflow_status_still_marks_no_attempt(self):
+        story_path = self._write_story()
+        self._write_suite(story_path)
+        status = self.workdir / "agent-context" / "CHG-001" / "summary" / "workflow_status.yaml"
+        status.parent.mkdir(parents=True)
+        status.write_text("status: failed\nfailed_stage: execution\n", encoding="utf-8")
+        completed = subprocess.CompletedProcess(args=[], returncode=2, stdout="workflow failed", stderr="boom")
+
+        with mock.patch.object(run_eval.subprocess, "run", return_value=completed):
+            result = run_eval.run_eval(self._args(skip_pipeline=False))
+
+        self.assertTrue(result.workflow_failed)
+        self.assertEqual(result.summary.attempted_rate, 0.0)
+        self.assertEqual(result.stories[0].artifact_text, "")
+        self.assertFalse(result.stories[0].checks[0].attempted)
+
+    def test_pipeline_failure_with_persisted_artifact_still_scores_story(self):
+        story_path = self._write_story()
+        self._write_suite(story_path)
+        self._write_artifact(text="implemented needle")
+        completed = subprocess.CompletedProcess(args=[], returncode=2, stdout="workflow failed", stderr="boom")
+
+        with mock.patch.object(run_eval.subprocess, "run", return_value=completed):
+            result = run_eval.run_eval(self._args(skip_pipeline=False))
+
+        self.assertTrue(result.workflow_failed)
+        self.assertEqual(result.summary.attempted_rate, 1.0)
+        self.assertTrue(result.stories[0].checks[0].attempted)
+        self.assertTrue(result.stories[0].checks[0].passed)
+
     def test_single_story_uses_story_suite_tier_for_baseline(self):
         story_path = self._write_story()
         self._write_artifact()
@@ -524,6 +571,35 @@ class EvalRunEvalTests(unittest.TestCase):
         client.flush.assert_called_once()
         metric = opik.call_args.kwargs["scoring_metrics"][0]
         self.assertEqual(metric.score()[0].name, "contains_expected_agent_output")
+
+    def test_create_opik_dataset_uses_persisted_opik_config(self):
+        client = mock.Mock()
+        dataset = mock.Mock()
+        client.get_or_create_dataset.return_value = dataset
+        config = {
+            "opik": {
+                "dashboard_url": "http://localhost:5173",
+                "workspace_name": "default",
+                "project_id": "project-123",
+                "project_name": "agent-workbench",
+            }
+        }
+        summary = run_eval.summarize_scores([])
+
+        with (
+            mock.patch("server.config.load_config", return_value=config),
+            mock.patch("core.opik_tracing.opik.configure") as configure,
+            mock.patch("core.opik_tracing.opik.Opik", return_value=client) as opik_client,
+        ):
+            returned_client, returned_dataset = run_eval._create_opik_dataset("hard", summary)
+
+        self.assertIs(returned_client, client)
+        self.assertIs(returned_dataset, dataset)
+        configure.assert_called_once()
+        opik_client.assert_called_once_with(project_name="agent-workbench", workspace="default")
+        client.auth_check.assert_called_once()
+        client.get_or_create_dataset.assert_called_once()
+        dataset.insert.assert_called_once()
 
     def test_change_id_compatibility_finds_eval_story_json(self):
         stories_dir = self.workdir / "eval" / "stories"

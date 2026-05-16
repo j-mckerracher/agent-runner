@@ -2,24 +2,24 @@
 from __future__ import annotations
 
 from core.runner_models import (
-    COPILOT_EFFORT_CHOICES,
+    KNOWN_RUNNERS,
     RUNNER_DEFAULT_MODELS,
     RUNNER_MODEL_CHOICES,
-    discover_copilot_aliases,
-    copilot_alias_model,
 )
 
 
-def runner_choices() -> dict:
-    aliases = discover_copilot_aliases()
-    all_runners = list(RUNNER_MODEL_CHOICES.keys()) + aliases
+def runner_choices(config: dict | None = None) -> dict:
+    """Return runner choices: known providers + custom aliases from config."""
+    runner_aliases = (config or {}).get("runner_aliases", {})
+    all_runners = list(KNOWN_RUNNERS) + list(runner_aliases.keys())
     models: dict[str, list[str]] = {k: list(v) for k, v in RUNNER_MODEL_CHOICES.items()}
-    # Each copilot alias carries exactly one implied model (the alias suffix)
-    for alias_runner in aliases:
-        models[alias_runner] = [copilot_alias_model(alias_runner)]
+    # Custom aliases carry exactly one implied model
+    for alias_name, alias_def in runner_aliases.items():
+        provider = alias_def.get("provider", "")
+        model = alias_def.get("model", "")
+        models[alias_name] = [f"{provider}/{model}" if provider and model else model or provider]
     return {
         "runners": all_runners,
         "models": models,
         "defaults": dict(RUNNER_DEFAULT_MODELS),
-        "copilot_effort": list(COPILOT_EFFORT_CHOICES),
     }

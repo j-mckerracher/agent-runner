@@ -1,7 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ztk *)"
+      "Bash(rtk *)"
     ]
   },
   "hooks": {
@@ -11,7 +11,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "ztk rewrite"
+            "command": "rtk hook claude"
           }
         ]
       }

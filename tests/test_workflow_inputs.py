@@ -25,6 +25,12 @@ def _write_fixture(path: Path, payload: dict | list | str) -> None:
         path.write_text(json.dumps(payload), encoding="utf-8")
 
 
+def _make_repo_dir() -> tempfile.TemporaryDirectory[str]:
+    repo_dir = tempfile.TemporaryDirectory()
+    Path(repo_dir.name).mkdir(parents=True, exist_ok=True)
+    return repo_dir
+
+
 class LoadStoryFixtureBundledTests(unittest.TestCase):
     def setUp(self):
         self.fixture = load_story_fixture(str(DEFAULT_TEST_STORY_FILE))
@@ -222,7 +228,9 @@ class InferChangeIdFromAdoUrlTests(unittest.TestCase):
 
 class ResolveWorkflowInputBundledFixtureTests(unittest.TestCase):
     def setUp(self):
-        self.workflow_input = resolve_workflow_input(repo="/tmp/repo")
+        self._repo = _make_repo_dir()
+        self.addCleanup(self._repo.cleanup)
+        self.workflow_input = resolve_workflow_input(repo=self._repo.name)
 
     def test_easy__default_workflow_input_intake_mode_is_synthetic(self):
         self.assertEqual(self.workflow_input.intake_mode, "synthetic")
@@ -234,20 +242,27 @@ class ResolveWorkflowInputBundledFixtureTests(unittest.TestCase):
         self.assertEqual(self.workflow_input.change_id, "TEST-AC-001")
 
     def test_easy__default_workflow_input_repo_is_passed_through(self):
-        self.assertEqual(self.workflow_input.repo, "/tmp/repo")
+        self.assertEqual(self.workflow_input.repo, str(Path(self._repo.name).resolve()))
+
+    def test_easy__default_workflow_input_branch_description_source_uses_story_title(self):
+        self.assertEqual(
+            self.workflow_input.branch_description_source,
+            "Synthetic local fixture smoke test",
+        )
 
 
 class ResolveWorkflowInputErrorPathTests(unittest.TestCase):
     def test_medium__bundled_fixture_with_mismatched_change_id_raises_value_error(self):
-        with self.assertRaisesRegex(ValueError, "does not match"):
-            resolve_workflow_input(
-                repo="/tmp/repo",
-                story_file=str(DEFAULT_TEST_STORY_FILE),
-                change_id="DIFFERENT-ID",
-            )
+        with tempfile.TemporaryDirectory() as repo_dir:
+            with self.assertRaisesRegex(ValueError, "does not match"):
+                resolve_workflow_input(
+                    repo=repo_dir,
+                    story_file=str(DEFAULT_TEST_STORY_FILE),
+                    change_id="DIFFERENT-ID",
+                )
 
     def test_medium__fixture_without_change_id_raises_when_caller_omits_it(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory() as tmpdir, tempfile.TemporaryDirectory() as repo_dir:
             path = Path(tmpdir) / "story.json"
             _write_fixture(
                 path,
@@ -258,13 +273,26 @@ class ResolveWorkflowInputErrorPathTests(unittest.TestCase):
                 },
             )
             with self.assertRaisesRegex(ValueError, "must include change_id"):
-                resolve_workflow_input(repo="/tmp/repo", story_file=str(path))
+                resolve_workflow_input(repo=repo_dir, story_file=str(path))
+
+    def test_medium__missing_repo_path_raises_file_not_found_error(self):
+        with self.assertRaisesRegex(FileNotFoundError, "Repository path not found"):
+            resolve_workflow_input(repo="/absolute/path/to/your/repo")
+
+    def test_medium__repo_path_that_is_a_file_raises_value_error(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_file = Path(tmpdir) / "not-a-dir.txt"
+            repo_file.write_text("x", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "not a directory"):
+                resolve_workflow_input(repo=str(repo_file))
 
 
 class ResolveWorkflowInputAcceptsExplicitChangeIdTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
+        self._repo = _make_repo_dir()
+        self.addCleanup(self._repo.cleanup)
         path = Path(self._tmp.name) / "story.json"
         _write_fixture(
             path,
@@ -275,7 +303,7 @@ class ResolveWorkflowInputAcceptsExplicitChangeIdTests(unittest.TestCase):
             },
         )
         self.workflow_input = resolve_workflow_input(
-            repo="/tmp/repo",
+            repo=self._repo.name,
             story_file=str(path),
             change_id="TEST-AC-777",
         )
@@ -289,8 +317,10 @@ class ResolveWorkflowInputAcceptsExplicitChangeIdTests(unittest.TestCase):
 
 class ResolveWorkflowInputAdoModeTests(unittest.TestCase):
     def setUp(self):
+        self._repo = _make_repo_dir()
+        self.addCleanup(self._repo.cleanup)
         self.workflow_input = resolve_workflow_input(
-            repo="/tmp/repo",
+            repo=self._repo.name,
             ado_url="https://dev.azure.com/example/project/_workitems/edit/555",
         )
 
@@ -302,6 +332,9 @@ class ResolveWorkflowInputAdoModeTests(unittest.TestCase):
 
     def test_easy__ado_mode_intake_source_preserves_full_url_path(self):
         self.assertIn("_workitems/edit/555", self.workflow_input.intake_source)
+
+    def test_easy__ado_mode_branch_description_source_is_none(self):
+        self.assertIsNone(self.workflow_input.branch_description_source)
 
 
 if __name__ == "__main__":

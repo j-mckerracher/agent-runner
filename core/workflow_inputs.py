@@ -21,10 +21,16 @@ class WorkflowInput:
     change_id: str
     intake_mode: str
     intake_source: str
+    branch_description_source: str | None = None
 
 
 def _normalize_repo(repo: str | None) -> str:
-    return os.path.abspath(repo or os.getcwd())
+    resolved_repo = Path(repo or os.getcwd()).expanduser().resolve()
+    if not resolved_repo.exists():
+        raise FileNotFoundError(f"Repository path not found: {resolved_repo}")
+    if not resolved_repo.is_dir():
+        raise ValueError(f"Repository path is not a directory: {resolved_repo}")
+    return str(resolved_repo)
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -184,6 +190,7 @@ def resolve_workflow_input(
             change_id=resolved_change_id,
             intake_mode="synthetic",
             intake_source=fixture_path,
+            branch_description_source=fixture.get("title"),
         )
 
     inferred_change_id = infer_change_id_from_ado_url(ado_url or "")
@@ -200,4 +207,5 @@ def resolve_workflow_input(
         change_id=resolved_change_id,
         intake_mode="ado",
         intake_source=ado_url or "",
+        branch_description_source=None,
     )

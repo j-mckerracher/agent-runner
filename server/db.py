@@ -22,12 +22,11 @@ CREATE TABLE IF NOT EXISTS jobs (
   mode TEXT NOT NULL,
   runner TEXT NOT NULL,
   model TEXT,
-  copilot_effort TEXT,
+  log_level TEXT NOT NULL DEFAULT 'warning',
   repo TEXT NOT NULL,
   ado_url TEXT,
   story_file TEXT,
   extra_context TEXT,
-  skip_materialize INTEGER DEFAULT 0,
   submitted_at TEXT NOT NULL,
   started_at TEXT,
   finished_at TEXT,
@@ -56,6 +55,9 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     if "run_kind" not in columns:
         logger.info("_ensure_schema: adding jobs.run_kind column")
         conn.execute("ALTER TABLE jobs ADD COLUMN run_kind TEXT NOT NULL DEFAULT 'regular'")
+    if "log_level" not in columns:
+        logger.info("_ensure_schema: adding jobs.log_level column")
+        conn.execute("ALTER TABLE jobs ADD COLUMN log_level TEXT NOT NULL DEFAULT 'warning'")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_run_kind ON jobs(run_kind)")
 
 
@@ -105,9 +107,9 @@ def now_iso() -> str:
 
 
 _INSERTABLE = (
-    "id", "change_id", "parent_job_id", "status", "run_kind", "mode", "runner", "model",
-    "copilot_effort", "repo", "ado_url", "story_file", "extra_context",
-    "skip_materialize", "submitted_at", "events_path", "cassette_path",
+    "id", "change_id", "parent_job_id", "status", "run_kind", "mode", "runner", "model", "log_level",
+    "repo", "ado_url", "story_file", "extra_context",
+    "submitted_at", "events_path", "cassette_path",
 )
 
 

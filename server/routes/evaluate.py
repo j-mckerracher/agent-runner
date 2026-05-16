@@ -9,7 +9,7 @@ from core.workflow_inputs import resolve_workflow_input
 from .. import evaluate
 from .. import corpus
 from ..jobs import manager
-from core.runner_models import canonical_runner, RUNNER_DEFAULT_MODELS
+from core.runner_models import KNOWN_RUNNERS
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +22,8 @@ class EvaluationRunSubmit(BaseModel):
     change_id: Optional[str] = None
     runner: str = "claude"
     model: Optional[str] = None
-    copilot_effort: Optional[str] = None
     mode: str = Field("live", pattern="^(live|hermetic)$")
     extra_context: Optional[str] = None
-    skip_materialize: bool = False
 
 
 @router.get("/summary")
@@ -47,9 +45,12 @@ async def submit_evaluation_run(payload: EvaluationRunSubmit) -> dict:
         raise HTTPException(400, "story_id is required")
     if payload.story_id and payload.change_id and payload.story_id != payload.change_id:
         raise HTTPException(400, "story_id and change_id must match when both are provided")
-    if canonical_runner(payload.runner) not in RUNNER_DEFAULT_MODELS:
+    from ..config import load_config
+    cfg = load_config()
+    valid_runners = set(KNOWN_RUNNERS) | set((cfg.get("runner_aliases") or {}).keys())
+    if payload.runner not in valid_runners:
         logger.warning("submit_evaluation_run: invalid runner=%s", payload.runner)
-        raise HTTPException(400, "runner must be claude, copilot, gemini, or a copilot alias (copilot-<name>)")
+        raise HTTPException(400, f"runner must be one of: {', '.join(sorted(valid_runners))}")
 
     story = corpus.get_story(story_id)
     story_path = corpus.story_path_for(story_id)
@@ -73,12 +74,10 @@ async def submit_evaluation_run(payload: EvaluationRunSubmit) -> dict:
         "change_id": story["id"],
         "runner": payload.runner,
         "model": payload.model,
-        "copilot_effort": payload.copilot_effort,
         "mode": payload.mode,
         "ado_url": None,
         "story_file": str(story_path),
         "extra_context": payload.extra_context,
-        "skip_materialize": payload.skip_materialize,
         "run_kind": "evaluation",
     })
     logger.info("submit_evaluation_run: job submitted job_id=%s story_id=%s", job_id, story_id)

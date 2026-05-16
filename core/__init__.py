@@ -1,2 +1,1 @@
-# Core package — shared library modules for agent-workbench.
-
+"""Core package bootstrap for agent-workbench."""

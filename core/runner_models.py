@@ -1,5 +1,7 @@
-import json
-from pathlib import Path
+from __future__ import annotations
+
+import os
+from typing import Any
 
 GEMINI_MODEL_CHOICES = (
     "gemini-3-pro-preview",
@@ -40,81 +42,169 @@ COPILOT_MODEL_CHOICES = (
     "claude-haiku-4.5",
 )
 
-COPILOT_EFFORT_CHOICES = ("low", "medium", "high", "xhigh")
-DEFAULT_COPILOT_EFFORT: str | None = None  # omit flag unless explicitly set
-
 DEFAULT_COPILOT_MODEL = "gpt-5-mini"
 
 RUNNER_MODEL_CHOICES: dict[str, tuple[str, ...]] = {
-    "claude":  CLAUDE_MODEL_CHOICES,
+    "claude": CLAUDE_MODEL_CHOICES,
     "copilot": COPILOT_MODEL_CHOICES,
-    "gemini":  GEMINI_MODEL_CHOICES,
+    "gemini": GEMINI_MODEL_CHOICES,
 }
 
 RUNNER_DEFAULT_MODELS: dict[str, str] = {
-    "claude":  DEFAULT_CLAUDE_MODEL,
+    "claude": DEFAULT_CLAUDE_MODEL,
     "copilot": DEFAULT_COPILOT_MODEL,
-    "gemini":  DEFAULT_GEMINI_MODEL,
+    "gemini": DEFAULT_GEMINI_MODEL,
+}
+
+RUNNER_MODEL_PROVIDERS: dict[str, str] = {}
+
+RUNNER_ALIAS_LLM_OPTION_KEYS = (
+    "base_url",
+    "api_version",
+    "extra_headers",
+    "litellm_extra_body",
+    "num_retries",
+    "retry_multiplier",
+    "retry_min_wait",
+    "retry_max_wait",
+    "timeout",
+)
+
+# Known provider keys (used by server validation, GUI dropdowns, etc.)
+KNOWN_RUNNERS = frozenset(RUNNER_DEFAULT_MODELS.keys())
+
+OPENAI_COMPAT_RETRY_DEFAULTS: dict[str, Any] = {
+    "num_retries": 8,
+    "retry_multiplier": 2.0,
+    "retry_min_wait": 8,
+    "retry_max_wait": 120,
+    "timeout": 420,
 }
 
 
-# ─── Copilot alias helpers ────────────────────────────────────────────────────
+def _runner_aliases(config: dict | None) -> dict[str, dict[str, Any]]:
+    aliases = (config or {}).get("runner_aliases", {})
+    return aliases if isinstance(aliases, dict) else {}
 
-def is_copilot_runner(runner: str) -> bool:
-    """Return True for 'copilot' or any 'copilot-<alias>' runner string."""
+
+def _resolve_alias(runner: str, config: dict | None) -> dict[str, Any] | None:
+    alias = _runner_aliases(config).get(runner)
+    return alias if isinstance(alias, dict) else None
+
+
+def _default_transport_for_alias(alias: dict[str, Any]) -> dict[str, Any]:
+    provider = alias.get("provider")
+    if provider == "openai-compat":
+        return dict(OPENAI_COMPAT_RETRY_DEFAULTS)
+    return {}
+
+
+def _provider_for_runner(runner: str, config: dict | None = None) -> str | None:
+    alias = _resolve_alias(runner, config)
+    if alias is not None:
+        provider = alias.get("provider")
+        return provider if isinstance(provider, str) and provider else None
+    return RUNNER_MODEL_PROVIDERS.get(runner)
+
+
+def _qualify_model_for_runner(
+    runner: str,
+    model: str,
+    config: dict | None = None,
+) -> str:
+    provider = _provider_for_runner(runner, config)
+    if not provider or not model or "/" in model:
+        return model
+    return f"{provider}/{model}"
+
+
+def _split_provider_model(model: str) -> tuple[str | None, str]:
+    provider, sep, base_model = model.partition("/")
+    if not sep:
+        return None, model
+    return provider, base_model
+
+
+def is_copilot_runner(runner: str | None) -> bool:
+    """Return True for the base Copilot runner and any 'copilot-<alias>' variant."""
+    if not runner:
+        return False
     return runner == "copilot" or runner.startswith("copilot-")
 
 
-def canonical_runner(runner: str) -> str:
-    """Return the base runner name; maps any 'copilot-<alias>' to 'copilot'."""
-    if runner.startswith("copilot-"):
-        return "copilot"
-    return runner
+def _resolve_alias_model(
+    alias: dict[str, Any],
+    explicit_model: str | None = None,
+) -> str:
+    provider = alias.get("provider", "")
+    model = explicit_model if explicit_model is not None else alias.get("model", "")
+    if provider and model and "/" not in model:
+        return f"{provider}/{model}"
+    return model or provider
 
 
-def copilot_alias_model(runner: str) -> str:
-    """Return the model name component of a copilot alias runner string.
+def resolve_runner_transport_config(
+    runner: str,
+    config: dict | None = None,
+) -> dict[str, Any]:
+    alias = _resolve_alias(runner, config)
+    if alias is None:
+        return {}
 
-    This is used for display/reporting purposes only. Alias runners (e.g.
-    'copilot-gemma4') are invoked as their own CLI binary and do NOT receive
-    a --model flag — the binary itself defines the model.
+    transport = _default_transport_for_alias(alias)
+    for key in RUNNER_ALIAS_LLM_OPTION_KEYS:
+        value = alias.get(key)
+        if value is not None:
+            transport[key] = value
 
-    'copilot-gemma4'  → 'gemma4'
-    'copilot'         → DEFAULT_COPILOT_MODEL
-    """
-    if runner.startswith("copilot-"):
-        return runner[len("copilot-"):]
-    return DEFAULT_COPILOT_MODEL
+    api_key_env = alias.get("api_key_env")
+    if api_key_env:
+        api_key = os.environ.get(api_key_env)
+        if not api_key:
+            raise ValueError(
+                f"runner_aliases[{runner}].api_key_env points to unset environment variable "
+                f"'{api_key_env}'"
+            )
+        transport["api_key"] = api_key
+
+    return transport
 
 
-def discover_copilot_aliases() -> list[str]:
-    """Discover locally configured copilot alias runners from ~/.copilot/aliases.json.
+def resolve_runner_model(
+    runner: str,
+    explicit_model: str | None = None,
+    config: dict | None = None,
+) -> str:
+    """Resolve the model string for a given runner (provider or custom alias)."""
+    alias = _resolve_alias(runner, config)
+    if alias is not None:
+        return _resolve_alias_model(alias, explicit_model)
 
-    Each alias names a standalone CLI binary available on PATH (e.g. 'copilot-gemma4'
-    is a binary that wraps the Copilot harness with gemma4 running in Ollama cloud).
-    The binary is invoked directly — no ``--model`` flag is added.
+    if runner in RUNNER_DEFAULT_MODELS:
+        if explicit_model is not None:
+            allowed = RUNNER_MODEL_CHOICES.get(runner, ())
+            if allowed and explicit_model not in allowed:
+                raise ValueError(
+                    f"Model '{explicit_model}' is not valid for runner '{runner}'. "
+                    f"Valid models: {', '.join(allowed)}"
+                )
+            return _qualify_model_for_runner(runner, explicit_model, config)
+        return _qualify_model_for_runner(runner, RUNNER_DEFAULT_MODELS[runner], config)
 
-    The file should be a JSON array of alias name strings, e.g.::
+    raise ValueError(
+        f"Unknown runner: '{runner}'. Must be a known provider "
+        f"({', '.join(sorted(KNOWN_RUNNERS))}) or a custom alias defined in runner_aliases."
+    )
 
-        ["gemma4", "gpt5", "claude-sonnet"]
 
-    Returns a list of full runner strings like ``["copilot-gemma4", ...]``.
-    Returns ``[]`` when the file is absent or malformed.
-    """
-    aliases_path = Path.home() / ".copilot" / "aliases.json"
-    if not aliases_path.exists():
-        return []
-    try:
-        data = json.loads(aliases_path.read_text(encoding="utf-8"))
-        if isinstance(data, list):
-            return [
-                f"copilot-{alias}"
-                for alias in data
-                if isinstance(alias, str) and alias.strip()
-            ]
-    except Exception:  # noqa: BLE001
-        pass
-    return []
+def resolve_runner_llm_config(
+    runner: str,
+    explicit_model: str | None = None,
+    config: dict | None = None,
+) -> dict[str, Any]:
+    llm_config = {"model": resolve_runner_model(runner, explicit_model, config)}
+    llm_config.update(resolve_runner_transport_config(runner, config))
+    return llm_config
 
 
 def resolve_agent_model(
@@ -123,48 +213,28 @@ def resolve_agent_model(
     explicit_model: str | None = None,
     config: dict | None = None,
 ) -> str:
-    """
-    Resolve the model for a given agent and runner.
-
-    Precedence:
-    1. Explicit model provided by caller
-    2. Per-agent + per-runner configured default (from config.agent_model_defaults)
-    3. For copilot aliases: the alias suffix is the implicit model
-    4. Built-in runner default from RUNNER_DEFAULT_MODELS
-
-    Args:
-        agent_name:     Name of the agent (e.g., "task-plan-evaluator", "intake").
-        runner:         Runner to use ("claude", "copilot", "gemini", or "copilot-<alias>").
-        explicit_model: If provided, this takes highest precedence.
-        config:         Optional config dict with agent_model_defaults structure.
-                        Expected format: {"agent_model_defaults": {agent_name: {runner: model}}}
-
-    Returns:
-        The resolved model string to use.
-
-    Raises:
-        ValueError if runner is unknown.
-    """
+    """Resolve the model for a given agent and runner."""
     if explicit_model is not None:
-        return explicit_model
-
-    base_runner = canonical_runner(runner)
+        return _qualify_model_for_runner(runner, explicit_model, config)
 
     if config is not None:
         agent_defaults = config.get("agent_model_defaults", {})
         if agent_name in agent_defaults:
             runner_defaults = agent_defaults[agent_name]
-            # Prefer exact runner key (e.g. "copilot-gemma4"), fall back to base
-            if runner in runner_defaults:
-                return runner_defaults[runner]
-            if base_runner in runner_defaults:
-                return runner_defaults[base_runner]
+            if isinstance(runner_defaults, dict) and runner in runner_defaults:
+                model = runner_defaults[runner]
+                if isinstance(model, str):
+                    return _qualify_model_for_runner(runner, model, config)
 
-    if base_runner not in RUNNER_DEFAULT_MODELS:
-        raise ValueError(f"Unknown runner: {runner!r}. Must be one of {list(RUNNER_DEFAULT_MODELS.keys())}")
+    return resolve_runner_model(runner, None, config)
 
-    # For copilot aliases the alias suffix encodes the model
-    if is_copilot_runner(runner) and runner != "copilot":
-        return copilot_alias_model(runner)
 
-    return RUNNER_DEFAULT_MODELS[base_runner]
+def resolve_agent_llm_config(
+    agent_name: str,
+    runner: str,
+    explicit_model: str | None = None,
+    config: dict | None = None,
+) -> dict[str, Any]:
+    llm_config = resolve_runner_transport_config(runner, config)
+    llm_config["model"] = resolve_agent_model(agent_name, runner, explicit_model, config)
+    return llm_config

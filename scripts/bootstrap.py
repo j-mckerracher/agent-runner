@@ -292,6 +292,47 @@ def _configure_local_opik(candidates: list[str], *, project_name: str) -> dict[s
     raise BootstrapError(f"Unable to configure the local Opik instance. Last error: {last_error}") from last_error
 
 
+def _prompt_user_config() -> None:
+    """Interactive prompts for first-time config values not set by other bootstrap steps."""
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return
+
+    from server.config import load_config, save_config
+
+    cfg = load_config()
+    current_base = (cfg.get("repo_paths", {}).get("base_dir") or "").strip()
+    if current_base:
+        return
+
+    _echo_step("Repository base directory (optional)")
+    print(
+        "The Repo path dropdown in the UI shows subdirectories of a base directory.\n"
+        "Enter the path to the directory that contains your local repositories.\n"
+        "(Press Enter to skip — you can configure this later in the Settings panel.)",
+        flush=True,
+    )
+    while True:
+        try:
+            raw = input("  Base directory [skip]: ").strip()
+        except EOFError:
+            print("[bootstrap] No input available; skipping.", flush=True)
+            return
+        if not raw:
+            print("[bootstrap] Skipping — configure it later in Settings.", flush=True)
+            return
+        expanded = Path(os.path.expandvars(raw)).expanduser().resolve()
+        if not expanded.is_dir():
+            print(
+                f"[bootstrap] Warning: '{expanded}' does not exist or is not a directory. "
+                "Re-enter or press Enter to skip.",
+                flush=True,
+            )
+            continue
+        save_config({"repo_paths": {"base_dir": str(expanded)}})
+        print(f"[bootstrap] Repo base directory set to: {expanded}", flush=True)
+        return
+
+
 def _save_opik_config(opik_settings: dict[str, str]) -> dict:
     from server.config import load_config, save_config, validate_config
 
@@ -370,6 +411,7 @@ def main() -> int:
         _check_ztk()
         _install_requirements()
         _materialize_agents()
+        _prompt_user_config()
         opik_dir = _opik_repo_dir()
         _sync_opik_repo(opik_dir)
         opik_settings = _start_local_opik(opik_dir)

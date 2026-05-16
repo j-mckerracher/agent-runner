@@ -87,6 +87,30 @@ def emit(type: str, **fields: Any) -> None:
         em.emit(type, **fields)
 
 
+class EventEmitHandler(logging.Handler):
+    """Bridges stdlib logging → structured `log` events via EventEmitter.
+
+    No-op when AGENT_RUNNER_EVENT_LOG is not set (CLI / test mode).
+    Skips this module's own logger to prevent recursion.
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.name == __name__:
+            return
+        em = get_emitter()
+        if em is None:
+            return
+        try:
+            em.emit(
+                "log",
+                level=record.levelname.lower(),
+                logger=record.name,
+                msg=self.format(record),
+            )
+        except Exception:
+            pass
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Tailer / pubsub — used by the FastAPI server to multiplex over SSE.
 # ─────────────────────────────────────────────────────────────────────────────

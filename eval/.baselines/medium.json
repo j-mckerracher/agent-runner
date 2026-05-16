@@ -1,0 +1,21 @@
+{
+  "created_at": "2026-05-14T04:47:35.213141+00:00",
+  "suite_tier": "medium",
+  "summary": {
+    "attempted_checks": 6,
+    "attempted_rate": 1.0,
+    "metadata": {
+      "weights": {
+        "high": 3.0,
+        "low": 1.0,
+        "medium": 2.0
+      }
+    },
+    "passed_checks": 1,
+    "score_tier_high": 0.16666666666666666,
+    "score_tier_low": 0.0,
+    "score_tier_medium": 0.0,
+    "total_checks": 6,
+    "weighted_composite": 0.16666666666666666
+  }
+}

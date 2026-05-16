@@ -55,7 +55,6 @@ def run_uow_eval_loop(
     iter_count: int = 3,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
-    copilot_effort: str | None = None,
 ) -> tuple[str, str]:
     """
     Run the software-engineer + implementation-evaluator eval-optimizer loop
@@ -90,16 +89,14 @@ def run_uow_eval_loop(
                 evaluator_feedback=evaluator_out if i > 0 else "",
                 runner=runner,
                 runner_model=runner_model,
-                copilot_effort=copilot_effort,
-            )
+                            )
             evaluator_out = steps.step_software_engineer_evaluator(
                 uow_id=uow_id,
                 change_id=change_id,
                 repo=repo,
                 runner=runner,
                 runner_model=runner_model,
-                copilot_effort=copilot_effort,
-            )
+                            )
             passed = "PASS" in evaluator_out
             logger.info("run_uow_eval_loop: iteration %d/%d uow_id=%s passed=%s", i + 1, iter_count, uow_id, passed)
             span.output = {"passed": passed}
@@ -146,7 +143,6 @@ def run_eval_optimizer_loop(
     iter_count: int = 3,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
-    copilot_effort: str | None = None,
 ):
     change_id = _extract_change_id(producer_input) or _extract_change_id(evaluator_prompt)
     logger.info(
@@ -180,8 +176,8 @@ def run_eval_optimizer_loop(
                     f"Revise your output artifact to address the issues above. Do not ask questions — act immediately."
                 )
                 logger.debug("run_eval_optimizer_loop: iteration %d injecting evaluator feedback (len=%d)", i + 1, len(evaluator_out))
-            producer_out = producer_func(combined_input, runner=runner, runner_model=runner_model, copilot_effort=copilot_effort)
-            evaluator_out = evaluator_func(evaluator_prompt, runner=runner, runner_model=runner_model, copilot_effort=copilot_effort)
+            producer_out = producer_func(combined_input, runner=runner, runner_model=runner_model)
+            evaluator_out = evaluator_func(evaluator_prompt, runner=runner, runner_model=runner_model)
             passed = "PASS" in evaluator_out
             logger.info("run_eval_optimizer_loop: iteration %d/%d change_id=%s passed=%s", i + 1, iter_count, change_id, passed)
             span.output = {"passed": passed}

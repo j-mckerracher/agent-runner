@@ -15,16 +15,16 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 if __package__ in {None, ""}:  # pragma: no cover - direct script execution
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from core import run_cmds
-    from core.runner_models import is_copilot_runner, copilot_alias_model
+    from core.agent_cmd import run_agent_cmd, is_transient_runner_failure_text
+    from core.runner_models import KNOWN_RUNNERS, resolve_runner_model
     from eval.dataset_manifest import load_dataset_lock, load_dataset_manifest, stable_manifest_hash
     from eval.models import AcceptanceCriterion, CheckDefinition, DatasetLock, DatasetManifest, EvalStory
     from eval.run_eval import StoryRun, TrialRunSpec, run_story_trials
     from eval.suite_io import dump_eval_story, workflow_fixture_from_story
     from eval.yaml_io import dump_yaml
 else:
-    from core import run_cmds
-    from core.runner_models import is_copilot_runner, copilot_alias_model
+    from core.agent_cmd import run_agent_cmd, is_transient_runner_failure_text
+    from core.runner_models import KNOWN_RUNNERS, resolve_runner_model
     from .dataset_manifest import load_dataset_lock, load_dataset_manifest, stable_manifest_hash
     from .models import AcceptanceCriterion, CheckDefinition, DatasetLock, DatasetManifest, EvalStory
     from .run_eval import StoryRun, TrialRunSpec, run_story_trials
@@ -87,9 +87,9 @@ def parse_calibration_runner_profile(profile_text: str) -> list[Mapping[str, Any
             )
         runner_text, count_text = item.rsplit("=", 1)
         runner_name = runner_text.strip()
-        if not runner_name or not is_copilot_runner(runner_name) or runner_name == "copilot":
+        if not runner_name or runner_name in KNOWN_RUNNERS:
             raise SynthesisError(
-                "Calibration runner profile entries must use Copilot alias runners "
+                "Calibration runner profile entries must use custom runner aliases "
                 f"(got {runner_name!r})."
             )
         try:
@@ -105,7 +105,7 @@ def parse_calibration_runner_profile(profile_text: str) -> list[Mapping[str, Any
         entries.append(
             {
                 "runner": runner_name,
-                "model": copilot_alias_model(runner_name),
+                "model": resolve_runner_model(runner_name),
                 "count": count,
             }
         )
@@ -158,11 +158,6 @@ def build_parser() -> argparse.ArgumentParser:
             "Opt in to expensive empirical calibration workflow runs. When omitted, synthesize "
             "emits predicted tiers using deterministic heuristics and skips calibration."
         ),
-    )
-    parser.add_argument(
-        "--skip-materialize",
-        action="store_true",
-        help="Skip prompt materialization during calibration workflow runs",
     )
     parser.add_argument(
         "--batch-size",
@@ -231,7 +226,6 @@ def synthesize_suites(
     model: str = "gpt-5-mini",
     agent: str = "task-generator",
     batch_size: int = 5,
-    skip_materialize: bool = False,
     ac_hints_path: Optional[Path] = None,
     calibrate: bool = False,
     calibration_runs: int = CALIBRATION_RUNS,
@@ -386,7 +380,7 @@ def synthesize_suites(
             hints=effective_hints,
             calibrate=calibrate,
         )
-        raw_response = run_cmds.run_agent_cmd(runner, prompt, agent, runner_model=model, stream_output=True)
+        raw_response = run_agent_cmd(runner, prompt, agent, runner_model=model, stream_output=True)
         stories = parse_llm_stories(raw_response, expected_stories=to_synthesize)
         for story in stories:
             story_id = str(story["story_id"])
@@ -436,7 +430,6 @@ def synthesize_suites(
                 "runner": runner,
                 "model": model,
                 "agent": agent,
-                "skip_materialize": skip_materialize,
                 "calibration_runs": calibration_runs,
                 "calibration_run_specs": calibration_run_specs,
                 "calibration_runner_profile": calibration_profile_payload,
@@ -808,7 +801,6 @@ def calibrate_raw_story(
     runner: str,
     model: str,
     agent: str,
-    skip_materialize: bool,
     calibration_runs: int = CALIBRATION_RUNS,
     calibration_run_specs: Sequence[TrialRunSpec] | None = None,
     calibration_runner_profile: Sequence[Mapping[str, Any]] | None = None,
@@ -852,7 +844,7 @@ def calibrate_raw_story(
                 previous_attempts=attempts,
                 calibration_runs=calibration_runs,
             )
-            raw_response = run_cmds.run_agent_cmd(runner, prompt, agent, runner_model=model, stream_output=True)
+            raw_response = run_agent_cmd(runner, prompt, agent, runner_model=model, stream_output=True)
             current_story = dict(current_story)
             current_story["acceptance_criteria"] = parse_llm_acceptance_criteria(raw_response, story_id=story_id, story_tier=story_tier)
             current_story = dict(
@@ -874,7 +866,6 @@ def calibrate_raw_story(
             repo=repo,
             runner=runner,
             model=model,
-            skip_materialize=skip_materialize,
             attempt_index=attempt_index,
             calibration_runs=calibration_runs,
             calibration_run_specs=calibration_run_specs,
@@ -928,7 +919,6 @@ def evaluate_story_calibration(
     repo: Path,
     runner: str,
     model: str,
-    skip_materialize: bool,
     attempt_index: int,
     calibration_runs: int,
     calibration_run_specs: Sequence[TrialRunSpec] | None,
@@ -966,7 +956,6 @@ def evaluate_story_calibration(
             calibration_runs=calibration_runs,
             calibration_run_specs=calibration_run_specs or [],
             calibration_max_concurrent=calibration_max_concurrent,
-            skip_materialize=skip_materialize,
             calibration_fast_mode=calibration_fast_mode,
         )
     finally:
@@ -1005,7 +994,6 @@ def _collect_calibration_story_runs(
     calibration_runs: int,
     calibration_run_specs: Sequence[TrialRunSpec],
     calibration_max_concurrent: int,
-    skip_materialize: bool,
     calibration_fast_mode: bool,
 ) -> list[StoryRun]:
     story_runs: list[StoryRun] = []
@@ -1021,7 +1009,6 @@ def _collect_calibration_story_runs(
             run_specs=batch_run_specs,
             max_concurrent=min(calibration_max_concurrent, len(batch_run_specs)),
             skip_pipeline=False,
-            skip_materialize=skip_materialize,
             calibration_fast_mode=calibration_fast_mode,
             stream_output=True,
         )
@@ -1146,7 +1133,7 @@ def _is_transient_infrastructure_failure(failed_runs: Sequence[StoryRun], *, run
     if not failed_runs:
         return False
     return all(
-        run_cmds.is_transient_runner_failure_text(story_run.artifact_text, runner=runner)
+        is_transient_runner_failure_text(story_run.artifact_text, runner=runner)
         for story_run in failed_runs
     )
 
@@ -2063,8 +2050,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # Resolve effective model: alias runners encode the model in the runner name
     if args.model is not None:
         effective_model = args.model
-    elif is_copilot_runner(args.runner) and args.runner != "copilot":
-        effective_model = copilot_alias_model(args.runner)
+    elif args.runner not in KNOWN_RUNNERS:
+        effective_model = resolve_runner_model(args.runner)
     else:
         effective_model = "gpt-5-mini"
     if args.calibrate:
@@ -2086,7 +2073,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             model=effective_model,
             agent=args.agent,
             batch_size=args.batch_size,
-            skip_materialize=args.skip_materialize,
             ac_hints_path=Path(args.ac_hints) if args.ac_hints else None,
             calibrate=args.calibrate,
             calibration_runs=args.calibration_runs,

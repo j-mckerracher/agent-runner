@@ -32,7 +32,8 @@ run_eval.py --suite eval/suites/hard/ --repo /path/to/repo
 python3 -m pip install -r requirements.txt
 ```
 
-YAML support is required because all manifests and story files are YAML.
+Dataset manifests and suite manifests are YAML. Workflow-compatible story companions
+under `eval/stories/` are JSON.
 
 ---
 
@@ -196,11 +197,10 @@ when `--calibrate` is enabled, during calibration workflow runs too.
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `--repo` | inferred when possible | Target repository root used only when `--calibrate` is enabled |
-| `--runner` | `copilot` | LLM runner: `claude`, `copilot`, `gemini` |
-| `--model` | `gpt-5-mini` | Model name passed to the runner |
+| `--runner` | `copilot` | LLM runner: `claude`, `copilot`, `gemini`, or a configured runner alias |
+| `--model` | runner default | Optional model override. With the default `copilot` runner, the resolved default model is `gpt-5-mini`. |
 | `--stories-output` | `eval/stories/` | Workflow-compatible JSON output directory |
 | `--calibrate` | `false` | Opt in to empirical workflow-run calibration |
-| `--skip-materialize` | `false` | Skip prompt materialization inside calibration workflow runs |
 | `--calibration-runner-profile` | `copilot-gemma4=2,copilot-deepseek-v4-flash=2,copilot-minimax-m2.7=2` | Mixed runner/count profile used for calibration workflow trials |
 | `--calibration-runs` | `3` | Legacy single-runner trial count used only when you opt out of the mixed runner profile |
 | `--calibration-max-iterations` | `5` | Maximum AC rewrite attempts per story |
@@ -228,7 +228,7 @@ eval/suites/
 eval/stories/
 ├── story_001_easy.json
 ├── story_002_medium.json
-└── story_003_hard.json          # workflow-compatible companions
+└── story_003_hard.json          # workflow-compatible JSON companions
 ```
 
 **Commit everything under `eval/suites/{easy,medium,hard}/` and
@@ -247,7 +247,7 @@ python3 eval/run_eval.py \
 
 # Run a single story
 python3 eval/run_eval.py \
-  --story eval/suites/hard/story_001_hard.yaml \
+  --story eval/suites/hard/story_003_hard.yaml \
   --repo /path/to/repo \
   --skip-opik
 ```
@@ -259,18 +259,20 @@ Subsequent runs compute the regression delta against that baseline.
 
 | Flag | Purpose |
 |------|---------|
-| `--runner claude\|copilot\|gemini` | Select the workflow runner |
+| `--runner claude\|copilot\|gemini` | Select the workflow runner (runner aliases are also supported) |
 | `--model` | Model name |
 | `--runs N` | Repeat each story N times |
 | `--max-concurrent N` | Parallelise up to N story/run jobs |
 | `--skip-pipeline` | Skip `run.py`; score existing `agent-context/` artifacts |
-| `--skip-materialize` | Skip agent prompt materialisation inside `run.py` |
 | `--mono-root` | Alias for `--repo` |
 | `--change-id` | Locate a story by ID without `--suite`/`--story` |
 | `--skip-opik` | Disable Opik metric reporting |
 | `--regression-threshold 0.05` | Exit non-zero if composite score drops > 5% |
 | `--update-baseline` | Intentionally replace the committed baseline |
 | `--ci` | CI-friendly mode; implies non-zero exit on regression |
+
+`--story` accepts either a suite YAML file or a workflow-compatible JSON fixture.
+`--change-id` can resolve either `eval/stories/<id>.json` or a matching suite YAML.
 
 ---
 

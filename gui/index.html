@@ -15,11 +15,12 @@
   --acc:#c4873a;--acc-lo:rgba(196,135,58,.09);
   --t1:#e2ddd5;--t2:#8a8580;--t3:#4e4b47;
   --ok:#52c97b;--er:#e05a46;--wa:#d4a832;--in:#4a9dd4;--op:#b48cff;
+  --muted:#94a3b8;--input-border:rgba(255,255,255,0.12);
   --font:'Trebuchet MS','Segoe UI',sans-serif;
   --mono:'Cascadia Code','Fira Code','SF Mono','Consolas',monospace;
 }
 html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size:13px;height:100%;overflow:hidden}
-#bg-canvas{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;display:block}
+#bg-canvas{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;display:block;opacity:0.35}
 .app{display:flex;height:100vh;min-height:580px;position:relative;z-index:1}
 .sidebar{width:200px;background:rgba(13,15,20,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-right:1px solid var(--br);display:flex;flex-direction:column}
 .logo{padding:18px 16px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--br)}
@@ -347,6 +348,10 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
   0%,100%{background:rgba(255,214,132,.12);box-shadow:inset 0 0 0 1px rgba(255,255,255,.025),0 0 0 rgba(255,214,132,0)}
   50%{background:rgba(255,214,132,.18);box-shadow:inset 0 0 0 1px rgba(255,255,255,.035),0 0 14px rgba(255,214,132,.12)}
 }
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.status-dot.running{background:var(--in);animation:pulse 1.4s ease-in-out infinite}
+.status-dot.queued{background:var(--wa);animation:pulse 2s ease-in-out infinite}
 .agents-layout{display:flex;flex:1;overflow:hidden}
 .agents-left{width:320px;border-right:1px solid var(--br);display:flex;flex-direction:column;overflow:hidden;background:rgba(13,15,20,.45)}
 .agents-right{flex:1;display:flex;flex-direction:column;overflow:hidden}
@@ -413,42 +418,81 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .agent-prompt-body hr{border:none;border-top:1px solid var(--br);margin:1.5em 0}
 .agent-prompt-body strong{color:var(--t1);font-weight:600}
 .agent-prompt-body em{color:var(--t2)}
-.submit-section{padding:14px 16px;border-bottom:1px solid var(--br);overflow-y:auto;max-height:60%}
-.section-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--t3);margin-bottom:10px}
+.submit-section{padding:14px 16px;border-bottom:1px solid var(--br);overflow-y:auto;max-height:60%;flex-shrink:0}
+.section-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
 .field{margin-bottom:8px}
 .field label{display:block;font-size:11px;color:var(--t2);margin-bottom:3px}
-.field select,.field input[type=text],.field textarea{width:100%;background:rgba(28,32,40,.85);border:1px solid var(--br);border-radius:4px;color:var(--t1);font-family:var(--font);font-size:12px;padding:5px 8px;outline:none}
+.field select,.field input[type=text],.field textarea{width:100%;background:rgba(28,32,40,.85);border:1px solid var(--input-border);border-radius:4px;color:var(--t1);font-family:var(--font);font-size:12px;padding:5px 8px;outline:none}
 .field textarea{font-family:var(--mono);min-height:54px;resize:vertical}
 .field select:focus,.field input:focus,.field textarea:focus{border-color:var(--acc);background:var(--s4)}
+.repo-input-row{display:flex;gap:6px;align-items:center}
+.repo-combobox{position:relative;flex:1;min-width:0}
+.repo-combobox input{padding-right:34px}
+.repo-dropdown-toggle{
+  position:absolute;right:6px;top:50%;transform:translateY(-50%);
+  width:22px;height:22px;border:1px solid transparent;border-radius:4px;
+  background:transparent;color:var(--t2);cursor:pointer;font-size:11px;line-height:1
+}
+.repo-dropdown-toggle:hover,.repo-dropdown-toggle:focus{color:var(--t1);border-color:var(--brb);background:rgba(255,255,255,.04);outline:none}
+.repo-dropdown-menu{
+  position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:30;
+  background:rgba(14,17,24,.98);border:1px solid var(--brb);border-radius:8px;
+  box-shadow:0 18px 36px rgba(0,0,0,.35);max-height:220px;overflow:auto;padding:4px
+}
+.repo-dropdown-option{
+  width:100%;border:none;background:transparent;color:var(--t1);text-align:left;
+  padding:8px 10px;border-radius:6px;cursor:pointer;font-family:var(--mono);font-size:11px
+}
+.repo-dropdown-option:hover,.repo-dropdown-option:focus{background:var(--acc-lo);outline:none}
+.repo-dropdown-option[aria-selected="true"]{background:rgba(196,135,58,.14);color:#ffe2b7}
+.repo-dropdown-empty,.repo-dropdown-hint{padding:8px 10px;font-size:11px}
+.repo-dropdown-empty{color:var(--t2)}
+.repo-dropdown-hint{color:var(--t3);border-top:1px solid var(--br);margin-top:2px}
+.repo-forget-btn{display:none;padding:5px 8px;font-size:11px;white-space:nowrap}
 .row2{display:flex;gap:8px}
 .row2 .field{flex:1}
 .checkbox{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2);margin-bottom:8px;cursor:pointer}
 .btn{display:inline-block;background:var(--acc);color:#07080b;border:none;border-radius:4px;padding:7px 14px;font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .btn.ghost{background:transparent;color:var(--t1);border:1px solid var(--brb)}
+.history-header{padding:8px 16px 6px;font-size:13px;color:var(--muted);font-weight:500;letter-spacing:.02em;border-bottom:1px solid var(--br);flex-shrink:0}
 .history{flex:1;overflow-y:auto}
 .job{padding:10px 14px;border-bottom:1px solid var(--br);cursor:pointer}
 .job:hover{background:var(--acc-lo)}
 .job.active{background:var(--acc-lo);border-left:2px solid var(--acc);padding-left:12px}
 .job-id{font-family:var(--mono);font-size:11px;color:var(--t1)}
-.job-meta{font-size:10px;color:var(--t3);margin-top:2px}
-.status{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;text-transform:uppercase;letter-spacing:.05em}
-.status.running{background:rgba(74,157,212,.2);color:var(--in)}
-.status.queued{background:rgba(212,168,50,.2);color:var(--wa)}
-.status.succeeded{background:rgba(82,201,123,.2);color:var(--ok)}
-.status.failed,.status.cancelled{background:rgba(224,90,70,.2);color:var(--er)}
+.job-meta{font-size:10px;color:var(--t2);margin-top:2px}
+.status{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;font-weight:500;line-height:1.4}
+.status.running{background:rgba(74,157,212,0.15);color:#7ec8f7}
+.status.queued{background:rgba(212,168,50,0.15);color:#f0cc5e}
+.status.succeeded{background:rgba(82,201,123,0.15);color:#6ee7a0}
+.status.failed{background:rgba(248,113,113,0.15);color:#f87171}
+.status.cancelled{background:rgba(248,113,113,0.12);color:#f8a0a0}
 .term-header{padding:10px 16px;border-bottom:1px solid var(--br);display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:11px;color:var(--t1);font-weight:600}
 .term-actions{display:flex;gap:8px;align-items:center}
 .btn.link-btn{text-decoration:none}
-.opik-hint{font-family:var(--font);font-size:11px;color:var(--t2);max-width:260px;text-align:right}
-.run-alert{display:none;padding:10px 16px;border-bottom:1px solid var(--br);background:rgba(224,90,70,.08)}
+#cancel-btn,#eval-cancel-btn{background:#b91c1c;color:#fff}
+#cancel-btn:hover,#eval-cancel-btn:hover{background:#dc2626}
+.filter-chip{display:inline-block;padding:2px 10px;border-radius:10px;font-size:10px;background:rgba(180,140,255,0.1);color:var(--op);border:1px solid rgba(180,140,255,0.2);font-family:var(--mono);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.opik-hint{font-family:var(--font);font-size:11px;color:var(--t2);max-width:none;text-align:right}
+.run-alert{display:none;padding:10px 16px;border-left:3px solid var(--er);border-bottom:1px solid var(--br);background:rgba(224,90,70,.05)}
 .run-alert.show{display:block}
-.run-alert .alert-title{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--er);margin-bottom:4px}
+.run-alert .alert-title{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--er);margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.run-alert .alert-title::before{content:"\26A0";font-size:12px}
 .run-alert .alert-msg{font-family:var(--mono);font-size:11px;color:var(--t1);white-space:pre-wrap;word-break:break-word}
 .run-alert .alert-meta{margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--t2)}
-.term{flex:1;overflow-y:auto;padding:12px 16px;font-family:var(--mono);font-size:11px;line-height:1.5;background:transparent}
+.trace-summary{display:none;padding:10px 16px;border-bottom:1px solid var(--br);background:rgba(180,140,255,.06)}
+.trace-summary.show{display:block}
+.trace-summary-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:8px;font-family:var(--mono)}
+.trace-summary-title{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--op)}
+.trace-summary-meta{font-size:10px;color:var(--t2)}
+.trace-timeline{display:flex;gap:6px;align-items:center;overflow:hidden}
+.trace-pill{max-width:160px;min-width:42px;padding:4px 7px;border:1px solid rgba(180,140,255,.25);border-radius:999px;background:rgba(180,140,255,.09);color:var(--t1);font-family:var(--mono);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trace-pill.error{border-color:rgba(224,90,70,.45);background:rgba(224,90,70,.12);color:var(--er)}
+.trace-pill.running{border-color:rgba(74,157,212,.45);background:rgba(74,157,212,.12);color:var(--in)}
+.term{flex:1;overflow-y:auto;padding:12px 16px;font-family:var(--mono);font-size:11px;line-height:1.6;letter-spacing:0.01em;background:transparent}
 .term .ev{display:flex;gap:8px;padding:1px 0}
-.term .ev .ts{color:var(--t3);flex-shrink:0}
+.term .ev .ts{color:var(--t3);flex-shrink:0;opacity:0.45}
 .term .ev .tag{flex-shrink:0;font-weight:600}
 .term .ev.stage .tag{color:var(--acc)}
 .term .stage-group{margin:0 0 4px}
@@ -460,6 +504,10 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .term .ev.cli .tag{color:var(--wa)}
 .term .ev.trace .tag{color:var(--op)}
 .term .ev.end .tag{color:var(--ok)}
+.term .ev.log-debug .tag{color:var(--t2)}
+.term .ev.log-info .tag{color:#7ec8f7}
+.term .ev.log-warning .tag{color:#f0cc5e}
+.term .ev.log-error .tag,.term .ev.log-critical .tag{color:#f87171}
 .term .ev .msg{color:var(--t1);white-space:pre-wrap;word-break:break-word}
 .term .user-prompt-block{margin:8px 0;padding:10px 14px;border:1px solid var(--wa);border-radius:6px;background:rgba(255,170,0,.06)}
 .term .user-prompt-header{font-weight:700;color:var(--wa);margin-bottom:8px;font-size:11px}
@@ -470,8 +518,12 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .term .prompt-submit{align-self:flex-start;margin-top:4px;padding:4px 12px;background:var(--acc);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px}
 .term .prompt-submit:disabled{opacity:.5;cursor:default}
 .term .prompt-submitted{color:var(--ok);font-size:11px;font-family:var(--mono)}
-.metrics{padding:8px 16px;border-top:1px solid var(--br);display:flex;gap:24px;font-family:var(--mono);font-size:11px;color:var(--t1);font-weight:600}
+.metrics{padding:8px 16px;border-top:1px solid var(--br);display:flex;gap:24px;font-family:var(--mono);font-size:11px;color:var(--t1);font-weight:600;flex-shrink:0;background:rgba(13,15,20,.85);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 .metrics b{color:#7ec8f7;font-weight:700}
+.metrics-sep{color:var(--t3);font-weight:400}
+.cost-disclaimer{font-size:9px;color:var(--t3);font-style:italic;align-self:center}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.metrics-skeleton{display:inline-block;min-width:60px;height:11px;background:linear-gradient(90deg,var(--s3) 25%,var(--s4) 50%,var(--s3) 75%);background-size:200% 100%;animation:shimmer 1.5s ease-in-out infinite;border-radius:3px;vertical-align:middle}
 .simple-list{flex:1;overflow-y:auto;padding:14px 20px}
 .simple-list .item{padding:10px 12px;border:1px solid var(--br);border-radius:4px;margin-bottom:8px;background:rgba(20,23,32,.6);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 .simple-list .item h3{font-size:13px;color:var(--t1);margin-bottom:4px}
@@ -669,6 +721,22 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 }
 .view[data-view="settings"] .set-btn-connect:hover{border-color:var(--set-amber);color:var(--set-amber)}
 .view[data-view="settings"] .set-btn-connect:disabled{opacity:.55;cursor:not-allowed}
+.view[data-view="settings"] .set-list{
+  border-top:1px solid var(--set-border);
+}
+.view[data-view="settings"] .set-list-row{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:10px 18px;border-bottom:1px solid var(--set-border);
+}
+.view[data-view="settings"] .set-list-row:last-child{border-bottom:none}
+.view[data-view="settings"] .set-list-value{
+  font-family:var(--set-mono);font-size:12px;color:var(--set-text-secondary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.view[data-view="settings"] .set-empty{
+  padding:12px 18px;font-family:var(--set-mono);font-size:11px;color:var(--set-text-tertiary);
+  border-top:1px solid var(--set-border);
+}
 
 .view[data-view="settings"] .set-warn-note{
   display:flex;align-items:center;gap:8px;
@@ -800,7 +868,17 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
         <div class="runs-left">
           <div class="submit-section">
             <div class="section-label">Submit run</div>
-            <div class="field"><label>Repo path</label><input type="text" id="f-repo" placeholder="/path/to/target/repo"></div>
+            <div class="field">
+              <label for="f-repo">Repo path</label>
+              <div class="repo-input-row">
+                <div class="repo-combobox">
+                  <input type="text" id="f-repo" placeholder="/path/to/target/repo" autocomplete="off" spellcheck="false" aria-haspopup="listbox" aria-expanded="false" aria-controls="f-repo-menu">
+                  <button class="repo-dropdown-toggle" id="f-repo-toggle" type="button" aria-label="Show repo path options" aria-haspopup="listbox" aria-expanded="false" aria-controls="f-repo-menu">▾</button>
+                  <div class="repo-dropdown-menu" id="f-repo-menu" role="listbox" hidden></div>
+                </div>
+                <button class="btn ghost repo-forget-btn" id="f-repo-forget" type="button">Forget</button>
+              </div>
+            </div>
             <div class="field"><label>Change ID</label><input type="text" id="f-change" placeholder="WI-12345"></div>
             <div class="field"><label>ADO Work Item URL</label><input type="text" id="f-ado"></div>
             <div class="row2">
@@ -808,13 +886,13 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
               <div class="field"><label>Model</label><select id="f-model"></select></div>
             </div>
             <div class="row2">
-              <div class="field"><label>Copilot effort</label><select id="f-effort"><option value="">(default)</option></select></div>
               <div class="field"><label>Mode</label><select id="f-mode"><option value="live">Live</option><option value="hermetic">Hermetic (record)</option></select></div>
+              <div class="field"><label>Log level</label><select id="f-log-level"><option value="debug">Debug</option><option value="info">Info</option><option value="warning" selected>Warning</option><option value="error">Error</option><option value="critical">Critical</option></select></div>
             </div>
-            <label class="checkbox"><input type="checkbox" id="f-skip"> Skip materialize</label>
             <div class="field"><label>Extra context</label><textarea id="f-extra" placeholder="Optional notes appended to the agent prompt..."></textarea></div>
             <button class="btn" id="submit-btn">Submit run</button>
           </div>
+          <div class="history-header">Past Runs</div>
           <div class="history" id="history"></div>
         </div>
         <div class="runs-right">
@@ -831,8 +909,15 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
             <div class="alert-msg" id="run-alert-msg"></div>
             <div class="alert-meta" id="run-alert-meta"></div>
           </div>
+          <div class="trace-summary" id="trace-summary" aria-live="polite">
+            <div class="trace-summary-head">
+              <span class="trace-summary-title">Opik trace timeline</span>
+              <span class="trace-summary-meta" id="trace-summary-meta"></span>
+            </div>
+            <div class="trace-timeline" id="trace-timeline"></div>
+          </div>
           <div class="term" id="term"><div class="empty">No run selected.</div></div>
-          <div class="metrics" id="metrics"><span>tokens in <b id="m-ti">—</b></span><span>tokens out <b id="m-to">—</b></span><span>total <b id="m-total">—</b></span><span>cost <b id="m-cost">—</b></span><span>stage <b id="m-stage">—</b></span></div>
+          <div class="metrics" id="metrics"><span>tokens in <b id="m-ti">—</b></span><span class="metrics-sep">|</span><span>tokens out <b id="m-to">—</b></span><span class="metrics-sep">|</span><span>total <b id="m-total">—</b></span><span class="metrics-sep">|</span><span>cost <b id="m-cost">—</b></span><span class="cost-disclaimer">est. $3/$15 per Mtok</span><span class="metrics-sep">|</span><span>stage <b id="m-stage">—</b></span></div>
         </div>
       </div>
     </section>
@@ -869,17 +954,25 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
       <div class="eval-content">
         <div class="eval-config">
           <div class="section-label">Start evaluation run</div>
-          <div class="field"><label>Repo path</label><input type="text" id="eval-repo" placeholder="/path/to/target/repo"></div>
+          <div class="field">
+            <label for="eval-repo">Repo path</label>
+            <div class="repo-input-row">
+              <div class="repo-combobox">
+                <input type="text" id="eval-repo" placeholder="/path/to/target/repo" autocomplete="off" spellcheck="false" aria-haspopup="listbox" aria-expanded="false" aria-controls="eval-repo-menu">
+                <button class="repo-dropdown-toggle" id="eval-repo-toggle" type="button" aria-label="Show repo path options" aria-haspopup="listbox" aria-expanded="false" aria-controls="eval-repo-menu">▾</button>
+                <div class="repo-dropdown-menu" id="eval-repo-menu" role="listbox" hidden></div>
+              </div>
+              <button class="btn ghost repo-forget-btn" id="eval-repo-forget" type="button">Forget</button>
+            </div>
+          </div>
           <div class="field"><label>Evaluation story</label><select id="eval-story"></select></div>
           <div class="row2">
             <div class="field"><label>Runner</label><select id="eval-runner"><option value="claude">Claude</option><option value="copilot">Copilot</option><option value="gemini">Gemini</option></select></div>
             <div class="field"><label>Model</label><select id="eval-model"></select></div>
           </div>
           <div class="row2">
-            <div class="field"><label>Copilot effort</label><select id="eval-effort"><option value="">(default)</option></select></div>
             <div class="field"><label>Mode</label><select id="eval-mode"><option value="live">Live</option><option value="hermetic">Hermetic (record)</option></select></div>
           </div>
-          <label class="checkbox"><input type="checkbox" id="eval-skip"> Skip materialize</label>
           <div class="field"><label>Extra context</label><textarea id="eval-extra" placeholder="Optional notes appended to the evaluation run prompt..."></textarea></div>
           <button class="btn" id="eval-submit-btn">Start evaluation run</button>
         </div>
@@ -910,8 +1003,15 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
             <div class="alert-msg" id="eval-run-alert-msg"></div>
             <div class="alert-meta" id="eval-run-alert-meta"></div>
           </div>
+          <div class="trace-summary" id="eval-trace-summary" aria-live="polite">
+            <div class="trace-summary-head">
+              <span class="trace-summary-title">Opik trace timeline</span>
+              <span class="trace-summary-meta" id="eval-trace-summary-meta"></span>
+            </div>
+            <div class="trace-timeline" id="eval-trace-timeline"></div>
+          </div>
           <div class="term" id="eval-term"><div class="empty">Start an evaluation run to see logs here.</div></div>
-          <div class="metrics" id="eval-metrics"><span>tokens in <b id="eval-m-ti">—</b></span><span>tokens out <b id="eval-m-to">—</b></span><span>total <b id="eval-m-total">—</b></span><span>cost <b id="eval-m-cost">—</b></span><span>stage <b id="eval-m-stage">—</b></span></div>
+          <div class="metrics" id="eval-metrics"><span>tokens in <b id="eval-m-ti">—</b></span><span class="metrics-sep">|</span><span>tokens out <b id="eval-m-to">—</b></span><span class="metrics-sep">|</span><span>total <b id="eval-m-total">—</b></span><span class="metrics-sep">|</span><span>cost <b id="eval-m-cost">—</b></span><span class="cost-disclaimer">est. $3/$15 per Mtok</span><span class="metrics-sep">|</span><span>stage <b id="eval-m-stage">—</b></span></div>
         </div>
       </div>
     </section>
@@ -964,6 +1064,24 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
           </div>
         </div>
 
+        <!-- Repositories -->
+        <div class="set-section">
+          <div class="set-section-header">
+            <span class="set-section-label">Repositories</span>
+            <div class="set-section-line"></div>
+          </div>
+          <p class="set-hint">Repo path suggestions come from immediate subdirectories of the base directory, omit hidden folders, and display only the path beneath that base directory plus remembered custom values.</p>
+          <div class="set-card">
+            <div class="set-field-grid">
+              <div class="set-field full last-row">
+                <label class="set-field-label" for="s-repo-base-dir">Base Directory</label>
+                <input type="text" id="s-repo-base-dir" placeholder="~/Code">
+              </div>
+            </div>
+            <div class="set-list" id="s-repo-custom-values"></div>
+          </div>
+        </div>
+
         <!-- Observability -->
         <div class="set-section">
           <div class="set-section-header">
@@ -992,6 +1110,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
                 <input type="text" id="s-opik-project-name">
               </div>
             </div>
+            <p class="set-hint" id="s-opik-status">Opik is not configured. Workflow runs will fail fast until dashboard, workspace, project ID, and project name are set.</p>
           </div>
         </div>
 
@@ -1013,12 +1132,17 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
   </main>
 </div>
 <div class="toast" id="toast"></div>
-
 <script>
 const $ = (s,r=document)=>r.querySelector(s);
 const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
 let RUNNER_MODELS = {claude:[],copilot:[],gemini:[]};
-let COPILOT_EFFORTS = [];
+let REPO_PATH_OPTIONS = [];
+let REPO_CUSTOM_VALUES = [];
+let REPO_BASE_DIR = "";
+const REPO_PICKERS = [
+  { input:"#f-repo", toggle:"#f-repo-toggle", menu:"#f-repo-menu" },
+  { input:"#eval-repo", toggle:"#eval-repo-toggle", menu:"#eval-repo-menu" },
+];
 let activeJobId = null;
 let activeAgentName = null;
 let activeStream = null;
@@ -1027,6 +1151,7 @@ let activeRunJob = null;
 let activeRunEvents = [];
 let workflowTicker = null;
 let lastSeq = 0;
+const TRACE_EVENTS = {runs:[], evaluate:[]};
 const STREAM_EVENT_TYPES = ["job.start","stage.start","stage.end","cli.invoke","cli.exit","log","metrics","opik.start","opik.end","job.end","stream.end","user.prompt","user.response","user.prompt.timeout"];
 
 function toast(msg, err){
@@ -1066,6 +1191,219 @@ async function api(path, opts){
   }
   return r.headers.get("content-type")?.includes("json") ? r.json() : r.text();
 }
+function uniqueSorted(values){
+  return [...new Set(values.map(v => typeof v === "string" ? v.trim() : "").filter(Boolean))].sort();
+}
+function arrayValues(value){
+  return Array.isArray(value) ? value : [];
+}
+function allRepoPathValues(){
+  return uniqueSorted([...REPO_PATH_OPTIONS, ...REPO_CUSTOM_VALUES]);
+}
+function normalizeRepoPathForDisplay(value){
+  return (value || "").replace(/\\/g, "/");
+}
+function repoPathDisplayLabel(value){
+  const raw = (value || "").trim();
+  if(!raw) return "";
+  if(!REPO_PATH_OPTIONS.includes(raw)) return raw;
+  const normalized = normalizeRepoPathForDisplay(raw);
+  const normalizedBase = normalizeRepoPathForDisplay(REPO_BASE_DIR.trim()).replace(/\/+$/, "");
+  if(normalizedBase){
+    const lowerPath = normalized.toLowerCase();
+    const lowerBase = normalizedBase.toLowerCase();
+    if(lowerPath === lowerBase){
+      return normalized.split("/").pop() || raw;
+    }
+    if(lowerPath.startsWith(`${lowerBase}/`)){
+      const relative = normalized.slice(normalizedBase.length + 1);
+      if(relative) return relative;
+    }
+  }
+  return normalized.split("/").pop() || raw;
+}
+function matchingRepoPathValues(query){
+  const filter = (query || "").trim().toLowerCase();
+  const values = allRepoPathValues();
+  if(!filter) return values;
+  return values.filter(value => {
+    const rawValue = value.toLowerCase();
+    const labelValue = repoPathDisplayLabel(value).toLowerCase();
+    return rawValue.includes(filter) || labelValue.includes(filter);
+  });
+}
+function repoPickerElements(config){
+  const input = $(config.input);
+  return {
+    root: input ? input.closest(".repo-combobox") : null,
+    input,
+    toggle: $(config.toggle),
+    menu: $(config.menu),
+  };
+}
+function closeRepoPicker(config){
+  const { input, toggle, menu } = repoPickerElements(config);
+  if(!input || !toggle || !menu) return;
+  menu.hidden = true;
+  input.setAttribute("aria-expanded", "false");
+  toggle.setAttribute("aria-expanded", "false");
+}
+function closeAllRepoPickers(exceptInputSelector=""){
+  REPO_PICKERS.forEach(config => {
+    if(config.input === exceptInputSelector) return;
+    closeRepoPicker(config);
+  });
+}
+function renderRepoPickerMenu(config){
+  const { input, menu } = repoPickerElements(config);
+  if(!input || !menu) return;
+  const values = matchingRepoPathValues(input.value);
+  menu.innerHTML = "";
+  if(values.length){
+    values.forEach(value => {
+      const option = document.createElement("button");
+      option.type = "button";
+      option.className = "repo-dropdown-option";
+      option.setAttribute("role", "option");
+      option.setAttribute("aria-selected", String(input.value.trim() === value));
+      option.textContent = repoPathDisplayLabel(value);
+      option.title = value;
+      option.addEventListener("click", () => {
+        input.value = value;
+        updateRepoForgetButtons();
+        closeRepoPicker(config);
+        input.focus();
+      });
+      menu.appendChild(option);
+    });
+  }else{
+    const empty = document.createElement("div");
+    empty.className = "repo-dropdown-empty";
+    empty.textContent = allRepoPathValues().length ? "No matching saved repos." : "No saved repo suggestions yet.";
+    menu.appendChild(empty);
+  }
+  const hint = document.createElement("div");
+  hint.className = "repo-dropdown-hint";
+  hint.textContent = "Choose a saved repo below, or type any repo path.";
+  menu.appendChild(hint);
+}
+function openRepoPicker(config){
+  const { input, toggle, menu } = repoPickerElements(config);
+  if(!input || !toggle || !menu) return;
+  closeAllRepoPickers(config.input);
+  renderRepoPickerMenu(config);
+  menu.hidden = false;
+  input.setAttribute("aria-expanded", "true");
+  toggle.setAttribute("aria-expanded", "true");
+}
+function renderRepoPathOptions(){
+  REPO_PICKERS.forEach(config => {
+    const { menu } = repoPickerElements(config);
+    if(menu && !menu.hidden) renderRepoPickerMenu(config);
+  });
+}
+function setupRepoPicker(config){
+  const { root, input, toggle, menu } = repoPickerElements(config);
+  if(!root || !input || !toggle || !menu) return;
+  toggle.addEventListener("click", event => {
+    event.preventDefault();
+    if(menu.hidden) openRepoPicker(config);
+    else closeRepoPicker(config);
+    input.focus();
+  });
+  input.addEventListener("click", () => openRepoPicker(config));
+  input.addEventListener("input", () => {
+    updateRepoForgetButtons();
+    openRepoPicker(config);
+  });
+  input.addEventListener("change", updateRepoForgetButtons);
+  input.addEventListener("keydown", event => {
+    if(event.key === "ArrowDown"){
+      event.preventDefault();
+      openRepoPicker(config);
+    }else if(event.key === "Escape"){
+      closeRepoPicker(config);
+    }
+  });
+  root.addEventListener("focusout", event => {
+    if(root.contains(event.relatedTarget)) return;
+    closeRepoPicker(config);
+  });
+}
+function updateRepoForgetButtons(){
+  [
+    ["#f-repo", "#f-repo-forget"],
+    ["#eval-repo", "#eval-repo-forget"],
+  ].forEach(([inputSelector, buttonSelector]) => {
+    const input = $(inputSelector);
+    const button = $(buttonSelector);
+    if(!input || !button) return;
+    const value = input.value.trim();
+    button.style.display = REPO_CUSTOM_VALUES.includes(value) ? "inline-block" : "none";
+  });
+}
+function renderRepoCustomValues(){
+  const container = $("#s-repo-custom-values");
+  if(!container) return;
+  container.innerHTML = "";
+  if(!REPO_CUSTOM_VALUES.length){
+    const empty = document.createElement("div");
+    empty.className = "set-empty";
+    empty.textContent = "No custom repo paths remembered yet.";
+    container.appendChild(empty);
+    updateRepoForgetButtons();
+    return;
+  }
+  REPO_CUSTOM_VALUES.forEach(value => {
+    const row = document.createElement("div");
+    row.className = "set-list-row";
+    const label = document.createElement("div");
+    label.className = "set-list-value";
+    label.title = value;
+    label.textContent = value;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "set-btn-connect";
+    remove.textContent = "Remove";
+    remove.addEventListener("click", async () => {
+      try{ await removeRepoCustomValue(value); }
+      catch(e){ toast(e.message, true); }
+    });
+    row.appendChild(label);
+    row.appendChild(remove);
+    container.appendChild(row);
+  });
+  updateRepoForgetButtons();
+}
+async function saveRepoPathSettings(customValues, baseDir=REPO_BASE_DIR){
+  const nextValues = uniqueSorted(customValues);
+  await api("/settings", {
+    method:"PUT",
+    headers:{"content-type":"application/json"},
+    body:JSON.stringify({repo_paths:{base_dir:baseDir, custom_values:nextValues}}),
+  });
+  await loadSettings();
+}
+async function rememberRepoPath(value){
+  const repo = (value || "").trim();
+  if(!repo) return;
+  const cfg = await api("/settings");
+  const discovered = arrayValues(cfg.repo_path_options);
+  const customValues = uniqueSorted(arrayValues(cfg.repo_paths?.custom_values));
+  if(discovered.includes(repo) || customValues.includes(repo)) return;
+  await saveRepoPathSettings([...customValues, repo], cfg.repo_paths?.base_dir || "");
+}
+async function removeRepoCustomValue(value){
+  const target = (value || "").trim();
+  if(!target) return;
+  await saveRepoPathSettings(REPO_CUSTOM_VALUES.filter(item => item !== target));
+  toast("Repo path removed");
+}
+async function removeCurrentRepoCustomValue(inputSelector){
+  const input = $(inputSelector);
+  if(!input) return;
+  await removeRepoCustomValue(input.value.trim());
+}
 function buildOpikProjectUrl(opik, queryParams={}){
   const dashboardUrl = (opik?.dashboard_url || "").trim().replace(/\/+$/, "");
   if(!dashboardUrl) return "";
@@ -1087,6 +1425,9 @@ function runSurface(surface="runs"){
       alertMeta:"#eval-run-alert-meta",
       opikLink:"#eval-run-opik-link",
       opikHint:"#eval-opik-hint",
+      traceSummary:"#eval-trace-summary",
+      traceSummaryMeta:"#eval-trace-summary-meta",
+      traceTimeline:"#eval-trace-timeline",
       cancel:"#eval-cancel-btn",
       metrics:["eval-m-ti","eval-m-to","eval-m-cost","eval-m-stage","eval-m-total"],
       stage:"#eval-m-stage",
@@ -1101,6 +1442,9 @@ function runSurface(surface="runs"){
     alertMeta:"#run-alert-meta",
     opikLink:"#opik-link",
     opikHint:"#opik-hint",
+    traceSummary:"#trace-summary",
+    traceSummaryMeta:"#trace-summary-meta",
+    traceTimeline:"#trace-timeline",
     cancel:"#cancel-btn",
     metrics:["m-ti","m-to","m-cost","m-stage","m-total"],
     stage:"#m-stage",
@@ -1374,7 +1718,7 @@ function buildAgentDefaultsUI(agentDefaults) {
     runners.forEach(runner => {
       const td = document.createElement("td");
       const select = document.createElement("select");
-      select.id = `agent-model-${agentName}-${runner}`;
+      select.id = `agent-model-${agentName}-${runner}`.replace(/\./g, "_");
 
       const emptyOpt = document.createElement("option");
       emptyOpt.value = "";
@@ -1426,10 +1770,28 @@ function syncRunnerSelectFor(runnerSelectorId, modelSelectorId) {
   if (modelSelectorId) syncModelSelectFor("#" + runnerSelectorId, "#" + modelSelectorId);
 }
 
+function updateOpikSettingsStatus(opik){
+  const status = $("#s-opik-status");
+  if(!status) return;
+  const missing = [];
+  if(!(opik?.dashboard_url || "").trim()) missing.push("dashboard URL");
+  if(!(opik?.workspace_name || "").trim()) missing.push("workspace");
+  if(!(opik?.project_id || "").trim()) missing.push("project ID");
+  if(!(opik?.project_name || "").trim()) missing.push("project name");
+  status.textContent = missing.length
+    ? `Opik is required for workflow runs. Missing: ${missing.join(", ")}.`
+    : `Opik configured for ${opik.workspace_name}/${opik.project_name}. Workflow traces will fail fast if this endpoint cannot be reached.`;
+}
+
 async function loadSettings(){
   const cfg = await api("/settings");
   RUNNER_MODELS = cfg.runner_models || RUNNER_MODELS;
-  COPILOT_EFFORTS = cfg.copilot_efforts || [];
+  REPO_PATH_OPTIONS = arrayValues(cfg.repo_path_options);
+  REPO_CUSTOM_VALUES = uniqueSorted(arrayValues(cfg.repo_paths?.custom_values));
+  REPO_BASE_DIR = cfg.repo_paths?.base_dir || "";
+  $("#s-repo-base-dir").value = REPO_BASE_DIR;
+  renderRepoPathOptions();
+  renderRepoCustomValues();
   // Rebuild runner dropdowns to include any discovered copilot aliases
   syncRunnerSelectFor("f-runner", "f-model");
   syncRunnerSelectFor("eval-runner", "eval-model");
@@ -1449,6 +1811,7 @@ async function loadSettings(){
   $("#s-opik-workspace").value = cfg.opik?.workspace_name || "";
   $("#s-opik-project-id").value = cfg.opik?.project_id || "";
   $("#s-opik-project-name").value = cfg.opik?.project_name || "";
+  updateOpikSettingsStatus(cfg.opik || {});
   buildAgentDefaultsUI(cfg.agent_model_defaults || {});
   syncRunConfigSelects();
 }
@@ -1458,7 +1821,7 @@ $("#settings-save").addEventListener("click", async ()=>{
     WORKFLOW_STAGE_AGENTS.forEach(agentName => {
       agentDefaults[agentName] = {};
       Object.keys(RUNNER_MODELS).forEach(runner => {
-        const select = $(`#agent-model-${agentName}-${runner}`);
+        const select = $(`#agent-model-${agentName}-${runner}`.replace(/\./g, "_"));
         const value = select?.value || "";
         if(value) {
           agentDefaults[agentName][runner] = value;
@@ -1474,6 +1837,7 @@ $("#settings-save").addEventListener("click", async ()=>{
       defaults:{runner:$("#s-runner").value, mode:$("#s-mode").value},
       concurrency:{max_running_jobs:parseInt($("#s-conc").value,10)},
       paths:{data_dir:$("#s-data").value},
+      repo_paths:{base_dir:$("#s-repo-base-dir").value.trim(), custom_values:REPO_CUSTOM_VALUES},
       opik:{
         dashboard_url:$("#s-opik-url").value.trim(),
         workspace_name:$("#s-opik-workspace").value.trim(),
@@ -1483,7 +1847,21 @@ $("#settings-save").addEventListener("click", async ()=>{
       agent_model_defaults: agentDefaults,
     })});
     toast("Settings saved");
+    await loadSettings();
   }catch(e){ toast(e.message, true); }
+});
+REPO_PICKERS.forEach(setupRepoPicker);
+document.addEventListener("pointerdown", event => {
+  if(event.target.closest(".repo-combobox")) return;
+  closeAllRepoPickers();
+});
+$("#f-repo-forget").addEventListener("click", async ()=>{
+  try{ await removeCurrentRepoCustomValue("#f-repo"); }
+  catch(e){ toast(e.message, true); }
+});
+$("#eval-repo-forget").addEventListener("click", async ()=>{
+  try{ await removeCurrentRepoCustomValue("#eval-repo"); }
+  catch(e){ toast(e.message, true); }
 });
 
 $("#s-opik-connect").addEventListener("click", async ()=>{
@@ -1502,6 +1880,7 @@ $("#s-opik-connect").addEventListener("click", async ()=>{
     $("#s-opik-workspace").value = result.workspace_name || "";
     $("#s-opik-project-id").value = result.project_id || "";
     $("#s-opik-project-name").value = result.project_name || projectName;
+    updateOpikSettingsStatus(result);
     toast("Opik connected — workspace and project ID filled in");
   }catch(e){ toast(e.message, true); }
   finally{ btn.textContent = "Connect"; btn.disabled = false; }
@@ -1514,22 +1893,9 @@ function syncModelSelectFor(runnerSelector, modelSelector){
     const o = document.createElement("option"); o.value=m; o.textContent=m; sel.appendChild(o);
   });
 }
-function syncEffortSelectFor(effortSelector){
-  const sel = $(effortSelector);
-  sel.innerHTML="";
-  const keep = document.createElement("option");
-  keep.value = "";
-  keep.textContent = "(default)";
-  sel.appendChild(keep);
-  COPILOT_EFFORTS.forEach(e=>{
-    const o = document.createElement("option"); o.value=e; o.textContent=e; sel.appendChild(o);
-  });
-}
 function syncRunConfigSelects(){
   syncModelSelectFor("#f-runner", "#f-model");
   syncModelSelectFor("#eval-runner", "#eval-model");
-  syncEffortSelectFor("#f-effort");
-  syncEffortSelectFor("#eval-effort");
 }
 $("#f-runner").addEventListener("change", ()=>syncModelSelectFor("#f-runner", "#f-model"));
 $("#eval-runner").addEventListener("change", ()=>syncModelSelectFor("#eval-runner", "#eval-model"));
@@ -1542,6 +1908,7 @@ function fmtLocalTime(isoStr){
 }
 
 // History
+const STATUS_ICON = {failed:"✕ ", succeeded:"✓ ", cancelled:"⊘ ", running:"● "};
 async function loadHistory(){
   try{
     const r = await api("/runs?limit=50");
@@ -1551,12 +1918,20 @@ async function loadHistory(){
       const d = document.createElement("div");
       d.className = "job" + (j.id===activeJobId?" active":"");
       d.innerHTML = `<div class="job-id">${j.id.slice(0,16)}…</div>
-        <div class="job-meta">${j.change_id} · ${j.runner} · <span class="status ${j.status}">${j.status}</span></div>
+        <div class="job-meta">${j.change_id} · ${j.runner} · ${j.log_level || "warning"} · <span class="status ${j.status}">${STATUS_ICON[j.status]||""}${j.status}</span></div>
         <div class="job-meta">${fmtLocalTime(j.submitted_at)}</div>`;
       d.addEventListener("click", ()=>selectJob(j.id));
       wrap.appendChild(d);
     });
     $("#runs-meta").textContent = `${r.count} run${r.count===1?"":"s"}`;
+    if(activeJobId && !activeStream && activeRunJob){
+      const fresh = r.items.find(j=>j.id===activeJobId);
+      if(fresh && (fresh.status!==activeRunJob.status || fresh.current_stage!==activeRunJob.current_stage)){
+        activeRunJob = {...activeRunJob, status: fresh.status, current_stage: fresh.current_stage};
+        renderRunWorkflow(activeRunJob, activeRunEvents);
+        updateRunFeedback(activeRunJob, activeRunEvents);
+      }
+    }
   }catch(e){ /* server may be starting */ }
 }
 setInterval(loadHistory, 3000); loadHistory();
@@ -1569,15 +1944,19 @@ $("#submit-btn").addEventListener("click", async ()=>{
     ado_url: $("#f-ado").value.trim() || null,
     runner: $("#f-runner").value,
     model: $("#f-model").value || null,
-    copilot_effort: $("#f-effort").value || null,
-    skip_materialize: $("#f-skip").checked,
+    log_level: $("#f-log-level").value,
     extra_context: $("#f-extra").value || null,
     mode: $("#f-mode").value,
   };
   if(!body.repo || !body.change_id){ toast("repo and change_id are required", true); return; }
   try{
     const r = await api("/runs", {method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(body)});
-    toast("Submitted "+r.job_id);
+    try{
+      await rememberRepoPath(body.repo);
+      toast("Submitted "+r.job_id);
+    }catch(saveErr){
+      toast(`Submitted ${r.job_id}; repo path was not saved: ${saveErr.message}`, true);
+    }
     await loadHistory();
     selectJob(r.job_id);
   }catch(e){ toast(e.message, true); }
@@ -1589,8 +1968,12 @@ async function requestCancel(){
   try{ await api(`/runs/${activeJobId}/cancel`, {method:"POST"}); toast("Cancel requested"); }
   catch(e){ toast(e.message, true); }
 }
-$("#cancel-btn").addEventListener("click", requestCancel);
-$("#eval-cancel-btn").addEventListener("click", requestCancel);
+$("#cancel-btn").addEventListener("click", ()=>{
+  if(confirm("Cancel this run?")) requestCancel();
+});
+$("#eval-cancel-btn").addEventListener("click", ()=>{
+  if(confirm("Cancel this evaluation run?")) requestCancel();
+});
 
 // Job selection / SSE
 function showRunAlert(title, message, meta=[], surface="runs"){
@@ -1650,6 +2033,7 @@ function clearTerm(surface="runs"){
     renderRunWorkflow();
   }
   hideOpikLink(surface);
+  resetTraceSummary(surface);
   lastSeq=0;
   ui.metrics.forEach(id=>$("#"+id).textContent="—");
 }
@@ -1678,9 +2062,56 @@ function updateOpikLink(job, surface="runs"){
   }
   link.href = dashboardUrl;
   link.title = `Open Opik traces filtered to ${job.opik.thread_id || job.change_id}`;
-  hint.textContent = `Traces filtered to ${job.opik.thread_id || job.change_id}`;
+  hint.innerHTML = `<span class="filter-chip">Traces filtered to ${job.opik.thread_id || job.change_id}</span>`;
   hint.style.display = "";
   link.style.display = "";
+}
+function resetTraceSummary(surface="runs"){
+  TRACE_EVENTS[surface] = [];
+  const ui = runSurface(surface);
+  const summary = $(ui.traceSummary);
+  const meta = $(ui.traceSummaryMeta);
+  const timeline = $(ui.traceTimeline);
+  if(summary) summary.classList.remove("show");
+  if(meta) meta.textContent = "";
+  if(timeline) timeline.innerHTML = "";
+}
+function updateTraceSummary(surface="runs"){
+  const events = TRACE_EVENTS[surface] || [];
+  const ui = runSurface(surface);
+  const summary = $(ui.traceSummary);
+  const meta = $(ui.traceSummaryMeta);
+  const timeline = $(ui.traceTimeline);
+  if(!summary || !meta || !timeline) return;
+  if(!events.length){
+    summary.classList.remove("show");
+    meta.textContent = "";
+    timeline.innerHTML = "";
+    return;
+  }
+  const starts = events.filter(ev=>ev.type==="opik.start");
+  const ends = events.filter(ev=>ev.type==="opik.end");
+  const errors = ends.filter(ev=>ev.status==="error").length;
+  const running = Math.max(0, starts.length - ends.length);
+  meta.textContent = `${starts.length} started · ${ends.length} finished${running ? ` · ${running} running` : ""}${errors ? ` · ${errors} error${errors===1?"":"s"}` : ""}`;
+  timeline.innerHTML = "";
+  starts.slice(-8).forEach(start=>{
+    const end = [...ends].reverse().find(candidate => candidate.name===start.name && candidate.depth===start.depth);
+    const pill = document.createElement("span");
+    pill.className = "trace-pill";
+    if(end?.status==="error") pill.classList.add("error");
+    else if(!end) pill.classList.add("running");
+    const label = start.name || "trace";
+    pill.textContent = `${start.kind==="trace" ? "◎" : "◦"} ${label.replace(/^stage:/,"")}`;
+    pill.title = `${label}${end?.duration_ms!=null ? ` · ${end.duration_ms}ms` : ""}`;
+    timeline.appendChild(pill);
+  });
+  summary.classList.add("show");
+}
+function collectTraceEvent(ev, surface="runs"){
+  if(ev.type!=="opik.start" && ev.type!=="opik.end") return;
+  TRACE_EVENTS[surface].push(ev);
+  updateTraceSummary(surface);
 }
 function formatEventTime(ts){
   return ts ? new Date(ts).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false}) : "";
@@ -1723,7 +2154,13 @@ function describeEvent(ev, surface="runs"){
   let cls = "ev"; let tag = ev.type; let msg = "";
   if(ev.type==="stage.start"||ev.type==="stage.end"){ cls+=" stage"; tag = `▾ ${ev.stage}`; msg = ev.type==="stage.end"?` (${ev.status})`:""; }
   else if(ev.type==="cli.invoke"||ev.type==="cli.exit"){ cls+=" cli"; msg = ev.type==="cli.exit"?` exit=${ev.exit_code} ${ev.duration_ms}ms`:` ${(ev.cmd||[]).join(" ")} (${ev.argc||0} args)`; }
-  else if(ev.type==="cli.stdout"||ev.type==="log"){ cls+=" stdout"; msg = ev.line || ev.msg || ""; }
+  else if(ev.type==="cli.stdout"||ev.type==="log"){
+    const lvl = (ev.level||"").toLowerCase();
+    cls += " log-" + lvl;
+    cls += (lvl==="error"||lvl==="warning"||lvl==="critical") ? " stderr" : " stdout";
+    tag = ev.level ? ev.level.toUpperCase() : ev.type;
+    msg = ev.line || ev.msg || "";
+  }
   else if(ev.type==="cli.stderr"){ cls+=" stderr"; msg = ev.line || ""; }
   else if(ev.type==="opik.start"||ev.type==="opik.end"){
     cls += " trace";
@@ -1781,7 +2218,11 @@ function appendFlatEvent(parent, ev, surface="runs"){
 function appendEvent(ev, surface="runs"){
   const term = ensureTermReady(surface);
   const ui = runSurface(surface);
-  if(ev.stage) $(ui.stage).textContent = ev.stage;
+  collectTraceEvent(ev, surface);
+  if(ev.stage){
+    $(ui.stage).textContent = ev.stage;
+    $(ui.stage).classList.remove("metrics-skeleton");
+  }
   if(ev.type==="user.prompt"){
     const form = buildUserPromptForm(ev);
     (activeStageGroup ? activeStageGroup.children : term).appendChild(form);
@@ -1845,13 +2286,21 @@ async function selectJob(id, surface="runs"){
   try{
     const job = await api(`/runs/${id}`);
     if(surface==="runs") activeRunJob = {...job};
-    $(ui.title).textContent = `${job.id} · ${job.change_id} · ${job.status}`;
+    const dot = (job.status==="running"||job.status==="queued") ? `<span class="status-dot ${job.status}"></span>` : "";
+    $(ui.title).innerHTML = `${dot}${job.id} · ${job.change_id} · <span class="status ${job.status}">${STATUS_ICON[job.status]||""}${job.status}</span>`;
     updateOpikLink(job, surface);
     $(ui.cancel).style.display = (job.status==="running"||job.status==="queued"||job.status==="awaiting_input") ? "" : "none";
     $("#"+ui.metrics[0]).textContent = job.tokens_in||0;
     $("#"+ui.metrics[1]).textContent = job.tokens_out||0;
     $("#"+ui.metrics[2]).textContent = "$"+Number(job.cost_usd||0).toFixed(4);
-    $("#"+ui.metrics[3]).textContent = job.current_stage || "—";
+    const stageEl = $("#"+ui.metrics[3]);
+    if(job.current_stage){
+      stageEl.textContent = job.current_stage;
+      stageEl.classList.remove("metrics-skeleton");
+    } else {
+      stageEl.textContent = "";
+      stageEl.classList.add("metrics-skeleton");
+    }
     $("#"+ui.metrics[4]).textContent = (job.tokens_in||0)+(job.tokens_out||0);
     // Replay past events then attach stream
     const events = await api(`/runs/${id}/events`);
@@ -1887,7 +2336,21 @@ async function selectJob(id, surface="runs"){
       };
       STREAM_EVENT_TYPES.forEach(type=>es.addEventListener(type, onStreamEvent));
       es.onmessage = onStreamEvent;
-      es.onerror = ()=>{ es.close(); activeStream=null; };
+      let _sseRetried = false;
+      es.onerror = ()=>{
+        es.close(); activeStream=null;
+        if(!_sseRetried && activeJobId===id && RUN_ACTIVE_STATUSES.has(activeRunJob?.status)){
+          _sseRetried = true;
+          setTimeout(()=>{
+            if(activeJobId!==id || !RUN_ACTIVE_STATUSES.has(activeRunJob?.status)) return;
+            const es2 = new EventSource(`/runs/${id}/stream${lastSeq?`?after=${lastSeq}`:""}`);
+            activeStream = es2;
+            STREAM_EVENT_TYPES.forEach(type=>es2.addEventListener(type, onStreamEvent));
+            es2.onmessage = onStreamEvent;
+            es2.onerror = ()=>{ es2.close(); activeStream=null; };
+          }, 2000);
+        }
+      };
     }
     loadHistory();
   }catch(e){ toast(e.message, true); }
@@ -2039,8 +2502,6 @@ $("#eval-submit-btn").addEventListener("click", async ()=>{
     story_id: $("#eval-story").value,
     runner: $("#eval-runner").value,
     model: $("#eval-model").value || null,
-    copilot_effort: $("#eval-effort").value || null,
-    skip_materialize: $("#eval-skip").checked,
     extra_context: $("#eval-extra").value || null,
     mode: $("#eval-mode").value,
   };
@@ -2049,7 +2510,12 @@ $("#eval-submit-btn").addEventListener("click", async ()=>{
   btn.disabled = true;
   try{
     const r = await api("/evaluate/runs", {method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(body)});
-    toast("Submitted evaluation "+r.job_id);
+    try{
+      await rememberRepoPath(body.repo);
+      toast("Submitted evaluation "+r.job_id);
+    }catch(saveErr){
+      toast(`Submitted evaluation ${r.job_id}; repo path was not saved: ${saveErr.message}`, true);
+    }
     await loadEvaluate();
     selectJob(r.job_id, "evaluate");
   }catch(e){ toast(e.message, true); }

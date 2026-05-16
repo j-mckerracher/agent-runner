@@ -120,7 +120,7 @@
     "agent:assignment-evaluator@v1": "1ded3017b7c1a33444e23d9bc14a04a56a44fd930ddcfd5fc064b7c7dc373a17",
     "agent:implementation-evaluator@v1": "e46b789c5f34f845a59c6a54f24e4dba8a1d0ebb32dbfe89ff363d547fdf2279",
     "agent:information-explorer@v1": "ef143dca543f42cf0bc493f839e8c740c9c286738cfca18e07c9b9c94381d64c",
-    "agent:intake@v1": "f23c34ac92b2914d87eecc96ec080129f3530920318a4d9f8a517768fd160845",
+    "agent:intake@v1": "f23e2d8c5b3693ce3631f1fa2d9bde0e0edfc84d4e68847bacbaf27708fd2436",
     "agent:lessons-optimizer-hyperagent@v1": "ba338c310a00d529912c699dc21d0a232c4a1b6dc97857c66ef716ae52932452",
     "agent:qa@v1": "89e673acfafa076c3a7d4502c571fc0134ffb6f19a1970a8ce2cb5a74887f77e",
     "agent:qa-evaluator@v1": "6b57d48666213f1543780050c23f7955d119942a05559150abaf5312c999dcc4",
@@ -156,10 +156,25 @@
     "script:parse-test-steps.py@source": "cb4b587d1e2fd7bdab76edecb8f6ef92c0e6a7b943631bef1ca99cf71dd0d1c1",
     "script:validate-artifact-schema.py@source": "cedf70d4d04d5bee79182eea24c4792051174c708cf4476313ce37f9203441c9",
     "script:validate-diff-size.py@source": "d22f20f6eba1a6d32163a7d7a88c1110de4ab9a6a4c3794345d128ffc5a63880",
-    "script:validate-scope.py@source": "acdd22b90d0bde7897de5fadc41480f8960a2c25b86fce494a3fefcdc06d7383"
+    "script:validate-scope.py@source": "acdd22b90d0bde7897de5fadc41480f8960a2c25b86fce494a3fefcdc06d7383",
+    "script:__pycache__/generate-obsidian-archive.cpython-314.pyc@source": "cdc4b141d336abf0d6cc885f5cc77846793ad52332b4115ac385618af1f4a801",
+    "script:__pycache__/init-artifact-dirs.cpython-314.pyc@source": "85fbd9bd6116e6a35803d9708fb5124d05f1930e88045223522fe6682eeb37cc",
+    "script:__pycache__/init-session-log.cpython-314.pyc@source": "643c4935d787191acaaeb3a6dc7e76988f1f2ab4376b7cf8530b4ce31560fb28"
   },
-  "materialized_at": "2026-05-06T21:04:20Z",
+  "materialized_at": "2026-05-16T15:31:36Z",
   "scripts": [
+    {
+      "name": "__pycache__/generate-obsidian-archive.cpython-314.pyc",
+      "version": "source"
+    },
+    {
+      "name": "__pycache__/init-artifact-dirs.cpython-314.pyc",
+      "version": "source"
+    },
+    {
+      "name": "__pycache__/init-session-log.cpython-314.pyc",
+      "version": "source"
+    },
     {
       "name": "check-ac-coverage.py",
       "version": "source"

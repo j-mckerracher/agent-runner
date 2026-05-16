@@ -230,7 +230,7 @@ class EvalSynthesizeTests(unittest.TestCase):
     def _run_synthesis(self, agent_side_effect=None, trial_side_effect=None, **kwargs):
         agent_side_effect = agent_side_effect or (lambda runner, prompt, agent, **call_kwargs: _default_fake_agent_response(prompt))
         trial_side_effect = trial_side_effect or _default_trial_side_effect
-        with mock.patch("eval.synthesize.run_cmds.run_agent_cmd", side_effect=agent_side_effect) as patched_agent, mock.patch(
+        with mock.patch("eval.synthesize.run_agent_cmd", side_effect=agent_side_effect) as patched_agent, mock.patch(
             "eval.synthesize.run_story_trials", side_effect=trial_side_effect
         ) as patched_trials:
             report = synthesize_suites(
@@ -311,7 +311,7 @@ class EvalSynthesizeTests(unittest.TestCase):
     def test_existing_predicted_raw_stories_are_reused_without_hints(self):
         self._run_synthesis()
 
-        with mock.patch("eval.synthesize.run_cmds.run_agent_cmd") as patched_agent, mock.patch(
+        with mock.patch("eval.synthesize.run_agent_cmd") as patched_agent, mock.patch(
             "eval.synthesize.run_story_trials"
         ) as patched_trials:
             report = synthesize_suites(
@@ -481,7 +481,7 @@ class EvalSynthesizeTests(unittest.TestCase):
         self.assertEqual(ac["command"], ["npx", "nx", "test", "order-results-ui"])
 
     def test_main_defaults_to_predicted_synthesis_without_calibration(self):
-        with mock.patch("eval.synthesize.run_cmds.run_agent_cmd", side_effect=lambda runner, prompt, agent, **kwargs: _default_fake_agent_response(prompt)), mock.patch(
+        with mock.patch("eval.synthesize.run_agent_cmd", side_effect=lambda runner, prompt, agent, **kwargs: _default_fake_agent_response(prompt)), mock.patch(
             "eval.synthesize.run_story_trials", side_effect=_default_trial_side_effect
         ) as patched_trials:
             rc = main(
@@ -498,9 +498,11 @@ class EvalSynthesizeTests(unittest.TestCase):
         patched_trials.assert_not_called()
 
     def test_main_calibrate_opt_in_uses_default_runner_profile(self):
-        with mock.patch("eval.synthesize.run_cmds.run_agent_cmd", side_effect=lambda runner, prompt, agent, **kwargs: _default_fake_agent_response(prompt)), mock.patch(
+        with mock.patch("eval.synthesize.run_agent_cmd", side_effect=lambda runner, prompt, agent, **kwargs: _default_fake_agent_response(prompt)), mock.patch(
             "eval.synthesize.run_story_trials", side_effect=_default_trial_side_effect
-        ) as patched_trials:
+        ) as patched_trials, mock.patch(
+            "eval.synthesize.resolve_runner_model", side_effect=lambda runner, **_: runner
+        ):
             rc = main(
                 [
                     "--dataset",
@@ -549,7 +551,7 @@ def test_smoke_synthesize_outputs_workflow_valid_fixtures():
             manifest_path,
         )
         initialize_dataset(manifest_path)
-        with mock.patch("eval.synthesize.run_cmds.run_agent_cmd", side_effect=lambda runner, prompt, agent, **kwargs: _default_fake_agent_response(prompt)), mock.patch(
+        with mock.patch("eval.synthesize.run_agent_cmd", side_effect=lambda runner, prompt, agent, **kwargs: _default_fake_agent_response(prompt)), mock.patch(
             "eval.synthesize.run_story_trials", side_effect=_default_trial_side_effect
         ):
             synthesize_suites(

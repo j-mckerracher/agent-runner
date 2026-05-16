@@ -9,6 +9,17 @@ from .materialized_paths import runner_agent_dir
 logger = logging.getLogger(__name__)
 
 
+def _front_matter_agent_name(content: str) -> str | None:
+    match = re.match(r"^---\s*\n(.*?)\n---\s*", content, flags=re.DOTALL)
+    if not match:
+        return None
+    front_matter = match.group(1)
+    name_match = re.search(r"^name:\s*(.+?)\s*$", front_matter, flags=re.MULTILINE)
+    if not name_match:
+        return None
+    return name_match.group(1).strip().strip("'\"")
+
+
 def strip_agent_prompt_markup(content: str) -> str:
     """Normalize a materialized agent prompt into plain instruction text."""
     original_len = len(content)
@@ -41,13 +52,18 @@ def load_agent_system_prompt(
     )
     matches = sorted(search_dir.glob(f"*{agent_name}*.agent.md"))
     if not matches:
-        logger.error(
-            "load_agent_system_prompt: no agent file found for %r in %s (runner=%s)",
-            agent_name,
-            search_dir,
-            runner,
-        )
-        raise FileNotFoundError(f"No agent file found for '{agent_name}' in {search_dir}")
+        for candidate in sorted(search_dir.glob("*.agent.md")):
+            candidate_content = candidate.read_text(encoding="utf-8")
+            if _front_matter_agent_name(candidate_content) == agent_name:
+                matches.append(candidate)
+        if not matches:
+            logger.error(
+                "load_agent_system_prompt: no agent file found for %r in %s (runner=%s)",
+                agent_name,
+                search_dir,
+                runner,
+            )
+            raise FileNotFoundError(f"No agent file found for '{agent_name}' in {search_dir}")
     chosen = matches[0]
     logger.debug("load_agent_system_prompt: loading %s (of %d match(es))", chosen.name, len(matches))
     prompt = strip_agent_prompt_markup(chosen.read_text(encoding="utf-8"))

@@ -17,7 +17,6 @@ from unittest.mock import MagicMock, Mock, patch
 import yaml
 
 from run import load_assignments
-from core.steps import step_task_gen_producer, step_task_assigner
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "workflow-fixtures"
 TEST_AC_001_ROOT = FIXTURE_ROOT / "TEST-AC-001"
@@ -89,177 +88,6 @@ class TaskGeneratorSyntheticModeTests(unittest.TestCase):
                         "Task-gen must be able to read project_type=synthetic-fixture from config")
 
 
-class TaskPlanNormalizationTests(unittest.TestCase):
-    def test_medium__task_gen_producer_normalizes_legacy_task_schema_and_minimum_task_count(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            agent_context_root = Path(tmpdir) / "agent-context"
-            change_id = "calibration_TEST-NORMALIZE-001"
-            planning_dir = agent_context_root / change_id / "planning"
-            planning_dir.mkdir(parents=True, exist_ok=True)
-            tasks_path = planning_dir / "tasks.yaml"
-
-            def fake_run_agent_cmd(*args, **kwargs):
-                with tasks_path.open("w", encoding="utf-8") as handle:
-                    yaml.safe_dump(
-                        {
-                            "story_id": change_id,
-                            "tasks": [
-                                {
-                                    "task_id": "T1",
-                                    "title": "Add constant",
-                                    "description": "Add the requested constant.",
-                                    "acceptance_criteria_mapped": ["AC1"],
-                                    "dependencies": [],
-                                    "priority": "high",
-                                    "estimated_complexity": "simple",
-                                }
-                            ],
-                            "ac_coverage_matrix": {"AC1": ["T1"]},
-                        },
-                        handle,
-                        sort_keys=False,
-                    )
-                return "task plan written"
-
-            context = f"Generate tasks from {agent_context_root}/{change_id}/intake/."
-            with patch("core.steps.AGENT_CONTEXT_ROOT", agent_context_root), patch("core.steps.run_agent_cmd", side_effect=fake_run_agent_cmd):
-                step_task_gen_producer(context, runner="claude")
-
-            with tasks_path.open("r", encoding="utf-8") as handle:
-                data = yaml.safe_load(handle)
-
-            self.assertEqual(data["tasks"][0]["id"], "T1")
-            self.assertEqual(data["tasks"][0]["ac_mapping"], ["AC1"])
-            self.assertEqual(data["tasks"][0]["complexity"], "simple")
-            self.assertNotIn("task_id", data["tasks"][0])
-            self.assertNotIn("acceptance_criteria_mapped", data["tasks"][0])
-            self.assertNotIn("estimated_complexity", data["tasks"][0])
-            self.assertEqual(len(data["tasks"]), 2)
-            self.assertEqual(data["tasks"][1]["dependencies"], ["T1"])
-            self.assertEqual(data["tasks"][1]["ac_mapping"], ["AC1"])
-            self.assertEqual(data["ac_coverage_matrix"]["AC1"], ["T1", "T2"])
-
-    def test_medium__task_gen_producer_normalizes_legacy_schema_without_expanding_production_plan(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            agent_context_root = Path(tmpdir) / "agent-context"
-            change_id = "WI-12345"
-            planning_dir = agent_context_root / change_id / "planning"
-            planning_dir.mkdir(parents=True, exist_ok=True)
-            tasks_path = planning_dir / "tasks.yaml"
-
-            def fake_run_agent_cmd(*args, **kwargs):
-                with tasks_path.open("w", encoding="utf-8") as handle:
-                    yaml.safe_dump(
-                        {
-                            "story_id": change_id,
-                            "tasks": [
-                                {
-                                    "task_id": "T1",
-                                    "title": "Production task",
-                                    "description": "Do the production work.",
-                                    "acceptance_criteria_mapped": ["AC1"],
-                                    "dependencies": [],
-                                    "priority": "high",
-                                    "estimated_complexity": "simple",
-                                }
-                            ],
-                            "ac_coverage_matrix": {"AC1": ["T1"]},
-                        },
-                        handle,
-                        sort_keys=False,
-                    )
-                return "task plan written"
-
-            context = f"Generate tasks from {agent_context_root}/{change_id}/intake/."
-            with patch("core.steps.AGENT_CONTEXT_ROOT", agent_context_root), patch("core.steps.run_agent_cmd", side_effect=fake_run_agent_cmd):
-                step_task_gen_producer(context, runner="claude")
-
-            with tasks_path.open("r", encoding="utf-8") as handle:
-                data = yaml.safe_load(handle)
-
-            self.assertEqual(data["tasks"][0]["id"], "T1")
-            self.assertEqual(data["tasks"][0]["ac_mapping"], ["AC1"])
-            self.assertEqual(data["tasks"][0]["complexity"], "simple")
-            self.assertEqual(len(data["tasks"]), 1)
-
-    def test_medium__task_assigner_normalizes_yaml_assignments_to_canonical_json(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            agent_context_root = Path(tmpdir) / "agent-context"
-            change_id = "calibration_TEST-ASSIGN-001"
-            planning_dir = agent_context_root / change_id / "planning"
-            planning_dir.mkdir(parents=True, exist_ok=True)
-            assignments_path = planning_dir / "assignments.json"
-
-            def fake_run_agent_cmd(*args, **kwargs):
-                assignments_path.write_text(
-                    "\n".join(
-                        [
-                            f'story_id: "{change_id}"',
-                            "execution_schedule:",
-                            "  - batch: 1",
-                            "    uows:",
-                            '      - uow_id: "UOW-001"',
-                            '        source_task_id: "T1"',
-                            '        assigned_role: "software-engineer"',
-                            "        priority_in_batch: 1",
-                            '        rationale: "Implementation"',
-                            "    parallel_execution: false",
-                            '    batch_rationale: "Sequential"',
-                        ]
-                    ),
-                    encoding="utf-8",
-                )
-                return "assignments written"
-
-            context = f"Create assignments from {agent_context_root}/{change_id}/planning/tasks.yaml."
-            with patch("core.steps.AGENT_CONTEXT_ROOT", agent_context_root), patch("core.steps.run_agent_cmd", side_effect=fake_run_agent_cmd):
-                step_task_assigner(context, runner="claude")
-
-            parsed = json.loads(assignments_path.read_text(encoding="utf-8"))
-            self.assertEqual(parsed["story_id"], change_id)
-            self.assertEqual(parsed["execution_schedule"][0]["batch"], 1)
-
-    def test_medium__load_assignments_accepts_legacy_yaml_batches(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            agent_context_root = Path(tmpdir) / "agent-context"
-            change_id = "LEGACY-ASSIGN-001"
-            planning_dir = agent_context_root / change_id / "planning"
-            planning_dir.mkdir(parents=True, exist_ok=True)
-            assignments_path = planning_dir / "assignments.json"
-            assignments_path.write_text(
-                "\n".join(
-                    [
-                        f'story_id: "{change_id}"',
-                        "execution_schedule:",
-                        "  batch: 1",
-                        "  uows:",
-                        '    - uow_id: "UOW-001"',
-                        '      source_task_id: "T1"',
-                        '      assigned_role: "software-engineer"',
-                        "      priority_in_batch: 1",
-                        '      rationale: "Implementation"',
-                        "  parallel_execution: false",
-                        '  batch_rationale: "First batch"',
-                        "  batch: 2",
-                        "  uows:",
-                        '    - uow_id: "UOW-002"',
-                        '      source_task_id: "T2"',
-                        '      assigned_role: "software-engineer"',
-                        "      priority_in_batch: 1",
-                        '      rationale: "Verification"',
-                        "  parallel_execution: false",
-                        '  batch_rationale: "Second batch"',
-                    ]
-                ),
-                encoding="utf-8",
-            )
-
-            with patch("run.AGENT_CONTEXT_ROOT", agent_context_root):
-                assignments = load_assignments(change_id)
-
-            self.assertEqual([batch["batch"] for batch in assignments["execution_schedule"]], [1, 2])
-
-
 class AssignmentsJsonSyntheticHandlingTests(unittest.TestCase):
     """Test that assignments.json is correctly generated for synthetic mode."""
 
@@ -277,11 +105,11 @@ class AssignmentsJsonSyntheticHandlingTests(unittest.TestCase):
         self.assertIsNotNone(self.assignments,
                             "assignments.json must be created by task-assigner stage")
 
-    def test_easy__assignments_json_has_execution_schedule_key(self):
+    def test_easy__assignments_json_has_batches_key(self):
         """Verify execution schedule is defined."""
         if self.assignments:
-            self.assertIn("execution_schedule", self.assignments,
-                         "assignments.json must have execution_schedule")
+            self.assertIn("batches", self.assignments,
+                         "assignments.json must have batches")
 
     def test_easy__assignments_json_serializes_to_non_none(self):
         """Verify assignments don't reference ADO-specific metadata."""

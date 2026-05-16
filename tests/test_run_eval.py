@@ -69,7 +69,7 @@ class RunEvalCompatibilityTests(unittest.TestCase):
         self.assertEqual(source_story["change_id"], "EVAL-001")
         self.assertEqual(copied_path.parent, self.fixture_dir)
 
-    def test_run_workflow_passes_story_repo_runner_model_and_skip_materialize(self):
+    def test_run_workflow_passes_story_repo_runner_and_model(self):
         story_path = self._write_workflow_json()
         completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
 
@@ -79,7 +79,6 @@ class RunEvalCompatibilityTests(unittest.TestCase):
                 repo=str(self.repo),
                 runner="gemini",
                 model="gemini-3-pro-preview",
-                skip_materialize=True,
             )
 
         self.assertIs(result, completed)
@@ -90,7 +89,6 @@ class RunEvalCompatibilityTests(unittest.TestCase):
         self.assertEqual(command[command.index("--repo") + 1], str(self.repo))
         self.assertEqual(command[command.index("--runner") + 1], "gemini")
         self.assertEqual(command[command.index("--model") + 1], "gemini-3-pro-preview")
-        self.assertIn("--skip-materialize", command)
         self.assertEqual(subprocess_run.call_args.kwargs["cwd"], str(self.workdir))
 
     def test_run_workflow_streams_live_output_when_requested(self):
@@ -105,7 +103,6 @@ class RunEvalCompatibilityTests(unittest.TestCase):
                 repo=str(self.repo),
                 runner="copilot",
                 model="gpt-5.4-mini",
-                skip_materialize=False,
                 stream_output=True,
             )
 

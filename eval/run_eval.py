@@ -15,10 +15,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional, Sequence
 
+if __package__ in {None, ""}:  # pragma: no cover - exercised by direct CLI use.
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from core.workflow_inputs import resolve_workflow_input
 
 if __package__ in {None, ""}:  # pragma: no cover - exercised by direct CLI use.
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from eval.check_helpers import run_check
     from eval.metrics import EvalScoreMetric, eval_score_results
     from eval.models import CheckResult, EvalStory, ScoreSummary, SuiteManifest
@@ -124,7 +126,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runs", type=_positive_int, default=1)
     parser.add_argument("--max-concurrent", type=_positive_int, default=1)
     parser.add_argument("--skip-pipeline", action="store_true")
-    parser.add_argument("--skip-materialize", action="store_true")
+    
     parser.add_argument("--skip-opik", action="store_true")
     parser.add_argument("--regression-threshold", type=_non_negative_float, default=0.0)
     parser.add_argument("--update-baseline", action="store_true")
@@ -412,7 +414,6 @@ def _run_workflow(
     repo: str,
     runner: str,
     model: str | None,
-    skip_materialize: bool,
     skip_lessons_optimizer: bool = False,
     calibration_fast_mode: bool = False,
     stream_output: bool = False,
@@ -431,8 +432,6 @@ def _run_workflow(
     ]
     if model:
         command.extend(["--model", model])
-    if skip_materialize:
-        command.append("--skip-materialize")
     if skip_lessons_optimizer:
         command.append("--skip-lessons-optimizer")
     if calibration_fast_mode:
@@ -485,7 +484,11 @@ def _candidate_artifact_files(change_id: str) -> list[Path]:
     preferred_names = ("impl_report.yaml", "qa_report.yaml", "summary.md", "story.yaml", "constraints.md")
     preferred = [path for name in preferred_names for path in root.rglob(name) if path.is_file()]
     suffixes = {".md", ".yaml", ".yml", ".json", ".txt", ".log"}
-    fallback = [path for path in root.rglob("*") if path.is_file() and path.suffix.lower() in suffixes]
+    fallback = [
+        path
+        for path in root.rglob("*")
+        if path.is_file() and path.suffix.lower() in suffixes and path.name != "workflow_status.yaml"
+    ]
     seen: set[Path] = set()
     ordered = []
     for path in [*preferred, *sorted(fallback)]:
@@ -495,7 +498,12 @@ def _candidate_artifact_files(change_id: str) -> list[Path]:
     return ordered
 
 
-def load_best_artifact_text(change_id: str, process_text: str = "") -> str:
+def load_best_artifact_text(
+    change_id: str,
+    process_text: str = "",
+    *,
+    workflow_succeeded: bool = True,
+) -> str:
     parts: list[str] = []
     for path in _candidate_artifact_files(change_id):
         try:
@@ -504,7 +512,7 @@ def load_best_artifact_text(change_id: str, process_text: str = "") -> str:
             continue
         if text:
             parts.append(f"--- {path.relative_to(REPO_ROOT)} ---\n{text}")
-    if process_text.strip():
+    if process_text.strip() and (workflow_succeeded or parts):
         parts.append(f"--- workflow_output ---\n{process_text.strip()}")
     return "\n\n".join(parts)
 
@@ -592,9 +600,12 @@ def _run_story_once(
     change_id = _workflow_change_id(story, run_index, isolate=isolate_workflow)
     effective_runner = run_spec.runner if run_spec is not None else args.runner
     effective_model = run_spec.model if run_spec is not None else args.model
-    if story_path.suffix.lower() == ".json" and not isolate_workflow:
+    # Stories with structured acceptance_criteria (AcceptanceCriterion objects) must be
+    # converted to plain-string fixture format before being passed to run.py.
+    needs_fixture_conversion = bool(story.acceptance_criteria)
+    if story_path.suffix.lower() == ".json" and not isolate_workflow and not needs_fixture_conversion:
         fixture_path = story_path
-    elif story_path.suffix.lower() == ".json":
+    elif story_path.suffix.lower() == ".json" and not needs_fixture_conversion:
         fixture_path = _write_json_fixture_copy(story_path, run_index, change_id)
     else:
         fixture_path = _write_workflow_fixture(story, run_index, change_id)
@@ -637,13 +648,23 @@ def _run_story_once(
                 repo=repo_path,
                 runner=effective_runner,
                 model=effective_model,
-                skip_materialize=args.skip_materialize,
                 skip_lessons_optimizer=True,
                 calibration_fast_mode=getattr(args, "calibration_fast_mode", False),
                 stream_output=getattr(args, "stream_output", False),
             )
         process_text = "\n".join(part for part in (completed.stdout, completed.stderr) if part)
-        artifact_text = load_best_artifact_text(change_id, process_text)
+        if completed.returncode != 0 and not getattr(args, "stream_output", False):
+            print(f"\n[FAIL] Workflow failed for {change_id} (exit {completed.returncode}):",
+                  file=sys.stderr)
+            if completed.stderr:
+                print(completed.stderr.strip()[-2000:], file=sys.stderr)
+            elif completed.stdout:
+                print(completed.stdout.strip()[-2000:], file=sys.stderr)
+        artifact_text = load_best_artifact_text(
+            change_id,
+            process_text,
+            workflow_succeeded=completed.returncode == 0,
+        )
         checks = run_story_checks(
             story.story_id,
             artifact_text,
@@ -684,7 +705,6 @@ def run_story_trials(
     run_indices: Sequence[int] | None = None,
     run_specs: Sequence[TrialRunSpec] | None = None,
     skip_pipeline: bool = False,
-    skip_materialize: bool = False,
     calibration_fast_mode: bool = False,
     stream_output: bool = False,
     suite: SuiteManifest | None = None,
@@ -699,7 +719,6 @@ def run_story_trials(
         run_indices=run_indices,
         run_specs=run_specs,
         skip_pipeline=skip_pipeline,
-        skip_materialize=skip_materialize,
         calibration_fast_mode=calibration_fast_mode,
         stream_output=stream_output,
         suite=suite,
@@ -717,7 +736,6 @@ def _run_story_trials_for_paths(
     run_indices: Sequence[int] | None = None,
     run_specs: Sequence[TrialRunSpec] | None = None,
     skip_pipeline: bool = False,
-    skip_materialize: bool = False,
     calibration_fast_mode: bool = False,
     stream_output: bool = False,
     suite: SuiteManifest | None = None,
@@ -749,7 +767,6 @@ def _run_story_trials_for_paths(
         runs=planned_run_count,
         max_concurrent=max_concurrent,
         skip_pipeline=skip_pipeline,
-        skip_materialize=skip_materialize,
         calibration_fast_mode=calibration_fast_mode,
         stream_output=stream_output,
         isolate_repo=not skip_pipeline and planned_jobs_count > 1,
@@ -790,7 +807,13 @@ def _opik_evaluate(*args: Any, **kwargs: Any) -> Any:
 def _create_opik_dataset(suite_tier: str, summary: ScoreSummary) -> tuple[Any, Any]:
     import opik
 
-    client = opik.Opik()
+    try:
+        from server.config import load_config
+        from core.opik_tracing import configure_opik_client
+
+        client = configure_opik_client((load_config().get("opik") or {}))
+    except ImportError:
+        client = opik.Opik()
     dataset = client.get_or_create_dataset(
         f"agent-workbench-{suite_tier}-suite",
         description=f"Agent Workbench {suite_tier} suite evaluation results",
@@ -858,7 +881,6 @@ def run_eval(args: argparse.Namespace) -> EvalRunResult:
         runs=args.runs,
         max_concurrent=args.max_concurrent,
         skip_pipeline=args.skip_pipeline,
-        skip_materialize=args.skip_materialize,
         stream_output=False,
         suite=suite,
     )

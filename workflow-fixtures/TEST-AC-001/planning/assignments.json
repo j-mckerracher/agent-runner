@@ -1,8 +1,8 @@
 {
   "story_id": "TEST-AC-001",
-  "execution_schedule": [
+  "batches": [
     {
-      "batch": 1,
+      "batch_id": 1,
       "parallel_execution": false,
       "uows": [
         {

@@ -1,1 +1,0 @@
-All run logs must be stored under logs/`{CHANGE-ID}/` directories.

@@ -11,9 +11,10 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from core.workspace_cleanup import clean_change_workspace
 from . import db
 from .events import EventBus, FileTailer, aggregate, read_all
-from .paths import AGENT_CONTEXT_ROOT, RUNNER_ROOT, cassettes_dir, events_path_for
+from .paths import AGENT_CONTEXT_ROOT, LOGS_ROOT, RUNNER_ROOT, cassettes_dir, events_path_for
 
 logger = logging.getLogger(__name__)
 
@@ -103,11 +104,8 @@ class JobProcess:
         cmd += ["--runner", self.job["runner"]]
         if self.job.get("model"):
             cmd += ["--model", self.job["model"]]
-        if self.job.get("copilot_effort"):
-            cmd += ["--copilot-effort", self.job["copilot_effort"]]
-        # The server materializes agents once at startup; skip it for every
-        # spawned run to avoid redundant work and noisy stage-0 output.
-        cmd += ["--skip-materialize"]
+        if self.job.get("log_level"):
+            cmd += ["--log-level", self.job["log_level"]]
         if self.job.get("extra_context"):
             cmd += ["--extra-context", self.job["extra_context"]]
         logger.debug("JobProcess._build_cmd: job_id=%s cmd=%s", self.id, cmd)
@@ -119,6 +117,7 @@ class JobProcess:
         env["AGENT_RUNNER_JOB_ID"] = self.id
         env["AGENT_CONTEXT_ROOT"] = str(AGENT_CONTEXT_ROOT)
         env["CHANGE_ID"] = self.job["change_id"]
+        env["PYTHONUNBUFFERED"] = "1"
         if self.job.get("cassette_path"):
             env["AGENT_RUNNER_CASSETTE"] = self.job["cassette_path"]
         logger.debug("JobProcess._build_env: job_id=%s event_log=%s cassette=%s", self.id, self.job["events_path"], self.job.get("cassette_path"))
@@ -128,8 +127,16 @@ class JobProcess:
         cmd = self._build_cmd()
         env = self._build_env()
         logger.info("JobProcess.start: job_id=%s runner=%s change_id=%s", self.id, self.job.get("runner"), self.job.get("change_id"))
+        clean_change_workspace(
+            self.job["change_id"],
+            agent_context_root=AGENT_CONTEXT_ROOT,
+            logs_root=LOGS_ROOT,
+        )
+        logger.debug("JobProcess.start: pre-cleaned artifacts for change_id=%s", self.job["change_id"])
         # Truncate any pre-existing event log so seq starts fresh.
-        Path(self.job["events_path"]).write_text("", encoding="utf-8")
+        events_path = Path(self.job["events_path"])
+        events_path.parent.mkdir(parents=True, exist_ok=True)
+        events_path.write_text("", encoding="utf-8")
         logger.debug("JobProcess.start: truncated event log %s", self.job["events_path"])
 
         # Tailer must be running before subprocess so we capture all events.

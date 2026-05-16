@@ -2,7 +2,22 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .runner_models import canonical_runner
+from .runner_models import KNOWN_RUNNERS
+
+
+def _canonical_runner(runner: str) -> str:
+    """Map a runner (standard or custom alias) to its canonical provider root."""
+    if runner in KNOWN_RUNNERS:
+        return runner
+    try:
+        from server.config import load_config
+        cfg = load_config()
+        alias = (cfg.get("runner_aliases") or {}).get(runner)
+        if alias and alias.get("provider") in RUNNER_OUTPUT_ROOTS:
+            return alias["provider"]
+    except Exception:
+        pass
+    return "claude"
 
 RUNNER_ROOT = Path(__file__).resolve().parent.parent
 
@@ -35,7 +50,7 @@ RUNNER_METADATA_FILES: dict[str, Path] = {
 
 def normalize_runner(runner: str) -> str:
     """Map runner aliases to the canonical materialized asset root."""
-    return canonical_runner(runner)
+    return _canonical_runner(runner)
 
 
 def runner_agent_dir(runner: str) -> Path:

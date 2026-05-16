@@ -38,10 +38,22 @@ class ServerRoutesTests(unittest.TestCase):
         r = self.client.get("/")
         self.assertEqual(r.status_code, 200)
         self.assertIn("agent-runner", r.text)
+        self.assertIn("Log level", r.text)
         self.assertIn("Open current run in Opik", r.text)
         self.assertIn("Open Opik evaluation workspace", r.text)
+        self.assertIn("Opik trace timeline", r.text)
+        self.assertIn('id="trace-summary"', r.text)
+        self.assertIn('id="eval-trace-summary"', r.text)
+        self.assertIn('id="s-opik-status"', r.text)
         self.assertIn("Start evaluation run", r.text)
         self.assertIn("Select an agent to view its latest prompt.", r.text)
+        self.assertIn('id="f-repo"', r.text)
+        self.assertIn('id="f-repo-toggle"', r.text)
+        self.assertIn('id="f-repo-menu"', r.text)
+        self.assertIn('id="eval-repo"', r.text)
+        self.assertIn('id="eval-repo-toggle"', r.text)
+        self.assertIn('id="eval-repo-menu"', r.text)
+        self.assertIn('id="s-repo-base-dir"', r.text)
 
     def test_medium__settings_returns_runner_models_and_efforts(self):
         s = self.client.get("/settings").json()
@@ -50,6 +62,8 @@ class ServerRoutesTests(unittest.TestCase):
         self.assertIn("api", s)
         self.assertIn("opik", s)
         self.assertIn("dashboard_url", s["opik"])
+        self.assertIn("repo_paths", s)
+        self.assertIn("repo_path_options", s)
 
     def test_medium__settings_put_partial_merges_and_persists(self):
         r = self.client.put("/settings", json={"concurrency": {"max_running_jobs": 4}})
@@ -57,6 +71,45 @@ class ServerRoutesTests(unittest.TestCase):
         cfg = self.client.get("/settings").json()
         self.assertEqual(cfg["concurrency"]["max_running_jobs"], 4)
         self.assertIn("api", cfg)
+
+    def test_medium__settings_repo_path_options_are_immediate_subdirs(self):
+        root = Path(self.tmpdir) / "repo-base"
+        repo_a = root / "repo-a"
+        repo_b = root / "repo-b"
+        hidden = root / ".hidden-repo"
+        nested = repo_a / "nested"
+        repo_a.mkdir(parents=True, exist_ok=True)
+        repo_b.mkdir(parents=True, exist_ok=True)
+        hidden.mkdir(parents=True, exist_ok=True)
+        nested.mkdir(parents=True, exist_ok=True)
+        (root / "not-a-dir.txt").write_text("ignore me", encoding="utf-8")
+
+        r = self.client.put("/settings", json={"repo_paths": {"base_dir": str(root), "custom_values": []}})
+        self.assertEqual(r.status_code, 200)
+        cfg = self.client.get("/settings").json()
+        self.assertEqual(cfg["repo_paths"]["base_dir"], str(root))
+        self.assertEqual(cfg["repo_path_options"], sorted([str(repo_a.resolve()), str(repo_b.resolve())]))
+        self.assertNotIn(str(nested.resolve()), cfg["repo_path_options"])
+        self.assertNotIn(str(hidden.resolve()), cfg["repo_path_options"])
+
+    def test_medium__settings_repo_path_custom_values_persist(self):
+        custom_values = ["~/Code/custom-repo", "/tmp/custom-repo"]
+        r = self.client.put("/settings", json={"repo_paths": {"custom_values": custom_values}})
+        self.assertEqual(r.status_code, 200)
+        cfg = self.client.get("/settings").json()
+        self.assertEqual(cfg["repo_paths"]["custom_values"], custom_values)
+
+    def test_medium__settings_repo_path_invalid_shapes_rejected(self):
+        cases = [
+            {"repo_paths": "not-a-dict"},
+            {"repo_paths": {"base_dir": 123}},
+            {"repo_paths": {"custom_values": "not-a-list"}},
+            {"repo_paths": {"custom_values": [""]}},
+        ]
+        for payload in cases:
+            with self.subTest(payload=payload):
+                r = self.client.put("/settings", json=payload)
+                self.assertEqual(r.status_code, 422)
 
     def test_medium__settings_put_invalid_port_rejected(self):
         r = self.client.put("/settings", json={"api": {"port": 0}})
@@ -97,6 +150,41 @@ class ServerRoutesTests(unittest.TestCase):
         self.assertEqual(r.status_code, 422)
         errors = r.json().get("detail", {}).get("errors", [])
         self.assertTrue(any("invalid" in str(e).lower() for e in errors))
+
+    def test_medium__settings_put_accepts_runner_alias_transport_config(self):
+        payload = {
+            "runner_aliases": {
+                "openai-compat-cloud": {
+                    "provider": "openai-compat",
+                    "model": "llama3.3:70b",
+                    "base_url": "https://openai-compat.example.com",
+                    "api_key_env": "OPENAI_COMPAT_CLOUD_API_KEY",
+                    "extra_headers": {"X-Tenant": "acme"},
+                    "litellm_extra_body": {"session": "enterprise"},
+                    "num_retries": 10,
+                    "retry_multiplier": 3.0,
+                    "retry_min_wait": 12,
+                    "retry_max_wait": 180,
+                    "timeout": 600,
+                }
+            }
+        }
+        r = self.client.put("/settings", json=payload)
+        self.assertEqual(r.status_code, 200)
+        cfg = self.client.get("/settings").json()
+        alias = cfg["runner_aliases"]["openai-compat-cloud"]
+        self.assertEqual(alias["provider"], "openai-compat")
+        self.assertEqual(alias["model"], "llama3.3:70b")
+        self.assertEqual(alias["base_url"], "https://openai-compat.example.com")
+        self.assertEqual(alias["api_key_env"], "OPENAI_COMPAT_CLOUD_API_KEY")
+        self.assertEqual(alias["extra_headers"], {"X-Tenant": "acme"})
+        self.assertEqual(alias["litellm_extra_body"], {"session": "enterprise"})
+        self.assertEqual(alias["num_retries"], 10)
+        self.assertEqual(alias["retry_multiplier"], 3.0)
+        self.assertEqual(alias["retry_min_wait"], 12)
+        self.assertEqual(alias["retry_max_wait"], 180)
+        self.assertEqual(alias["timeout"], 600)
+        self.assertEqual(cfg["runner_models"]["openai-compat-cloud"], ["openai-compat/llama3.3:70b"])
 
     def test_easy__agents_lists_known_materializable_agents(self):
         r = self.client.get("/agents")
@@ -370,9 +458,19 @@ class ServerRoutesTests(unittest.TestCase):
             corpus.EVAL_STORIES_ROOT = original_root
 
     def test_medium__submit_run_inserts_queued_job(self):
+        from server import db
+        from server.events import EventBus
+        from server.runner_proc import JobProcess
+
         r = self.client.post(
             "/runs",
-            json={"repo": "/tmp/none", "change_id": "TEST-AC-001", "runner": "claude", "mode": "live"},
+            json={
+                "repo": self.tmpdir,
+                "change_id": "TEST-AC-001",
+                "runner": "claude",
+                "mode": "live",
+                "log_level": "INFO",
+            },
         )
         self.assertEqual(r.status_code, 200)
         jid = r.json()["job_id"]
@@ -381,12 +479,19 @@ class ServerRoutesTests(unittest.TestCase):
         detail = self.client.get(f"/runs/{jid}").json()
         self.assertEqual(detail["change_id"], "TEST-AC-001")
         self.assertEqual(detail["run_kind"], "regular")
+        self.assertEqual(detail["log_level"], "info")
         self.assertIn(detail["status"], ("queued", "running", "failed", "cancelled"))
+
+        job = db.get_job(jid)
+        self.assertIsNotNone(job)
+        cmd = JobProcess(job, EventBus(), None)._build_cmd()
+        self.assertIn("--log-level", cmd)
+        self.assertEqual(cmd[cmd.index("--log-level") + 1], "info")
 
     def test_medium__submit_evaluation_run_queues_evaluation_job_hidden_from_runs(self):
         r = self.client.post(
             "/evaluate/runs",
-            json={"repo": "/tmp/none", "story_id": "EVAL-001", "runner": "claude", "mode": "live"},
+            json={"repo": self.tmpdir, "story_id": "EVAL-001", "runner": "claude", "mode": "live"},
         )
         self.assertEqual(r.status_code, 200)
         jid = r.json()["job_id"]
@@ -451,11 +556,24 @@ class ServerRoutesTests(unittest.TestCase):
         )
         self.assertIn(r.status_code, (400, 422))
 
+    def test_medium__submit_run_rejects_invalid_log_level(self):
+        r = self.client.post(
+            "/runs",
+            json={
+                "repo": self.tmpdir,
+                "change_id": "TEST-S2-LOG",
+                "runner": "claude",
+                "mode": "live",
+                "log_level": "verbose",
+            },
+        )
+        self.assertEqual(r.status_code, 422)
+
     def test_medium__submit_run_rejects_both_ado_and_story(self):
         r = self.client.post(
             "/runs",
             json={
-                "repo": "/tmp/none",
+                "repo": self.tmpdir,
                 "change_id": "TEST-S3",
                 "runner": "claude",
                 "mode": "live",
@@ -469,7 +587,7 @@ class ServerRoutesTests(unittest.TestCase):
         r = self.client.post(
             "/runs",
             json={
-                "repo": "/tmp/none",
+                "repo": self.tmpdir,
                 "change_id": "EVAL-001",
                 "runner": "claude",
                 "mode": "live",
@@ -508,7 +626,7 @@ class ServerRoutesTests(unittest.TestCase):
             r = self.client.post(
                 "/runs",
                 json={
-                    "repo": "/tmp/none",
+                    "repo": self.tmpdir,
                     "change_id": "RUN-456",
                     "runner": "claude",
                     "mode": "live",
@@ -537,12 +655,10 @@ class ServerRoutesTests(unittest.TestCase):
                   mode TEXT NOT NULL,
                   runner TEXT NOT NULL,
                   model TEXT,
-                  copilot_effort TEXT,
                   repo TEXT NOT NULL,
                   ado_url TEXT,
                   story_file TEXT,
                   extra_context TEXT,
-                  skip_materialize INTEGER DEFAULT 0,
                   submitted_at TEXT NOT NULL,
                   started_at TEXT,
                   finished_at TEXT,
@@ -577,6 +693,7 @@ class ServerRoutesTests(unittest.TestCase):
                         for row in migrated.execute("PRAGMA table_info(jobs)").fetchall()
                     }
                     self.assertIn("run_kind", columns)
+                    self.assertIn("log_level", columns)
                 finally:
                     migrated.close()
             finally:
@@ -591,7 +708,7 @@ class ServerRoutesTests(unittest.TestCase):
 
         r = self.client.post(
             "/runs",
-            json={"repo": "/tmp/none", "change_id": "TEST-AC-001", "runner": "claude", "mode": "live"},
+            json={"repo": self.tmpdir, "change_id": "TEST-AC-001", "runner": "claude", "mode": "live"},
         )
         self.assertEqual(r.status_code, 200)
         jid = r.json()["job_id"]
@@ -613,7 +730,7 @@ class ServerRoutesTests(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         submit = self.client.post(
             "/runs",
-            json={"repo": "/tmp/none", "change_id": "TEST-AC-001", "runner": "claude", "mode": "live"},
+            json={"repo": self.tmpdir, "change_id": "TEST-AC-001", "runner": "claude", "mode": "live"},
         )
         self.assertEqual(submit.status_code, 200)
         jid = submit.json()["job_id"]
@@ -624,6 +741,19 @@ class ServerRoutesTests(unittest.TestCase):
         self.assertIn("tab=logs", detail["opik"]["dashboard_url"])
         self.assertIn("logsType=traces", detail["opik"]["dashboard_url"])
         self.assertIn("traces_filters=", detail["opik"]["dashboard_url"])
+
+    def test_medium__submit_run_rejects_missing_repo_path(self):
+        r = self.client.post(
+            "/runs",
+            json={
+                "repo": "/absolute/path/to/your/repo",
+                "change_id": "TEST-AC-001",
+                "runner": "claude",
+                "mode": "live",
+            },
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("Repository path not found", r.text)
 
 
     def test_medium__respond_returns_404_for_unknown_job(self):
