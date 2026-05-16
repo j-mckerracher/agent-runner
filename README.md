@@ -28,23 +28,48 @@ Implementation and QA use evaluator/optimizer loops. A producer agent writes an 
 | **Evaluation framework** | `eval/synthesize.py` generates predicted easy/medium/hard stories by default, and `eval/run_eval.py` runs suites with scoring and baseline comparison. |
 | **Hermetic recordings** | Server-launched runs can record subprocess I/O into local cassettes. |
 
+## Future planned features
+
+The current platform is intentionally local-first and workflow-centric. The next wave of work is aimed at tightening the review loop, improving operator ergonomics, and making agent runs easier to supervise in real time.
+
+- **Pull request automation**
+  - add a dedicated PR agent
+  - create a PR automatically after code is pushed
+  - trigger PR review agents as part of the workflow
+  - keep the review loop running until critical PR feedback is resolved
+  - add Veracode scanning directly into the workflow
+- **Smarter workflow orchestration**
+  - enrich acceptance criteria earlier by interrogating ambiguities before execution starts
+  - update the harness so agents explicitly escalate to the user when they hit blocking questions or decisions
+  - add a chat-style escalation surface so agents can raise issues to the user in context
+  - explore bounded evaluator loops, including configurable max-retry behavior for eval passes
+- **GUI and operator experience**
+  - persist recently used repo paths and surface them at the top of the repo dropdown (most recent first)
+  - fix the small-screen Agent Workbench UI bug
+  - cap or virtualize rendered log output so the live GUI is less expensive on laptops
+  - show remaining user budget directly in the interface
+  - support lightweight notes and tags for runs and artifacts
+- **Search and integrations**
+  - improve informational search relevance using richer post-detail context
+  - integrate with Discord
+
 ## Quick start
 
 ### Prerequisites
 
-| Dependency | Required for | Notes |
-|---|---|---|
-| Python 3.9+ | `run.py`, `server_main.py`, bootstrap, eval tools | Bootstrap creates `.venv/`, but does not install Python. |
-| `git` | bootstrap and normal repo workflows | Used for the repo itself and for syncing the local Opik checkout. |
-| Docker Desktop | bundled local Opik stack | Required only when you want bootstrap to start self-hosted Opik. |
-| One AI backend CLI | actual workflow execution | Install and authenticate at least one of `claude`, `copilot`, or `gemini`. |
-| Azure CLI + `azure-devops` extension | live ADO intake mode | Not required for local synthetic stories. |
+| Dependency | Required | Required for | Notes |
+|---|---|---|---|
+| Python 3.9+ | Yes | `run.py`, `server_main.py`, bootstrap, eval tools | Bootstrap creates `.venv/`, but does not install Python. |
+| `git` | Yes | bootstrap and normal repo workflows | Used for the repo itself and for syncing the local Opik checkout. |
+| Docker Desktop | No | bundled local Opik stack | Required only when you want bootstrap to start self-hosted Opik. |
+| One AI backend CLI | Yes | actual workflow execution | Install and authenticate at least one of `claude`, `copilot`, or `gemini`. |
+| Azure CLI + `azure-devops` extension | No | live ADO intake mode | Not required for local synthetic stories. |
 
 ### Optional tooling
 
-| Dependency | What it does |
-|---|---|
-| `rtk` | When `rtk` is available on `PATH`, the workflow routes terminal work through RTK-aware tooling to reduce noisy command output. Falls back to normal execution when absent. Install from the internal [mayo-rtk-ai](https://dev.azure.com/mclm/Mayo%20Open%20Developer%20Network/_git/mayo-rtk-ai) repo — see `requirements.txt` for instructions. |
+| Dependency | Required | What it does |
+|---|---|---|
+| `rtk` | No | When `rtk` is available on `PATH`, the workflow routes terminal work through RTK-aware tooling to reduce token usage. Falls back to normal execution when absent. `rtk` means “rust token killer.” Install from the internal [mayo-rtk-ai](https://dev.azure.com/mclm/Mayo%20Open%20Developer%20Network/_git/mayo-rtk-ai) repo — see `requirements.txt` for instructions. |
 
 ### Fastest local setup on macOS
 
