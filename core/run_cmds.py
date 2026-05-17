@@ -95,6 +95,13 @@ def _emit_event(type: str, **fields) -> None:
         pass
 
 
+def _estimate_tokens(text: str) -> int:
+    """Rough token estimate when the runner does not provide usage."""
+    if not text:
+        return 0
+    return max(1, len(text) // 4)
+
+
 def _record_cassette(**fields) -> None:
     if not os.environ.get("AGENT_RUNNER_CASSETTE"):
         return
@@ -252,8 +259,19 @@ def _openai_compat_request(path: str, payload: dict, *, transport: dict) -> dict
 
 
 def _emit_openai_compat_metrics(response: dict, *, model: str) -> None:
-    prompt_tokens = int(response.get("prompt_eval_count") or 0)
-    completion_tokens = int(response.get("eval_count") or 0)
+    usage = response.get("usage") or {}
+    prompt_tokens = int(
+        usage.get("prompt_tokens")
+        or response.get("prompt_tokens")
+        or response.get("prompt_eval_count")
+        or 0
+    )
+    completion_tokens = int(
+        usage.get("completion_tokens")
+        or response.get("completion_tokens")
+        or response.get("eval_count")
+        or 0
+    )
     if prompt_tokens or completion_tokens:
         _emit_event("metrics", tokens_in=prompt_tokens, tokens_out=completion_tokens, cost_usd=0.0)
         logger.debug(
@@ -910,6 +928,9 @@ def run_claude_cmd(
         ti = int(parsed.get("total_input_tokens") or 0)
         to = int(parsed.get("total_output_tokens") or 0)
         cu = float(parsed.get("cost_usd") or 0.0)
+        if ti == 0 and to == 0:
+            ti = _estimate_tokens(prompt)
+            to = _estimate_tokens(str(parsed.get("result") or stdout_raw))
         if cu == 0.0 and (ti > 0 or to > 0):
             cu = round((ti / 1_000_000 * 3.0) + (to / 1_000_000 * 15.0), 6)
         if ti > 0 or to > 0:
@@ -917,6 +938,10 @@ def run_claude_cmd(
         text_out = str(parsed.get("result") or stdout_raw)
     except (json.JSONDecodeError, ValueError, TypeError):
         logger.warning("run_claude_cmd: could not parse JSON output for agent=%s", agent)
+        ti = _estimate_tokens(prompt)
+        to = _estimate_tokens(text_out)
+        if ti > 0 or to > 0:
+            _emit_event("metrics", tokens_in=ti, tokens_out=to, cost_usd=0.0)
     if text_out:
         logger.debug("run_claude_cmd: stdout length=%d for agent=%s", len(text_out), agent)
         print(text_out)
@@ -1039,6 +1064,10 @@ def run_copilot_cmd(
                 )
                 continue
             logger.info("run_copilot_cmd: agent=%s completed OK on attempt %d", agent, attempt + 1)
+            ti = _estimate_tokens(active_prompt)
+            to = _estimate_tokens(attempt_result.stdout or "")
+            if ti > 0 or to > 0:
+                _emit_event("metrics", tokens_in=ti, tokens_out=to, cost_usd=0.0)
             return attempt_result.stdout
         combined = (attempt_result.stdout or "") + (attempt_result.stderr or "")
         is_transient = is_transient_runner_failure_text(combined, runner=cli_cmd)
@@ -1111,6 +1140,10 @@ def run_gemini_cmd(
             print(attempt_result.stderr)
         if attempt_result.returncode == 0:
             logger.info("run_gemini_cmd: agent=%s completed OK on attempt %d", agent, _attempt + 1)
+            ti = _estimate_tokens(combined_prompt)
+            to = _estimate_tokens(attempt_result.stdout or "")
+            if ti > 0 or to > 0:
+                _emit_event("metrics", tokens_in=ti, tokens_out=to, cost_usd=0.0)
             return attempt_result.stdout
         combined = (attempt_result.stdout or "") + (attempt_result.stderr or "")
         is_transient = any(
