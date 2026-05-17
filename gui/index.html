@@ -1151,6 +1151,7 @@ let activeRunJob = null;
 let activeRunEvents = [];
 let workflowTicker = null;
 let lastSeq = 0;
+const ACTIVE_JOB_BY_SURFACE = {runs:null, evaluate:null};
 const TRACE_EVENTS = {runs:[], evaluate:[]};
 const STREAM_EVENT_TYPES = ["job.start","stage.start","stage.end","cli.invoke","cli.exit","log","metrics","opik.start","opik.end","job.end","stream.end","user.prompt","user.response","user.prompt.timeout"];
 
@@ -1456,7 +1457,38 @@ function formatPercent(value){
 }
 function formatMoney(value){
   const n = Number(value);
-  return Number.isFinite(n) ? `$${n.toFixed(4)}` : "—";
+  if(!Number.isFinite(n)) return "—";
+  if(n > 0 && n < 0.0001) return "<$0.0001";
+  return `$${n.toFixed(4)}`;
+}
+function setActiveSurfaceJob(surface="runs", job=null){
+  const next = job ? {...job} : null;
+  ACTIVE_JOB_BY_SURFACE[surface] = next;
+  if(surface==="runs") activeRunJob = next;
+}
+function getActiveSurfaceJob(surface="runs"){
+  return ACTIVE_JOB_BY_SURFACE[surface] || null;
+}
+function estimateDisplayedCostUsd(tokensIn, tokensOut){
+  const ti = Math.max(0, Number(tokensIn) || 0);
+  const to = Math.max(0, Number(tokensOut) || 0);
+  return (ti / 1_000_000 * 3.0) + (to / 1_000_000 * 15.0);
+}
+function resolveDisplayedCostUsd(job){
+  if(!job) return NaN;
+  const explicit = Number(job.cost_usd);
+  if(Number.isFinite(explicit) && explicit > 0) return explicit;
+  return estimateDisplayedCostUsd(job.tokens_in, job.tokens_out);
+}
+function renderSurfaceMetrics(surface="runs"){
+  const ui = runSurface(surface);
+  const job = getActiveSurfaceJob(surface) || {};
+  const tokensIn = Math.max(0, Number(job.tokens_in) || 0);
+  const tokensOut = Math.max(0, Number(job.tokens_out) || 0);
+  $("#"+ui.metrics[0]).textContent = tokensIn;
+  $("#"+ui.metrics[1]).textContent = tokensOut;
+  $("#"+ui.metrics[2]).textContent = formatMoney(resolveDisplayedCostUsd(job));
+  $("#"+ui.metrics[4]).textContent = tokensIn + tokensOut;
 }
 
 const RUN_WORKFLOW_STAGES = [
@@ -1620,6 +1652,10 @@ function applyWorkflowEventToJob(job, ev){
     next.status = "awaiting_input";
   }else if(ev.type==="user.response" || ev.type==="user.prompt.timeout"){
     next.status = "running";
+  }else if(ev.type==="metrics"){
+    next.tokens_in = (Number(next.tokens_in) || 0) + (Number(ev.tokens_in) || 0);
+    next.tokens_out = (Number(next.tokens_out) || 0) + (Number(ev.tokens_out) || 0);
+    next.cost_usd = (Number(next.cost_usd) || 0) + (Number(ev.cost_usd) || 0);
   }else if(ev.type==="job.end"){
     if(ev.status) next.status = ev.status;
     next.current_stage = null;
@@ -1926,10 +1962,24 @@ async function loadHistory(){
     $("#runs-meta").textContent = `${r.count} run${r.count===1?"":"s"}`;
     if(activeJobId && !activeStream && activeRunJob){
       const fresh = r.items.find(j=>j.id===activeJobId);
-      if(fresh && (fresh.status!==activeRunJob.status || fresh.current_stage!==activeRunJob.current_stage)){
-        activeRunJob = {...activeRunJob, status: fresh.status, current_stage: fresh.current_stage};
+      if(fresh && (
+        fresh.status!==activeRunJob.status ||
+        fresh.current_stage!==activeRunJob.current_stage ||
+        Number(fresh.tokens_in||0)!==Number(activeRunJob.tokens_in||0) ||
+        Number(fresh.tokens_out||0)!==Number(activeRunJob.tokens_out||0) ||
+        Number(fresh.cost_usd||0)!==Number(activeRunJob.cost_usd||0)
+      )){
+        setActiveSurfaceJob("runs", {
+          ...activeRunJob,
+          status: fresh.status,
+          current_stage: fresh.current_stage,
+          tokens_in: fresh.tokens_in,
+          tokens_out: fresh.tokens_out,
+          cost_usd: fresh.cost_usd,
+        });
         renderRunWorkflow(activeRunJob, activeRunEvents);
         updateRunFeedback(activeRunJob, activeRunEvents);
+        renderSurfaceMetrics("runs");
       }
     }
   }catch(e){ /* server may be starting */ }
@@ -2026,9 +2076,9 @@ function clearTerm(surface="runs"){
   $(ui.term).innerHTML="";
   hideRunAlert(surface);
   activeStageGroup = null;
+  setActiveSurfaceJob(surface, null);
   if(surface==="runs"){
     clearWorkflowTicker();
-    activeRunJob = null;
     activeRunEvents = [];
     renderRunWorkflow();
   }
@@ -2149,7 +2199,7 @@ function formatTraceMetadata(meta){
   });
   return parts.join(" · ");
 }
-function describeEvent(ev, surface="runs"){
+function describeEvent(ev, surface="runs", mode="live"){
   const ui = runSurface(surface);
   let cls = "ev"; let tag = ev.type; let msg = "";
   if(ev.type==="stage.start"||ev.type==="stage.end"){ cls+=" stage"; tag = `▾ ${ev.stage}`; msg = ev.type==="stage.end"?` (${ev.status})`:""; }
@@ -2177,10 +2227,7 @@ function describeEvent(ev, surface="runs"){
   else if(ev.type==="user.response"){ cls+=" stdout"; tag="✓ user.response"; msg=" Answers received — intake continuing."; }
   else if(ev.type==="user.prompt.timeout"){ cls+=" stderr"; tag="⚠ user.prompt.timeout"; msg=" No response received — continuing with open questions."; }
   else if(ev.type==="metrics"){
-    if(ev.tokens_in!=null) $("#"+ui.metrics[0]).textContent = ev.tokens_in;
-    if(ev.tokens_out!=null) $("#"+ui.metrics[1]).textContent = ev.tokens_out;
-    if(ev.cost_usd!=null) $("#"+ui.metrics[2]).textContent = "$"+Number(ev.cost_usd).toFixed(4);
-    if(ev.tokens_in!=null||ev.tokens_out!=null) $("#"+ui.metrics[4]).textContent = (ev.tokens_in||0)+(ev.tokens_out||0);
+    if(mode==="live") renderSurfaceMetrics(surface);
     return null;
   }
   return {cls, tag, msg};
@@ -2210,12 +2257,12 @@ function finishStageGroup(ev){
 function shouldNestInStage(ev){
   return !!activeStageGroup && !["job.start","job.end","stage.start","stage.end","metrics","stream.end"].includes(ev.type);
 }
-function appendFlatEvent(parent, ev, surface="runs"){
-  const details = describeEvent(ev, surface);
+function appendFlatEvent(parent, ev, surface="runs", mode="live"){
+  const details = describeEvent(ev, surface, mode);
   if(!details) return;
   parent.appendChild(buildEventRow(details.cls, details.tag, details.msg, formatEventTime(ev.ts), Number(ev.depth || 0)));
 }
-function appendEvent(ev, surface="runs"){
+function appendEvent(ev, surface="runs", mode="live"){
   const term = ensureTermReady(surface);
   const ui = runSurface(surface);
   collectTraceEvent(ev, surface);
@@ -2234,12 +2281,12 @@ function appendEvent(ev, surface="runs"){
     activeStageGroup = null;
     startStageGroup(term, ev);
   }else if(ev.type==="stage.end"){
-    if(!finishStageGroup(ev)) appendFlatEvent(term, ev, surface);
+    if(!finishStageGroup(ev)) appendFlatEvent(term, ev, surface, mode);
   }else if(shouldNestInStage(ev)){
-    appendFlatEvent(activeStageGroup.children, ev, surface);
+    appendFlatEvent(activeStageGroup.children, ev, surface, mode);
   }else{
     if(ev.type==="job.end") activeStageGroup = null;
-    appendFlatEvent(term, ev, surface);
+    appendFlatEvent(term, ev, surface, mode);
   }
   term.scrollTop = term.scrollHeight;
   if(ev.seq) lastSeq = ev.seq;
@@ -2285,14 +2332,12 @@ async function selectJob(id, surface="runs"){
   $$("#history .job").forEach(n=>n.classList.remove("active"));
   try{
     const job = await api(`/runs/${id}`);
-    if(surface==="runs") activeRunJob = {...job};
+    setActiveSurfaceJob(surface, job);
     const dot = (job.status==="running"||job.status==="queued") ? `<span class="status-dot ${job.status}"></span>` : "";
     $(ui.title).innerHTML = `${dot}${job.id} · ${job.change_id} · <span class="status ${job.status}">${STATUS_ICON[job.status]||""}${job.status}</span>`;
     updateOpikLink(job, surface);
     $(ui.cancel).style.display = (job.status==="running"||job.status==="queued"||job.status==="awaiting_input") ? "" : "none";
-    $("#"+ui.metrics[0]).textContent = job.tokens_in||0;
-    $("#"+ui.metrics[1]).textContent = job.tokens_out||0;
-    $("#"+ui.metrics[2]).textContent = "$"+Number(job.cost_usd||0).toFixed(4);
+    renderSurfaceMetrics(surface);
     const stageEl = $("#"+ui.metrics[3]);
     if(job.current_stage){
       stageEl.textContent = job.current_stage;
@@ -2301,7 +2346,6 @@ async function selectJob(id, surface="runs"){
       stageEl.textContent = "";
       stageEl.classList.add("metrics-skeleton");
     }
-    $("#"+ui.metrics[4]).textContent = (job.tokens_in||0)+(job.tokens_out||0);
     // Replay past events then attach stream
     const events = await api(`/runs/${id}/events`);
     if(surface==="runs"){
@@ -2314,15 +2358,18 @@ async function selectJob(id, surface="runs"){
       else if(job.status==="running"||job.status==="queued") setTermEmpty("Waiting for logs...", false, surface);
       else setTermEmpty("No logs were captured for this run.", false, surface);
     }
-    events.forEach(ev=>appendEvent(ev, surface));
+    events.forEach(ev=>appendEvent(ev, surface, "replay"));
     if(job.status==="running"||job.status==="queued"||job.status==="awaiting_input"){
       const es = new EventSource(`/runs/${id}/stream${lastSeq?`?after=${lastSeq}`:""}`);
       activeStream = es;
       const onStreamEvent = (m)=>{
         try{ const ev = JSON.parse(m.data);
+          if(ev.type!=="stream.end"){
+            const nextJob = applyWorkflowEventToJob(getActiveSurfaceJob(surface), ev);
+            if(nextJob) setActiveSurfaceJob(surface, nextJob);
+          }
           if(surface==="runs" && ev.type!=="stream.end"){
             activeRunEvents.push(ev);
-            activeRunJob = applyWorkflowEventToJob(activeRunJob, ev);
             renderRunWorkflow(activeRunJob, activeRunEvents);
           }
           appendEvent(ev, surface);
