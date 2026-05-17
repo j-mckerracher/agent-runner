@@ -1,0 +1,6 @@
+name: interrogate-eng
+version: v1
+description: "Clarification skill for planner-ready engineering intake"
+source: "agent-skill-source/interrogation/v1/SKILL.md"
+skill_file: "SKILL.md"
+

@@ -113,6 +113,52 @@ skill_file: SKILL.md
             )
             self.assertFalse(materialize.run_materialization(check_only=True))
 
+    def test_medium__run_materialization_uses_latest_agent_version_and_skill_manifest_name(self):
+        intake_v2_dir = self.agent_sources / "intake" / "v2"
+        intake_v2_dir.mkdir(parents=True)
+        (intake_v2_dir / "manifest.yaml").write_text(
+            """
+name: intake
+version: v2
+claude_code_agent_file: intake.agent.md
+""".strip() + "\n",
+            encoding="utf-8",
+        )
+        (intake_v2_dir / "prompt.md").write_text(
+            """
+# Intake Agent Prompt v2
+
+## Required Skills
+
+| Skill | Purpose |
+| --- | --- |
+| **interrogate-eng** | Clarify blocking ambiguity |
+""".strip() + "\n",
+            encoding="utf-8",
+        )
+
+        interrogation_dir = self.skill_sources / "interrogation" / "v1"
+        interrogation_dir.mkdir(parents=True)
+        (interrogation_dir / "manifest.yaml").write_text(
+            """
+name: interrogate-eng
+version: v1
+skill_file: SKILL.md
+""".strip() + "\n",
+            encoding="utf-8",
+        )
+        (interrogation_dir / "SKILL.md").write_text("# interrogate-eng\n", encoding="utf-8")
+
+        with ExitStack() as stack:
+            for patcher in self._patch_paths():
+                stack.enter_context(patcher)
+            self.assertTrue(materialize.run_materialization())
+
+        for runner in ("claude", "copilot", "gemini"):
+            agent_text = (self.runner_agent_dirs[runner] / "intake.agent.md").read_text(encoding="utf-8")
+            self.assertIn("# Intake Agent Prompt v2", agent_text)
+            self.assertTrue((self.runner_skill_dirs[runner] / "interrogate-eng" / "SKILL.md").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
