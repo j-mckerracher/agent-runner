@@ -7,12 +7,12 @@ param (
 $RootDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 
 if (Get-Command py -ErrorAction SilentlyContinue) {
-    & py -3 "$RootDir\bootstrap.py" @ArgsList
+    & py -3 "$RootDir\scripts\bootstrap.py" @ArgsList
     exit $LASTEXITCODE
 }
 
 if (Get-Command python -ErrorAction SilentlyContinue) {
-    & python "$RootDir\bootstrap.py" @ArgsList
+    & python "$RootDir\scripts\bootstrap.py" @ArgsList
     exit $LASTEXITCODE
 }
 

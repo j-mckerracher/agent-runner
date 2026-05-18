@@ -1,4 +1,4 @@
-"""Cross-platform bootstrapper for local agent-runner + self-hosted Opik."""
+"""Cross-platform bootstrapper for local agent-runner with optional self-hosted Opik."""
 from __future__ import annotations
 
 import argparse
@@ -20,6 +20,7 @@ DEFAULT_PORT = 8742
 DEFAULT_OPIK_DASHBOARD_URL = "http://localhost:5173"
 DEFAULT_OPIK_PROJECT_NAME = "agent-runner"
 DEFAULT_OPIK_REPO_URL = "https://github.com/comet-ml/opik.git"
+OPIK_INFO_URL = "https://github.com/comet-ml/opik/blob/main/README.md"
 BOOTSTRAP_REEXEC_ENV = "AGENT_RUNNER_BOOTSTRAP_REEXEC"
 
 
@@ -414,8 +415,10 @@ def _save_opik_config(opik_settings: dict[str, str]) -> dict:
     return save_config(payload)
 
 
-def _server_env(opik_settings: dict[str, str]) -> dict[str, str]:
+def _server_env(opik_settings: dict[str, str] | None) -> dict[str, str]:
     env = os.environ.copy()
+    if opik_settings is None:
+        return env
     env.update(
         {
             "OPIK_BASE_URL": opik_settings["api_url"],
@@ -429,6 +432,25 @@ def _server_env(opik_settings: dict[str, str]) -> dict[str, str]:
     return env
 
 
+def _prompt_for_opik() -> bool:
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return False
+    _echo_step("Optional: Opik observability")
+    print(
+        "Opik is an open-source LLM observability / evaluation platform. "
+        "Bootstrap can clone its repo and start a local self-hosted stack "
+        "(requires Docker Desktop running).\n"
+        f"  Learn more: {OPIK_INFO_URL}\n"
+        "Skip this to run the agent-runner without Opik (you can enable it later).",
+        flush=True,
+    )
+    try:
+        raw = input("  Enable Opik now? [y/N]: ").strip().lower()
+    except EOFError:
+        return False
+    return raw in ("y", "yes")
+
+
 def _start_local_opik(opik_dir: Path) -> dict[str, str]:
     _echo_step("Starting local self-hosted Opik")
     result = _run(_opik_start_command(opik_dir), cwd=opik_dir, capture_output=True)
@@ -437,10 +459,11 @@ def _start_local_opik(opik_dir: Path) -> dict[str, str]:
     return _configure_local_opik(candidates, project_name=DEFAULT_OPIK_PROJECT_NAME)
 
 
-def _start_server(*, host: str, port: int, reload: bool, opik_settings: dict[str, str]) -> None:
+def _start_server(*, host: str, port: int, reload: bool, opik_settings: dict[str, str] | None) -> None:
     _echo_step("Starting agent-runner server")
     print(f"[bootstrap] agent-runner UI: http://{host}:{port}", flush=True)
-    print(f"[bootstrap] local Opik UI: {opik_settings['dashboard_url']}", flush=True)
+    if opik_settings is not None:
+        print(f"[bootstrap] local Opik UI: {opik_settings['dashboard_url']}", flush=True)
     cmd: list[object] = [
         sys.executable,
         str(RUNNER_ROOT / "server" / "main.py"),
@@ -456,11 +479,22 @@ def _start_server(*, host: str, port: int, reload: bool, opik_settings: dict[str
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Install agent-runner dependencies, start a local Opik stack, and run the local server."
+        description="Install agent-runner dependencies and run the local server. Optionally start a local Opik stack (--with-opik)."
     )
     parser.add_argument("--host", default=DEFAULT_HOST, help=f"Server bind host (default: {DEFAULT_HOST})")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"Server bind port (default: {DEFAULT_PORT})")
     parser.add_argument("--reload", action="store_true", help="Start the FastAPI server with --reload.")
+    opik_group = parser.add_mutually_exclusive_group()
+    opik_group.add_argument(
+        "--with-opik",
+        action="store_true",
+        help="Enable the bundled local Opik stack (requires Docker). Skips the interactive prompt.",
+    )
+    opik_group.add_argument(
+        "--no-opik",
+        action="store_true",
+        help="Skip the bundled local Opik stack. Skips the interactive prompt.",
+    )
     return parser.parse_args()
 
 
@@ -468,16 +502,29 @@ def main() -> int:
     args = parse_args()
     try:
         _ensure_virtualenv()
-        _check_docker()
         _warn_if_no_ai_backend()
         _check_ztk()
         _install_requirements()
         _materialize_agents()
         _prompt_user_config()
-        opik_dir = _opik_repo_dir()
-        _sync_opik_repo(opik_dir)
-        opik_settings = _start_local_opik(opik_dir)
-        _save_opik_config(opik_settings)
+
+        if args.with_opik:
+            enable_opik = True
+        elif args.no_opik:
+            enable_opik = False
+        else:
+            enable_opik = _prompt_for_opik()
+
+        if enable_opik:
+            _check_docker()
+            opik_dir = _opik_repo_dir()
+            _sync_opik_repo(opik_dir)
+            opik_settings = _start_local_opik(opik_dir)
+            _save_opik_config(opik_settings)
+        else:
+            opik_settings = None
+            print("[bootstrap] Opik disabled. Re-run with --with-opik to enable later.", flush=True)
+
         _start_server(host=args.host, port=args.port, reload=args.reload, opik_settings=opik_settings)
         return 0
     except KeyboardInterrupt:
