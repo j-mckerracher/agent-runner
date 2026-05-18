@@ -5,14 +5,15 @@ param (
 )
 
 $RootDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$BootstrapScript = Join-Path $RootDir "bootstrap.py"
 
 if (Get-Command py -ErrorAction SilentlyContinue) {
-    & py -3 "$RootDir\bootstrap.py" @ArgsList
+    & py -3 $BootstrapScript @ArgsList
     exit $LASTEXITCODE
 }
 
 if (Get-Command python -ErrorAction SilentlyContinue) {
-    & python "$RootDir\bootstrap.py" @ArgsList
+    & python $BootstrapScript @ArgsList
     exit $LASTEXITCODE
 }
 

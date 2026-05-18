@@ -82,10 +82,11 @@ That flow:
 - creates or reuses `.venv/`
 - installs `requirements.txt`
 - materializes agents, skills, and helper scripts
-- clones or updates a local Opik checkout under `~/.agent-runner/opik`
-- starts the local Opik stack
-- persists Opik metadata into `~/.agent-runner/config.json`
+- when Docker is healthy, clones or updates a local Opik checkout under `~/.agent-runner/opik`
+- when Docker is healthy, starts the local Opik stack and persists Opik metadata into `~/.agent-runner/config.json`
 - starts the local API + GUI on `http://127.0.0.1:8742`
+
+If Docker Desktop is unavailable or its engine is not healthy, bootstrap now continues without starting local Opik so local development is not blocked. You can still connect Opik later from the Settings UI after Docker is working again.
 
 ### Manual server startup
 
