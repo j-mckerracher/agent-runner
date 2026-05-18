@@ -211,16 +211,16 @@ class LoadStoryFixtureRejectionTests(unittest.TestCase):
 
 
 class InferChangeIdFromAdoUrlTests(unittest.TestCase):
-    def test_easy__full_ado_url_resolves_to_wi_prefixed_id(self):
+    def test_easy__full_ado_url_resolves_to_numeric_id(self):
         self.assertEqual(
             infer_change_id_from_ado_url(
                 "https://dev.azure.com/example/project/_workitems/edit/123456"
             ),
-            "WI-123456",
+            "123456",
         )
 
-    def test_easy__bare_numeric_string_resolves_to_wi_prefixed_id(self):
-        self.assertEqual(infer_change_id_from_ado_url("123456"), "WI-123456")
+    def test_easy__bare_numeric_string_resolves_to_numeric_id(self):
+        self.assertEqual(infer_change_id_from_ado_url("123456"), "123456")
 
     def test_easy__non_work_item_string_resolves_to_none(self):
         self.assertIsNone(infer_change_id_from_ado_url("not-a-work-item"))
@@ -327,8 +327,8 @@ class ResolveWorkflowInputAdoModeTests(unittest.TestCase):
     def test_easy__ado_mode_intake_mode_field_is_ado(self):
         self.assertEqual(self.workflow_input.intake_mode, "ado")
 
-    def test_easy__ado_mode_change_id_resolves_from_url_to_wi_555(self):
-        self.assertEqual(self.workflow_input.change_id, "WI-555")
+    def test_easy__ado_mode_change_id_resolves_from_url_to_555(self):
+        self.assertEqual(self.workflow_input.change_id, "555")
 
     def test_easy__ado_mode_intake_source_preserves_full_url_path(self):
         self.assertIn("_workitems/edit/555", self.workflow_input.intake_source)

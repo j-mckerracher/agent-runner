@@ -665,6 +665,13 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .view[data-view="settings"] .set-field{
   padding:14px 18px;position:relative;
 }
+.view[data-view="settings"] .set-field-head{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-bottom:8px;
+}
+.view[data-view="settings"] .set-field-head .set-field-label{margin-bottom:0}
 .view[data-view="settings"] .set-field-label{
   font-family:var(--set-mono);
   font-size:10px;
@@ -705,6 +712,70 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 }
 .view[data-view="settings"] .set-field-inline{display:flex;align-items:center;gap:8px}
 .view[data-view="settings"] .set-field-inline input{flex:1}
+.view[data-view="settings"] .set-help-inline{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+}
+.view[data-view="settings"] .set-list-row .set-help-inline{flex:1}
+.view[data-view="settings"] .set-select-help-wrap{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  max-width:100%;
+}
+.view[data-view="settings"] .set-help-trigger{
+  width:18px;
+  height:18px;
+  border:1px solid var(--set-border);
+  border-radius:999px;
+  background:rgba(255,255,255,.02);
+  color:var(--set-text-secondary);
+  font-family:var(--set-mono);
+  font-size:10px;
+  font-weight:700;
+  line-height:1;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  cursor:help;
+  flex:0 0 auto;
+  transition:border-color .15s,color .15s,background .15s,transform .12s;
+}
+.view[data-view="settings"] .set-help-trigger:hover,
+.view[data-view="settings"] .set-help-trigger:focus-visible{
+  border-color:rgba(232,160,48,.5);
+  color:var(--set-amber);
+  background:rgba(232,160,48,.08);
+  outline:none;
+  transform:translateY(-1px);
+}
+.view[data-view="settings"] .set-help-tooltip{
+  position:fixed;
+  z-index:1200;
+  max-width:300px;
+  padding:10px 12px;
+  border:1px solid rgba(232,160,48,.22);
+  border-radius:8px;
+  background:rgba(10,12,17,.98);
+  box-shadow:0 18px 40px rgba(0,0,0,.38);
+  color:var(--set-text-primary);
+  font-size:12px;
+  line-height:1.5;
+  pointer-events:none;
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+}
+.view[data-view="settings"] .set-help-tooltip::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
+}
+.view[data-view="settings"] .set-help-tooltip[hidden]{display:none}
 
 .view[data-view="settings"] .set-btn-connect{
   background:transparent;
@@ -1045,21 +1116,80 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
                 <select id="s-runner"><option value="claude">Claude</option><option value="copilot">Copilot</option><option value="gemini">Gemini</option></select>
               </div>
               <div class="set-field">
+                <label class="set-field-label" for="s-model">Default Model</label>
+                <select id="s-model"></select>
+              </div>
+              <div class="set-field">
                 <label class="set-field-label" for="s-mode">Default Mode</label>
                 <select id="s-mode"><option>live</option><option>hermetic</option></select>
               </div>
-              <div class="set-field last-row">
+              <div class="set-field">
                 <label class="set-field-label" for="s-conc">Max Running Jobs</label>
                 <input type="text" id="s-conc">
               </div>
-              <div class="set-field last-row">
+              <div class="set-field full last-row">
                 <label class="set-field-label" for="s-data">Data Directory</label>
                 <input type="text" id="s-data">
               </div>
             </div>
-            <div class="set-warn-note">
+            <div class="set-warn-note" id="s-server-restart-note">
               <span class="set-warn-dot"></span>
               Host/port changes require a server restart.
+            </div>
+          </div>
+        </div>
+
+        <!-- Runner Aliases -->
+        <div class="set-section">
+          <div class="set-section-header">
+            <span class="set-section-label">Runner Aliases</span>
+            <div class="set-section-line"></div>
+          </div>
+          <p class="set-hint">Custom runner backends (e.g. Azure OpenAI, self-hosted models). Each alias appears as a runner option alongside Claude, Copilot, and Gemini.</p>
+          <div class="set-card">
+            <div id="s-alias-list"></div>
+            <div style="padding:14px 18px;border-top:1px solid var(--set-border)">
+              <button type="button" class="set-btn-connect" id="s-alias-add-btn" style="width:100%;text-align:center">+ Add runner alias</button>
+            </div>
+            <div id="s-alias-form-wrap" style="display:none;padding:14px 18px;border-top:1px solid var(--set-border);background:var(--set-surface-2)">
+              <div class="set-field-grid" style="border:1px solid var(--set-border);border-radius:var(--set-radius)">
+                <div class="set-field">
+                  <label class="set-field-label" for="s-alias-name">Alias Name</label>
+                  <input type="text" id="s-alias-name" placeholder="e.g. copilot-azure-gpt4">
+                </div>
+                <div class="set-field">
+                  <label class="set-field-label" for="s-alias-provider">Provider</label>
+                  <input type="text" id="s-alias-provider" placeholder="e.g. openai-compat, azure, copilot">
+                </div>
+                <div class="set-field">
+                  <label class="set-field-label" for="s-alias-model-name">Model</label>
+                  <input type="text" id="s-alias-model-name" placeholder="e.g. gpt-4o, claude-3-opus">
+                </div>
+                <div class="set-field">
+                  <label class="set-field-label" for="s-alias-api-key-env">API Key Env Var</label>
+                  <input type="text" id="s-alias-api-key-env" placeholder="e.g. AZURE_OPENAI_API_KEY (optional)">
+                </div>
+                <div class="set-field">
+                  <label class="set-field-label" for="s-alias-base-url">Base URL</label>
+                  <input type="text" id="s-alias-base-url" placeholder="e.g. https://my-endpoint.openai.azure.com (optional)">
+                </div>
+                <div class="set-field">
+                  <label class="set-field-label" for="s-alias-api-version">API Version</label>
+                  <input type="text" id="s-alias-api-version" placeholder="e.g. 2024-02-01 (optional)">
+                </div>
+                <div class="set-field">
+                  <label class="set-field-label" for="s-alias-num-retries">Num Retries</label>
+                  <input type="text" id="s-alias-num-retries" placeholder="e.g. 8 (optional)">
+                </div>
+                <div class="set-field">
+                  <label class="set-field-label" for="s-alias-timeout">Timeout (s)</label>
+                  <input type="text" id="s-alias-timeout" placeholder="e.g. 420 (optional)">
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+                <button type="button" class="set-btn-connect" id="s-alias-cancel-btn">Cancel</button>
+                <button type="button" class="set-btn-connect" id="s-alias-save-btn" style="border-color:var(--set-amber);color:var(--set-amber)">Save Alias</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1132,6 +1262,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
   </main>
 </div>
 <div class="toast" id="toast"></div>
+<div class="set-help-tooltip" id="settings-help-tooltip" role="tooltip" hidden></div>
 <script>
 const $ = (s,r=document)=>r.querySelector(s);
 const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
@@ -1153,11 +1284,155 @@ let workflowTicker = null;
 let lastSeq = 0;
 const ACTIVE_JOB_BY_SURFACE = {runs:null, evaluate:null};
 const TRACE_EVENTS = {runs:[], evaluate:[]};
-const STREAM_EVENT_TYPES = ["job.start","stage.start","stage.end","cli.invoke","cli.exit","log","metrics","opik.start","opik.end","job.end","stream.end","user.prompt","user.response","user.prompt.timeout"];
+const STREAM_EVENT_TYPES = ["job.start","stage.start","stage.end","cli.invoke","cli.exit","log","metrics","opik.start","opik.end","job.end","stream.end","user.prompt","user.response","user.prompt.timeout","user.escalation.resolved"];
+const SETTINGS_HELP_COPY = {
+  "s-host":"Host interface for the local API server. Use 127.0.0.1 for local-only access, or 0.0.0.0 only if you intentionally want other devices on your network to connect.",
+  "s-port":"Network port used by the local API server and GUI requests. Changing it updates saved config, but the running server keeps its current port until restart.",
+  "s-runner":"Default runner preselected for new workflow runs. This controls which backend family is used unless you choose another runner per run.",
+  "s-model":"Default model paired with the selected default runner. Available options change when the runner changes.",
+  "s-mode":"Default execution mode for new runs. Live uses real backend calls; hermetic is for recorded/replay-style workflows.",
+  "s-conc":"Maximum number of workflow jobs the local server may execute at the same time. Increase carefully if your machine and backend quotas can handle it.",
+  "s-data":"Base data directory for local runner state such as jobs, caches, cassettes, and other persisted server artifacts.",
+  "s-server-restart-note":"Host and port are read at server startup. Saving new values updates the config file, but you must restart the server before the new bind address takes effect.",
+  "settings-save":"Write all current Settings tab values to the config file used by the local server and GUI.",
+  "s-alias-add-btn":"Open the form for defining a custom runner alias. Aliases appear alongside built-in runners in runner selectors.",
+  "s-alias-name":"Unique config key for this alias. Use a descriptive stable name, because it becomes the runner value shown in the UI and stored in run records.",
+  "s-alias-provider":"Provider prefix used to qualify the model for this alias, such as openai-compat or another LiteLLM-compatible provider string.",
+  "s-alias-model-name":"Base model name for the alias. The runner resolves this together with the provider when building the final model string.",
+  "s-alias-api-key-env":"Optional environment variable name containing the API key used by this alias. Leave blank if the backend does not need one or is authenticated another way.",
+  "s-alias-base-url":"Optional custom API base URL for this alias, such as an Azure OpenAI endpoint or self-hosted LiteLLM gateway.",
+  "s-alias-api-version":"Optional API version string forwarded to the alias transport when the target backend requires one.",
+  "s-alias-num-retries":"Optional retry count for alias requests. Use this when the backend is bursty or occasionally rate-limited.",
+  "s-alias-timeout":"Optional request timeout in seconds for alias calls. Increase it for slower providers or long-context workloads.",
+  "s-alias-cancel-btn":"Close the alias editor without persisting changes from the current draft form.",
+  "s-alias-save-btn":"Save the alias into config so it becomes available in runner dropdowns and agent model overrides.",
+  "s-repo-base-dir":"Directory scanned for repo suggestions in the Run and Evaluate tabs. Immediate non-hidden child directories are offered as quick repo choices.",
+  "repo-custom-value":({value})=>`Remembered custom repo path: ${value}. It stays available in repo pickers even if it is outside the configured base directory.`,
+  "runner-alias-row":({name, providerModel})=>`Saved runner alias ${name} → ${providerModel}. This alias appears in runner selectors and resolves to the configured backend/model combination.`,
+  "s-opik-url":"Base dashboard URL for the Opik workspace used by workflow tracing and evaluation drill-down links.",
+  "s-opik-connect":"Try to resolve the workspace and project identifiers from the dashboard URL and project name, then fill those fields automatically.",
+  "s-opik-workspace":"Workspace slug used when building Opik dashboard links and API requests for this project.",
+  "s-opik-project-id":"Stable Opik project identifier used for deep links into the correct traced project.",
+  "s-opik-project-name":"Human-readable Opik project name. Bootstrap and connect flows use this when creating or finding the project.",
+  "s-opik-status":"Status summary for the current Opik configuration. If required fields are missing, workflow runs that depend on tracing will fail fast.",
+  "agent-default-row":({agentName})=>`Per-agent model overrides for ${agentName}. Use these when one agent should consistently use a different model than the runner default.`,
+  "agent-default-cell":({agentName, runner})=>`Model override for ${agentName} when the runner is ${runner}. Leave it on (default) to inherit the runner's default model.`,
+};
+let activeSettingsHelpTrigger = null;
 
 function toast(msg, err){
   const t = $("#toast"); t.textContent = msg; t.className = "toast show" + (err?" error":"");
   setTimeout(()=>t.classList.remove("show"), 3000);
+}
+function resolveSettingsHelpText(helpKey, context={}){
+  const value = SETTINGS_HELP_COPY[helpKey];
+  if(typeof value === "function") return value(context || {});
+  return value || "";
+}
+function createSettingsHelpTrigger(helpKey, context={}, ariaLabel="More info"){
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "set-help-trigger";
+  btn.dataset.helpKey = helpKey;
+  btn.dataset.helpContext = JSON.stringify(context || {});
+  btn.setAttribute("aria-label", ariaLabel);
+  btn.textContent = "i";
+  return btn;
+}
+function parseSettingsHelpContext(trigger){
+  try{ return JSON.parse(trigger.dataset.helpContext || "{}"); }
+  catch{ return {}; }
+}
+function positionSettingsHelpTooltip(trigger){
+  const tooltip = $("#settings-help-tooltip");
+  if(!tooltip || tooltip.hidden) return;
+  const rect = trigger.getBoundingClientRect();
+  const pad = 12;
+  const width = tooltip.offsetWidth;
+  const height = tooltip.offsetHeight;
+  let left = rect.left + (rect.width / 2) - (width / 2);
+  left = Math.max(pad, Math.min(left, window.innerWidth - width - pad));
+  let top = rect.bottom + 10;
+  if(top + height > window.innerHeight - pad){
+    top = Math.max(pad, rect.top - height - 10);
+  }
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
+}
+function showSettingsHelpTooltip(trigger){
+  const tooltip = $("#settings-help-tooltip");
+  if(!tooltip) return;
+  const text = resolveSettingsHelpText(trigger.dataset.helpKey, parseSettingsHelpContext(trigger));
+  if(!text) return;
+  if(activeSettingsHelpTrigger && activeSettingsHelpTrigger !== trigger){
+    activeSettingsHelpTrigger.removeAttribute("aria-describedby");
+  }
+  activeSettingsHelpTrigger = trigger;
+  trigger.setAttribute("aria-describedby", "settings-help-tooltip");
+  tooltip.textContent = text;
+  tooltip.hidden = false;
+  positionSettingsHelpTooltip(trigger);
+}
+function hideSettingsHelpTooltip(){
+  const tooltip = $("#settings-help-tooltip");
+  if(activeSettingsHelpTrigger){
+    activeSettingsHelpTrigger.removeAttribute("aria-describedby");
+  }
+  activeSettingsHelpTrigger = null;
+  if(tooltip) tooltip.hidden = true;
+}
+function ensureSettingsFieldHead(labelEl){
+  if(labelEl.parentElement?.classList.contains("set-field-head")) return labelEl.parentElement;
+  const wrap = document.createElement("div");
+  wrap.className = "set-field-head";
+  labelEl.parentNode.insertBefore(wrap, labelEl);
+  wrap.appendChild(labelEl);
+  return wrap;
+}
+function attachFieldLabelHelp(labelSelector, helpKey, ariaLabel){
+  const label = $(labelSelector);
+  if(!label) return;
+  const head = ensureSettingsFieldHead(label);
+  if(head.querySelector(`.set-help-trigger[data-help-key="${helpKey}"]`)) return;
+  head.appendChild(createSettingsHelpTrigger(helpKey, {}, ariaLabel || `Help: ${label.textContent.trim()}`));
+}
+function attachInlineHelp(targetSelector, helpKey, ariaLabel){
+  const target = $(targetSelector);
+  if(!target || target.parentElement?.querySelector(`.set-help-trigger[data-help-key="${helpKey}"]`)) return;
+  const wrap = document.createElement("span");
+  wrap.className = "set-help-inline";
+  target.parentNode.insertBefore(wrap, target);
+  wrap.appendChild(target);
+  wrap.appendChild(createSettingsHelpTrigger(helpKey, {}, ariaLabel || `Help: ${target.textContent.trim() || target.id || helpKey}`));
+}
+function attachSettingsStaticHelp(){
+  attachFieldLabelHelp('label[for="s-host"]', "s-host");
+  attachFieldLabelHelp('label[for="s-port"]', "s-port");
+  attachFieldLabelHelp('label[for="s-runner"]', "s-runner");
+  attachFieldLabelHelp('label[for="s-model"]', "s-model");
+  attachFieldLabelHelp('label[for="s-mode"]', "s-mode");
+  attachFieldLabelHelp('label[for="s-conc"]', "s-conc");
+  attachFieldLabelHelp('label[for="s-data"]', "s-data");
+  attachFieldLabelHelp('label[for="s-alias-name"]', "s-alias-name");
+  attachFieldLabelHelp('label[for="s-alias-provider"]', "s-alias-provider");
+  attachFieldLabelHelp('label[for="s-alias-model-name"]', "s-alias-model-name");
+  attachFieldLabelHelp('label[for="s-alias-api-key-env"]', "s-alias-api-key-env");
+  attachFieldLabelHelp('label[for="s-alias-base-url"]', "s-alias-base-url");
+  attachFieldLabelHelp('label[for="s-alias-api-version"]', "s-alias-api-version");
+  attachFieldLabelHelp('label[for="s-alias-num-retries"]', "s-alias-num-retries");
+  attachFieldLabelHelp('label[for="s-alias-timeout"]', "s-alias-timeout");
+  attachFieldLabelHelp('label[for="s-repo-base-dir"]', "s-repo-base-dir");
+  attachFieldLabelHelp('label[for="s-opik-url"]', "s-opik-url");
+  attachFieldLabelHelp('label[for="s-opik-workspace"]', "s-opik-workspace");
+  attachFieldLabelHelp('label[for="s-opik-project-id"]', "s-opik-project-id");
+  attachFieldLabelHelp('label[for="s-opik-project-name"]', "s-opik-project-name");
+  attachInlineHelp("#settings-save", "settings-save", "Help: Save settings");
+  attachInlineHelp("#s-alias-add-btn", "s-alias-add-btn", "Help: Add runner alias");
+  attachInlineHelp("#s-alias-cancel-btn", "s-alias-cancel-btn", "Help: Cancel alias edits");
+  attachInlineHelp("#s-alias-save-btn", "s-alias-save-btn", "Help: Save alias");
+  attachInlineHelp("#s-opik-connect", "s-opik-connect", "Help: Connect Opik");
+  attachInlineHelp("#s-opik-status", "s-opik-status", "Help: Opik status");
+  attachInlineHelp("#s-server-restart-note", "s-server-restart-note", "Help: Server restart note");
 }
 function formatApiError(status, payload, fallbackText){
   let message = "";
@@ -1358,10 +1633,15 @@ function renderRepoCustomValues(){
   REPO_CUSTOM_VALUES.forEach(value => {
     const row = document.createElement("div");
     row.className = "set-list-row";
+    const valueWrap = document.createElement("div");
+    valueWrap.className = "set-help-inline";
+    valueWrap.style.flex = "1";
     const label = document.createElement("div");
     label.className = "set-list-value";
     label.title = value;
     label.textContent = value;
+    valueWrap.appendChild(label);
+    valueWrap.appendChild(createSettingsHelpTrigger("repo-custom-value", {value}, `Help: remembered repo path ${value}`));
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "set-btn-connect";
@@ -1370,7 +1650,7 @@ function renderRepoCustomValues(){
       try{ await removeRepoCustomValue(value); }
       catch(e){ toast(e.message, true); }
     });
-    row.appendChild(label);
+    row.appendChild(valueWrap);
     row.appendChild(remove);
     container.appendChild(row);
   });
@@ -1651,7 +1931,7 @@ function applyWorkflowEventToJob(job, ev){
   }else if(ev.type==="user.prompt"){
     next.status = "awaiting_input";
   }else if(ev.type==="user.response" || ev.type==="user.prompt.timeout"){
-    next.status = "running";
+    next.status = Number(ev.pending_count_after || 0) > 0 ? "awaiting_input" : "running";
   }else if(ev.type==="metrics"){
     next.tokens_in = (Number(next.tokens_in) || 0) + (Number(ev.tokens_in) || 0);
     next.tokens_out = (Number(next.tokens_out) || 0) + (Number(ev.tokens_out) || 0);
@@ -1748,6 +2028,7 @@ function buildAgentDefaultsUI(agentDefaults) {
       tag.textContent = tagInfo[0];
       nameWrap.appendChild(tag);
     }
+    nameWrap.appendChild(createSettingsHelpTrigger("agent-default-row", {agentName}, `Help: agent override for ${agentName}`));
     nameTd.appendChild(nameWrap);
     tr.appendChild(nameTd);
 
@@ -1772,7 +2053,11 @@ function buildAgentDefaultsUI(agentDefaults) {
       const currentDefault = agentDefaults?.[agentName]?.[runner] || "";
       select.value = currentDefault;
 
-      td.appendChild(select);
+      const selectWrap = document.createElement("div");
+      selectWrap.className = "set-select-help-wrap";
+      selectWrap.appendChild(select);
+      selectWrap.appendChild(createSettingsHelpTrigger("agent-default-cell", {agentName, runner}, `Help: model override for ${agentName} on ${runner}`));
+      td.appendChild(selectWrap);
       tr.appendChild(td);
     });
 
@@ -1831,12 +2116,19 @@ async function loadSettings(){
   // Rebuild runner dropdowns to include any discovered copilot aliases
   syncRunnerSelectFor("f-runner", "f-model");
   syncRunnerSelectFor("eval-runner", "eval-model");
-  syncRunnerSelectFor("s-runner", null);
+  syncRunnerSelectFor("s-runner", "s-model");
   // Rebuild the default-runner settings select
   const sRunnerSel = $("#s-runner");
   const savedRunner = cfg.defaults?.runner || "claude";
   if ([...sRunnerSel.options].some(o => o.value === savedRunner)) {
     sRunnerSel.value = savedRunner;
+  }
+  // Sync default model dropdown after runner is set
+  syncModelSelectFor("#s-runner", "#s-model");
+  const savedModel = cfg.defaults?.model || "";
+  const sModelSel = $("#s-model");
+  if (savedModel && [...sModelSel.options].some(o => o.value === savedModel)) {
+    sModelSel.value = savedModel;
   }
   $("#s-host").value = cfg.api?.host || "";
   $("#s-port").value = cfg.api?.port || "";
@@ -1849,8 +2141,108 @@ async function loadSettings(){
   $("#s-opik-project-name").value = cfg.opik?.project_name || "";
   updateOpikSettingsStatus(cfg.opik || {});
   buildAgentDefaultsUI(cfg.agent_model_defaults || {});
+  renderRunnerAliases(cfg.runner_aliases || {});
   syncRunConfigSelects();
 }
+// Runner alias state
+let RUNNER_ALIASES = {};
+function renderRunnerAliases(aliases){
+  RUNNER_ALIASES = aliases || {};
+  const container = $("#s-alias-list");
+  if(!container) return;
+  container.innerHTML = "";
+  const names = Object.keys(RUNNER_ALIASES);
+  if(!names.length){
+    const empty = document.createElement("div");
+    empty.className = "set-empty";
+    empty.textContent = "No runner aliases configured.";
+    container.appendChild(empty);
+    return;
+  }
+  names.forEach(name => {
+    const alias = RUNNER_ALIASES[name];
+    const row = document.createElement("div");
+    row.className = "set-list-row";
+    const labelWrap = document.createElement("div");
+    labelWrap.className = "set-help-inline";
+    labelWrap.style.flex = "1";
+    const label = document.createElement("div");
+    label.className = "set-list-value";
+    label.style.flex = "1";
+    const providerModel = [alias.provider, alias.model].filter(Boolean).join("/");
+    const extras = [];
+    if(alias.api_key_env) extras.push(`key: $${alias.api_key_env}`);
+    if(alias.base_url) extras.push(`url: ${alias.base_url}`);
+    label.textContent = `${name} → ${providerModel}${extras.length ? " · " + extras.join(" · ") : ""}`;
+    label.title = JSON.stringify(alias, null, 2);
+    labelWrap.appendChild(label);
+    labelWrap.appendChild(createSettingsHelpTrigger("runner-alias-row", {name, providerModel}, `Help: runner alias ${name}`));
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "set-btn-connect";
+    remove.textContent = "Remove";
+    remove.addEventListener("click", async () => {
+      if(!confirm(`Remove runner alias "${name}"?`)) return;
+      const next = {...RUNNER_ALIASES};
+      delete next[name];
+      try{
+        await api("/settings", {method:"PUT", headers:{"content-type":"application/json"}, body:JSON.stringify({runner_aliases: next})});
+        toast(`Alias "${name}" removed`);
+        await loadSettings();
+      }catch(e){ toast(e.message, true); }
+    });
+    row.appendChild(labelWrap);
+    row.appendChild(remove);
+    container.appendChild(row);
+  });
+}
+function clearAliasForm(){
+  $("#s-alias-name").value = "";
+  $("#s-alias-provider").value = "";
+  $("#s-alias-model-name").value = "";
+  $("#s-alias-api-key-env").value = "";
+  $("#s-alias-base-url").value = "";
+  $("#s-alias-api-version").value = "";
+  $("#s-alias-num-retries").value = "";
+  $("#s-alias-timeout").value = "";
+  $("#s-alias-form-wrap").style.display = "none";
+}
+$("#s-alias-add-btn").addEventListener("click", ()=>{
+  clearAliasForm();
+  $("#s-alias-form-wrap").style.display = "";
+  $("#s-alias-name").focus();
+});
+$("#s-alias-cancel-btn").addEventListener("click", clearAliasForm);
+$("#s-alias-save-btn").addEventListener("click", async ()=>{
+  const name = $("#s-alias-name").value.trim();
+  const provider = $("#s-alias-provider").value.trim();
+  const model = $("#s-alias-model-name").value.trim();
+  if(!name || !provider || !model){
+    toast("Alias name, provider, and model are required", true);
+    return;
+  }
+  const alias = {provider, model};
+  const apiKeyEnv = $("#s-alias-api-key-env").value.trim();
+  if(apiKeyEnv) alias.api_key_env = apiKeyEnv;
+  const baseUrl = $("#s-alias-base-url").value.trim();
+  if(baseUrl) alias.base_url = baseUrl;
+  const apiVersion = $("#s-alias-api-version").value.trim();
+  if(apiVersion) alias.api_version = apiVersion;
+  const numRetries = $("#s-alias-num-retries").value.trim();
+  if(numRetries) alias.num_retries = parseInt(numRetries, 10);
+  const timeout = $("#s-alias-timeout").value.trim();
+  if(timeout) alias.timeout = parseFloat(timeout);
+  const next = {...RUNNER_ALIASES, [name]: alias};
+  try{
+    await api("/settings", {method:"PUT", headers:{"content-type":"application/json"}, body:JSON.stringify({runner_aliases: next})});
+    toast(`Alias "${name}" saved`);
+    clearAliasForm();
+    await loadSettings();
+  }catch(e){ toast(e.message, true); }
+});
+// Default runner → default model sync in settings
+$("#s-runner").addEventListener("change", ()=>syncModelSelectFor("#s-runner", "#s-model"));
+
 $("#settings-save").addEventListener("click", async ()=>{
   try{
     const agentDefaults = {};
@@ -1868,9 +2260,10 @@ $("#settings-save").addEventListener("click", async ()=>{
       }
     });
     
+    const defaultModel = $("#s-model").value || null;
     await api("/settings", {method:"PUT", headers:{"content-type":"application/json"}, body:JSON.stringify({
       api:{host:$("#s-host").value, port:parseInt($("#s-port").value,10)},
-      defaults:{runner:$("#s-runner").value, mode:$("#s-mode").value},
+      defaults:{runner:$("#s-runner").value, model:defaultModel, mode:$("#s-mode").value},
       concurrency:{max_running_jobs:parseInt($("#s-conc").value,10)},
       paths:{data_dir:$("#s-data").value},
       repo_paths:{base_dir:$("#s-repo-base-dir").value.trim(), custom_values:REPO_CUSTOM_VALUES},
@@ -1880,6 +2273,7 @@ $("#settings-save").addEventListener("click", async ()=>{
         project_id:$("#s-opik-project-id").value.trim(),
         project_name:$("#s-opik-project-name").value.trim(),
       },
+      runner_aliases: RUNNER_ALIASES,
       agent_model_defaults: agentDefaults,
     })});
     toast("Settings saved");
@@ -1935,6 +2329,44 @@ function syncRunConfigSelects(){
 }
 $("#f-runner").addEventListener("change", ()=>syncModelSelectFor("#f-runner", "#f-model"));
 $("#eval-runner").addEventListener("change", ()=>syncModelSelectFor("#eval-runner", "#eval-model"));
+document.addEventListener("mouseover", event => {
+  const trigger = event.target.closest(".set-help-trigger");
+  if(trigger) showSettingsHelpTooltip(trigger);
+});
+document.addEventListener("mouseout", event => {
+  const trigger = event.target.closest(".set-help-trigger");
+  if(!trigger || trigger !== activeSettingsHelpTrigger) return;
+  if(event.relatedTarget?.closest?.(".set-help-trigger") === trigger) return;
+  hideSettingsHelpTooltip();
+});
+document.addEventListener("focusin", event => {
+  const trigger = event.target.closest(".set-help-trigger");
+  if(trigger) showSettingsHelpTooltip(trigger);
+});
+document.addEventListener("focusout", event => {
+  if(event.target !== activeSettingsHelpTrigger) return;
+  if(event.relatedTarget?.closest?.(".set-help-trigger") === activeSettingsHelpTrigger) return;
+  hideSettingsHelpTooltip();
+});
+document.addEventListener("click", event => {
+  const trigger = event.target.closest(".set-help-trigger");
+  if(trigger){
+    event.preventDefault();
+    showSettingsHelpTooltip(trigger);
+    return;
+  }
+  if(activeSettingsHelpTrigger) hideSettingsHelpTooltip();
+});
+document.addEventListener("keydown", event => {
+  if(event.key === "Escape") hideSettingsHelpTooltip();
+});
+window.addEventListener("resize", () => {
+  if(activeSettingsHelpTrigger) positionSettingsHelpTooltip(activeSettingsHelpTrigger);
+});
+$('.view[data-view="settings"] .simple-list')?.addEventListener("scroll", () => {
+  if(activeSettingsHelpTrigger) positionSettingsHelpTooltip(activeSettingsHelpTrigger);
+}, {passive:true});
+attachSettingsStaticHelp();
 loadSettings();
 
 function fmtLocalTime(isoStr){
@@ -2224,7 +2656,7 @@ function describeEvent(ev, surface="runs", mode="live"){
     }
   }
   else if(ev.type==="job.end"){ cls+=" end"; msg = ` ${ev.status} (exit ${ev.exit_code})`; }
-  else if(ev.type==="user.response"){ cls+=" stdout"; tag="✓ user.response"; msg=" Answers received — intake continuing."; }
+  else if(ev.type==="user.response"){ cls+=" stdout"; tag="✓ user.response"; msg=` Response received${ev.conversation_id ? ` (${ev.conversation_id})` : ""} — workflow continuing.`; }
   else if(ev.type==="user.prompt.timeout"){ cls+=" stderr"; tag="⚠ user.prompt.timeout"; msg=" No response received — continuing with open questions."; }
   else if(ev.type==="metrics"){
     if(mode==="live") renderSurfaceMetrics(surface);
@@ -2293,33 +2725,97 @@ function appendEvent(ev, surface="runs", mode="live"){
 }
 function escapeHtml(s){ return String(s).replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
 function buildUserPromptForm(ev){
+  return buildUserEscalationCard(ev);
+}
+function buildUserEscalationCard(ev){
   const questions = Array.isArray(ev.questions) ? ev.questions : [];
   const wrap = document.createElement("div");
   wrap.className = "ev user-prompt-block";
+  wrap.dataset.conversationId = ev.conversation_id || "";
+  wrap.dataset.escalationId = ev.escalation_id || "";
+
+  // Header with agent name and severity badge
   const header = document.createElement("div");
   header.className = "user-prompt-header";
-  header.textContent = "Intake agent needs clarification on acceptance criteria:";
+  const agentLabel = ev.agent || "Agent";
+  const stageLabel = ev.stage ? ` · ${ev.stage}` : "";
+  const uowLabel = ev.uow_id ? ` · ${ev.uow_id}` : "";
+  header.innerHTML = `<strong>${escapeHtml(agentLabel)}</strong>${escapeHtml(stageLabel)}${escapeHtml(uowLabel)} needs your input`;
+  if(ev.severity){
+    const badge = document.createElement("span");
+    badge.className = `severity-badge severity-${ev.severity}`;
+    badge.textContent = ev.severity;
+    badge.style.cssText = "margin-left:8px;padding:2px 8px;border-radius:4px;font-size:0.75em;font-weight:600;text-transform:uppercase;" +
+      (ev.severity==="blocking" ? "background:#fee2e2;color:#991b1b;" : ev.severity==="approval" ? "background:#fef3c7;color:#92400e;" : "background:#e0e7ff;color:#3730a3;");
+    header.appendChild(badge);
+  }
   wrap.appendChild(header);
+
+  // Title
+  if(ev.title){
+    const titleEl = document.createElement("div");
+    titleEl.style.cssText = "font-weight:600;margin:8px 0 4px;";
+    titleEl.textContent = ev.title;
+    wrap.appendChild(titleEl);
+  }
+
+  // Message
+  if(ev.message){
+    const msgEl = document.createElement("div");
+    msgEl.style.cssText = "margin-bottom:8px;white-space:pre-wrap;";
+    msgEl.textContent = ev.message;
+    wrap.appendChild(msgEl);
+  }
+
   if(!questions.length){ const p=document.createElement("div"); p.textContent="(no questions)"; wrap.appendChild(p); return wrap; }
+
   const form = document.createElement("form");
   form.className = "user-prompt-form";
   questions.forEach((q,i)=>{
+    const qObj = typeof q === "string" ? {id:`q${i+1}`, label:q, kind:"textarea"} : q;
     const qDiv=document.createElement("div"); qDiv.className="prompt-q";
-    const label=document.createElement("label"); label.textContent=`${i+1}. ${q}`;
-    const ta=document.createElement("textarea"); ta.rows=2; ta.dataset.question=q; ta.placeholder="Your answer...";
-    qDiv.append(label,ta); form.appendChild(qDiv);
+    const label=document.createElement("label"); label.textContent=`${i+1}. ${qObj.label || qObj.id}`;
+    let input;
+    if(qObj.kind === "boolean"){
+      input = document.createElement("select");
+      input.innerHTML = '<option value="">-- select --</option><option value="yes">Yes</option><option value="no">No</option>';
+    } else {
+      input = document.createElement("textarea");
+      input.rows = 2;
+      input.placeholder = "Your answer...";
+    }
+    input.dataset.questionId = qObj.id || `q${i+1}`;
+    input.dataset.question = qObj.label || qObj.id;
+    if(qObj.required) input.required = true;
+    qDiv.append(label, input); form.appendChild(qDiv);
   });
-  const btn=document.createElement("button"); btn.type="submit"; btn.textContent="Submit Answers"; btn.className="prompt-submit";
+
+  // Free-form message box
+  const msgDiv = document.createElement("div"); msgDiv.className = "prompt-q";
+  const msgLabel = document.createElement("label"); msgLabel.textContent = "Additional message (optional):";
+  const msgTa = document.createElement("textarea"); msgTa.rows = 2; msgTa.placeholder = "Any additional context..."; msgTa.dataset.questionId = "__message__";
+  msgDiv.append(msgLabel, msgTa); form.appendChild(msgDiv);
+
+  const btn=document.createElement("button"); btn.type="submit"; btn.textContent="Submit Response"; btn.className="prompt-submit";
   form.appendChild(btn);
   form.addEventListener("submit", async(e)=>{
     e.preventDefault();
     const responses={};
-    form.querySelectorAll("textarea").forEach(ta=>{ responses[ta.dataset.question]=ta.value; });
+    form.querySelectorAll("textarea, select").forEach(el=>{
+      if(el.dataset.questionId && el.dataset.questionId !== "__message__") responses[el.dataset.questionId]=el.value;
+    });
+    const message = (form.querySelector('[data-question-id="__message__"]') || {}).value || "";
     btn.disabled=true; btn.textContent="Submitting...";
+    const payload = {
+      conversation_id: ev.conversation_id || undefined,
+      escalation_id: ev.escalation_id || undefined,
+      message: message || undefined,
+      responses,
+    };
     try{
-      await api(`/runs/${activeJobId}/respond`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({responses})});
-      form.innerHTML=`<div class="prompt-submitted">✓ Answers submitted — intake continuing.</div>`;
-    }catch(err){ btn.disabled=false; btn.textContent="Submit Answers"; toast((err&&err.message)||"Failed to submit answers",true); }
+      await api(`/runs/${activeJobId}/respond`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+      form.innerHTML=`<div class="prompt-submitted">✓ Response submitted — workflow continuing.</div>`;
+    }catch(err){ btn.disabled=false; btn.textContent="Submit Response"; toast((err&&err.message)||"Failed to submit response",true); }
   });
   wrap.appendChild(form);
   return wrap;

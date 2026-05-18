@@ -118,6 +118,8 @@ class JobProcess:
         env["AGENT_CONTEXT_ROOT"] = str(AGENT_CONTEXT_ROOT)
         env["CHANGE_ID"] = self.job["change_id"]
         env["PYTHONUNBUFFERED"] = "1"
+        env["AGENT_RUNNER_USER_ESCALATION"] = "gui"
+        env["AGENT_RUNNER_ESCALATION_ROOT"] = str(AGENT_CONTEXT_ROOT / self.job["change_id"] / "escalations")
         if self.job.get("cassette_path"):
             env["AGENT_RUNNER_CASSETTE"] = self.job["cassette_path"]
         logger.debug("JobProcess._build_env: job_id=%s event_log=%s cassette=%s", self.id, self.job["events_path"], self.job.get("cassette_path"))
@@ -149,8 +151,10 @@ class JobProcess:
                 logger.info("JobProcess._persist: job_id=%s awaiting user input", self.id)
                 db.update_job(self.id, status="awaiting_input")
             elif t in ("user.response", "user.prompt.timeout"):
-                logger.info("JobProcess._persist: job_id=%s resuming after user.%s", self.id, t.split(".")[-1])
-                db.update_job(self.id, status="running")
+                pending = int(evt.get("pending_count_after") or 0)
+                new_status = "awaiting_input" if pending > 0 else "running"
+                logger.info("JobProcess._persist: job_id=%s user.%s pending=%d → %s", self.id, t.split(".")[-1], pending, new_status)
+                db.update_job(self.id, status=new_status)
             elif t == "metrics":
                 row = db.get_job(self.id) or {}
                 ti = int(row.get("tokens_in") or 0) + int(evt.get("tokens_in") or 0)

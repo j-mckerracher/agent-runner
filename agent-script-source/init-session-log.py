@@ -39,7 +39,7 @@ Creates a structured session log JSON file for an agent.
 
 Arguments:
   artifact_root  Root path for artifacts
-  change_id      Change identifier (e.g., WI-12345)
+  change_id      Change identifier (e.g., 12345 or TEST-AC-001)
   agent_name     One of: {' '.join(VALID_AGENTS)}
   identifier     Log type suffix (e.g., session, query, exploration, state_transition)
   iteration      Optional, defaults to 1

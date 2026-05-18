@@ -44,7 +44,7 @@ Follow the **execution-discipline** skill protocol. Additionally:
 - **Simplicity First**: Make the schedule as simple as possible.
 - **No Laziness**: Produce a complete, accurate schedule; do not skip dependency analysis or risk assessment.
 - **Minimal Scope**: Schedule only the UoWs present in tasks.yaml; do not invent or expand scope.
-- **Never Ask Questions**: Act immediately and autonomously at all times. If information is ambiguous or missing, state your assumption clearly in the output artifact and proceed. Do not pause for confirmation, clarification, or user input under any circumstances.
+- **User Escalation**: Act autonomously when the available story, artifacts, repository evidence, and reference material are sufficient. Use user escalation only for blocking cases where proceeding would likely produce an incorrect or product-invalid schedule. Valid triggers: acceptance criteria conflict, missing product behavior that cannot be inferred, evaluator explicitly requiring human escalation. Invalid triggers: routine scheduling uncertainty, preference questions, asking permission to read/inspect files. When escalation is required, call `python "$AGENT_RUNNER_ROOT/agent-script-source/request-user-input.py"` with a `--request-file` JSON payload or use the `request_user_input` tool. After the user responds, continue the task.
 
 ## Core Responsibilities
 

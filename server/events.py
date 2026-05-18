@@ -11,7 +11,78 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+try:
+    import fcntl as _fcntl
+except ImportError:  # Windows
+    _fcntl = None  # type: ignore[assignment]
+
 logger = logging.getLogger(__name__)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cross-process-safe append — usable from both the runner subprocess and
+# the FastAPI server process when they share an events.jsonl file.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def append_event(path: str | os.PathLike, type: str, **fields: Any) -> dict:
+    """Append a single event to *path* with a cross-process-safe sequence number.
+
+    Acquires a file lock on ``<path>.lock``, reads the current last seq from the
+    JSONL file, writes the next event with ``seq = last_seq + 1``, flushes, and
+    returns the record.
+    """
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = p.with_suffix(p.suffix + ".lock")
+
+    lock_fd = None
+    try:
+        lock_fd = open(lock_path, "w")
+        if _fcntl is not None:
+            _fcntl.flock(lock_fd.fileno(), _fcntl.LOCK_EX)
+
+        # Determine next seq by scanning the existing file.
+        last_seq = 0
+        if p.exists():
+            try:
+                with p.open("r", encoding="utf-8") as fh:
+                    for line in fh:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            obj = json.loads(line)
+                            last_seq = max(last_seq, int(obj.get("seq", 0)))
+                        except Exception:
+                            pass
+            except OSError:
+                pass
+
+        record = {
+            "seq": last_seq + 1,
+            "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+            "type": type,
+            **fields,
+        }
+        with p.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+            fh.flush()
+            try:
+                os.fsync(fh.fileno())
+            except OSError:
+                pass
+
+        logger.debug("append_event: seq=%d type=%s path=%s", record["seq"], type, p)
+        return record
+    finally:
+        if lock_fd is not None:
+            if _fcntl is not None:
+                try:
+                    _fcntl.flock(lock_fd.fileno(), _fcntl.LOCK_UN)
+                except OSError:
+                    pass
+            lock_fd.close()
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Emitter — used by run.py / run_cmds.py inside the worker subprocess.
@@ -19,49 +90,19 @@ logger = logging.getLogger(__name__)
 
 
 class EventEmitter:
-    """Append-only JSONL writer with monotonic seq. Process-local."""
+    """Append-only JSONL writer.  Delegates to the cross-process-safe
+    ``append_event()`` so that multiple emitters (or processes) writing to
+    the same file never produce duplicate or colliding sequence numbers."""
 
     def __init__(self, path: str | os.PathLike) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
-        self._seq = 0
-        # If the file exists from a previous run, advance seq beyond its tail
-        # so writes don't collide with replayed history.
-        if self.path.exists():
-            try:
-                last = 0
-                with self.path.open("r", encoding="utf-8") as fh:
-                    for line in fh:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            obj = json.loads(line)
-                            last = max(last, int(obj.get("seq", 0)))
-                        except Exception:
-                            pass
-                self._seq = last
-                logger.debug("EventEmitter: resumed from seq=%d for %s", self._seq, self.path)
-            except OSError as exc:
-                logger.warning("EventEmitter: could not read existing log %s: %s", self.path, exc)
-        else:
-            logger.debug("EventEmitter: new log file %s", self.path)
+        logger.debug("EventEmitter: targeting %s", self.path)
 
     def emit(self, type: str, **fields: Any) -> dict:
-        with self._lock:
-            self._seq += 1
-            record = {
-                "seq": self._seq,
-                "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-                "type": type,
-                **fields,
-            }
-            with self.path.open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
-                fh.flush()
-            logger.debug("EventEmitter.emit: seq=%d type=%s", record["seq"], type)
-            return record
+        record = append_event(self.path, type, **fields)
+        logger.debug("EventEmitter.emit: seq=%d type=%s", record["seq"], type)
+        return record
 
 
 _default: EventEmitter | None = None
@@ -296,49 +337,3 @@ def aggregate(events: Iterable[dict]) -> dict[str, Any]:
     logger.debug("aggregate: tokens_in=%d tokens_out=%d cost_usd=%f final_status=%s", tokens_in, tokens_out, cost_usd, final_status)
     return result
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Emitter — used by run.py / run_cmds.py inside the worker subprocess.
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class EventEmitter:
-    """Append-only JSONL writer with monotonic seq. Process-local."""
-
-    def __init__(self, path: str | os.PathLike) -> None:
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
-        self._seq = 0
-        # If the file exists from a previous run, advance seq beyond its tail
-        # so writes don't collide with replayed history.
-        if self.path.exists():
-            try:
-                last = 0
-                with self.path.open("r", encoding="utf-8") as fh:
-                    for line in fh:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            obj = json.loads(line)
-                            last = max(last, int(obj.get("seq", 0)))
-                        except Exception:
-                            pass
-                self._seq = last
-            except OSError:
-                pass
-
-    def emit(self, type: str, **fields: Any) -> dict:
-        with self._lock:
-            self._seq += 1
-            record = {
-                "seq": self._seq,
-                "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-                "type": type,
-                **fields,
-            }
-            with self.path.open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
-                fh.flush()
-            return record

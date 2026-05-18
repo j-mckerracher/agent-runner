@@ -173,7 +173,9 @@ def run_eval_optimizer_loop(
                 combined_input = (
                     f"{producer_input}\n\n"
                     f"## Evaluator Issues to Fix (iteration {i}):\n{evaluator_out}\n\n"
-                    f"Revise your output artifact to address the issues above. Do not ask questions — act immediately."
+                    f"Revise your output artifact to address the issues above. "
+                    f"If resolving an issue requires a blocking product decision or user-only clarification, "
+                    f"use the user escalation protocol and continue after receiving the response."
                 )
                 logger.debug("run_eval_optimizer_loop: iteration %d injecting evaluator feedback (len=%d)", i + 1, len(evaluator_out))
             producer_out = producer_func(combined_input, runner=runner, runner_model=runner_model)

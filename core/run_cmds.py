@@ -380,9 +380,11 @@ def _forbidden_write_path(path: Path) -> str | None:
 
 
 class _OpenaiCompatToolRuntime:
-    def __init__(self, *, repo: str | None, change_id: str | None) -> None:
+    def __init__(self, *, repo: str | None, change_id: str | None, agent: str | None = None) -> None:
         self.repo = Path(repo).expanduser().resolve() if repo else None
         self.change_dir = (_OPENAI_COMPAT_AGENT_CONTEXT_ROOT / change_id).resolve() if change_id else None
+        self.change_id = change_id
+        self.agent = agent
         self.read_roots = [root for root in (_OPENAI_COMPAT_RUNNER_ROOT, _OPENAI_COMPAT_AGENT_CONTEXT_ROOT, self.change_dir, self.repo) if root is not None]
         self.write_roots = [root for root in (self.change_dir, self.repo) if root is not None]
 
@@ -448,6 +450,37 @@ class _OpenaiCompatToolRuntime:
                             "timeout_seconds": {"type": "integer"},
                         },
                         "required": ["command"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "request_user_input",
+                    "description": "Pause the workflow and ask the user for clarification or approval through the GUI. Use only for blocking questions that cannot be resolved from repository artifacts.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string", "description": "Short summary of what decision is needed"},
+                            "message": {"type": "string", "description": "Detailed context explaining why escalation is needed"},
+                            "questions": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {"type": "string"},
+                                        "label": {"type": "string"},
+                                        "kind": {"type": "string", "enum": ["textarea", "text", "boolean"]},
+                                        "required": {"type": "boolean"},
+                                    },
+                                    "required": ["label"],
+                                },
+                            },
+                            "severity": {"type": "string", "enum": ["blocking", "approval", "clarification"]},
+                            "conversation_id": {"type": "string", "description": "Reuse a previous conversation_id for follow-up questions"},
+                            "resolution_criteria": {"type": "string"},
+                        },
+                        "required": ["title", "message", "questions"],
                     },
                 },
             },
@@ -553,6 +586,26 @@ class _OpenaiCompatToolRuntime:
             "output": combined_output,
         }
 
+    def _request_user_input(self, args: dict) -> dict:
+        from .user_escalation import request_user_input
+        stage = os.environ.get("AGENT_RUNNER_CURRENT_STAGE", "")
+        agent = self.agent or ""
+        change_id = self.change_id or os.environ.get("CHANGE_ID", "")
+        if not change_id:
+            raise ValueError("change_id is not available for escalation")
+        response = request_user_input(
+            change_id=change_id,
+            stage=stage,
+            agent=agent,
+            title=str(args.get("title") or ""),
+            message=str(args.get("message") or ""),
+            questions=args.get("questions") or [],
+            severity=str(args.get("severity") or "blocking"),
+            conversation_id=args.get("conversation_id"),
+            resolution_criteria=args.get("resolution_criteria"),
+        )
+        return response
+
     def execute(self, tool_name: str, arguments: dict) -> str:
         logger.info("_OpenaiCompatToolRuntime.execute: tool=%s", tool_name)
         try:
@@ -564,6 +617,8 @@ class _OpenaiCompatToolRuntime:
                 result = self._write_file(arguments)
             elif tool_name == "run_shell":
                 result = self._run_shell(arguments)
+            elif tool_name == "request_user_input":
+                result = self._request_user_input(arguments)
             else:
                 result = {"error": f"unknown tool: {tool_name}"}
         except Exception as exc:
@@ -592,6 +647,17 @@ def _openai_compat_agent_instructions(*, agent: str, runner: str, extra_skills: 
         f"- Allowed write roots: {write_scope}\n"
         "- Do not make network requests or access secrets.\n"
         "- Before your final answer, ensure required files are actually written to disk.\n"
+        "\n"
+        "## User escalation protocol\n"
+        "Act autonomously when the available artifacts and repository evidence are sufficient. "
+        "If a blocking ambiguity, approval decision, or human-only product decision prevents safe progress, "
+        "call the `request_user_input` tool (preferred) or run "
+        "`python \"$AGENT_RUNNER_ROOT/agent-script-source/request-user-input.py\"` and continue after the response.\n"
+        "Valid escalation triggers: acceptance criteria conflict, missing product behavior that cannot be inferred, "
+        "breaking change or external contract change requiring approval, security-sensitive behaviour, "
+        "evaluator explicitly requiring human escalation.\n"
+        "Invalid triggers: routine implementation uncertainty, missing convenience details, preference questions, "
+        "asking permission to read/inspect/edit/test files.\n"
     )
     logger.info("_openai_compat_agent_instructions: total instructions length=%d chars", len(result))
     return result
@@ -720,7 +786,12 @@ def _without_claude_auth_env() -> dict[str, str]:
     env = dict(os.environ)
     for key in CLAUDE_AUTH_ENV_VARS:
         env.pop(key, None)
-    logger.debug("_without_claude_auth_env: stripped %s from env", CLAUDE_AUTH_ENV_VARS)
+    # Always expose the workbench root so agents can reference scripts via
+    # $AGENT_RUNNER_ROOT/agent-script-source/request-user-input.py regardless
+    # of what directory they `cd` into during execution.
+    env.setdefault("AGENT_RUNNER_ROOT", str(_OPENAI_COMPAT_RUNNER_ROOT))
+    logger.debug("_without_claude_auth_env: stripped %s from env, AGENT_RUNNER_ROOT=%s",
+                 CLAUDE_AUTH_ENV_VARS, env["AGENT_RUNNER_ROOT"])
     return env
 
 
@@ -920,7 +991,9 @@ def run_claude_cmd(
         cmd.append("--dangerously-skip-permissions")
     if extra_flags:
         cmd.extend(extra_flags)
-    result = _run_cli(cmd, runner="claude", agent=agent, stream_output=stream_output)
+    result = _run_cli(cmd, runner="claude", agent=agent,
+                      env=_without_claude_auth_env(),
+                      stream_output=stream_output)
     stdout_raw = result.stdout or ""
     text_out = stdout_raw
     try:
@@ -1246,7 +1319,7 @@ def run_openai_compat_cmd(
     logger.debug("run_openai_compat_cmd: system prompt first 300 chars: %s", system_content[:300])
     logger.debug("run_openai_compat_cmd: system prompt last 300 chars: %s", system_content[-300:])
 
-    runtime = _OpenaiCompatToolRuntime(repo=repo, change_id=change_id)
+    runtime = _OpenaiCompatToolRuntime(repo=repo, change_id=change_id, agent=agent)
     logger.info("run_openai_compat_cmd: runtime read_roots=%s write_roots=%s",
                 [str(r) for r in runtime.read_roots], [str(r) for r in runtime.write_roots])
 
@@ -1339,6 +1412,71 @@ def _agent_cmd_metadata(runner: str, prompt: str, agent: str, **kwargs) -> dict[
     }
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Force-escalation test hook
+#
+# Set AGENT_RUNNER_FORCE_ESCALATION_TEST=1 to make every agent fire a synthetic
+# escalation before its normal run.  This verifies the full escalation pathway
+# (request file → GUI/TTY → response file) for every agent type in one run.
+#
+# TEARDOWN: unset AGENT_RUNNER_FORCE_ESCALATION_TEST (or remove this function
+# and the call in run_agent_cmd) once testing is complete.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _force_test_escalation(*, agent: str, change_id: str) -> None:
+    """Fire a single synthetic escalation for *agent* before the agent LLM runs.
+
+    Only active when ``AGENT_RUNNER_FORCE_ESCALATION_TEST=1`` is set in the
+    environment.  Safe to leave in place: when the env var is absent this
+    function is never called.  On non-interactive runs (no GUI, no TTY) the
+    escalation is skipped with a warning rather than blocking the pipeline.
+    """
+    from .user_escalation import request_user_input  # noqa: PLC0415
+
+    stage = os.environ.get("AGENT_RUNNER_CURRENT_STAGE", "test")
+    logger.info(
+        "_force_test_escalation: firing synthetic test escalation agent=%s change_id=%s stage=%s",
+        agent, change_id, stage,
+    )
+    try:
+        request_user_input(
+            change_id=change_id,
+            stage=stage,
+            agent=agent,
+            title=f"[ESCALATION-TEST] {agent}",
+            message=(
+                f"**Automated escalation test** — triggered by `AGENT_RUNNER_FORCE_ESCALATION_TEST=1`.\n\n"
+                f"| Field | Value |\n"
+                f"|-------|-------|\n"
+                f"| Agent | `{agent}` |\n"
+                f"| Stage | `{stage}` |\n"
+                f"| Change ID | `{change_id}` |\n\n"
+                f"This escalation is synthetic.  Reply **ok** to acknowledge and allow the agent to continue."
+            ),
+            questions=[
+                {
+                    "id": "ack",
+                    "label": "Acknowledge this test escalation (reply 'ok' to continue the agent run)",
+                    "kind": "text",
+                    "required": True,
+                }
+            ],
+            severity="clarification",
+        )
+        logger.info(
+            "_force_test_escalation: test escalation acknowledged agent=%s change_id=%s",
+            agent, change_id,
+        )
+    except (RuntimeError, TimeoutError) as exc:
+        # No interactive channel available (headless / no event log / no TTY).
+        # Log a warning and let the agent proceed rather than hard-blocking.
+        logger.warning(
+            "_force_test_escalation: skipped (no interactive channel) agent=%s change_id=%s: %s",
+            agent, change_id, exc,
+        )
+
+
 @track_with_ui(name="agent-call", type="llm", metadata_getter=_agent_cmd_metadata)
 def run_agent_cmd(
     runner: str,
@@ -1352,6 +1490,12 @@ def run_agent_cmd(
     extra_skills = kwargs.pop("extra_skills", None)
     repo = kwargs.pop("repo", None)
     change_id = kwargs.pop("change_id", None)
+
+    # ── Force-escalation test hook ─────────────────────────────────────────
+    # Remove (or unset the env var) after escalation testing is complete.
+    if os.environ.get("AGENT_RUNNER_FORCE_ESCALATION_TEST") == "1" and change_id:
+        _force_test_escalation(agent=agent, change_id=change_id)
+    # ──────────────────────────────────────────────────────────────────────
     # copilot_effort is no longer supported — accept and discard for backward compat.
     kwargs.pop("copilot_effort", None)
     if is_copilot_runner(runner):

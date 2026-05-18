@@ -43,7 +43,9 @@ python3 eval/run_eval.py --change-id EVAL-001 --mono-root /path/to/target/repo -
 ## Key conventions
 
 - Edit agent prompts in `agent-definition-source/*/v*/prompt.md`, skills in `agent-skill-source/*/v*/SKILL.md`, and helper scripts in `agent-script-source/*`. The `.claude/`, `.github/`, and `.gemini/` files are generated artifacts; re-run `python3 core/materialize.py` after changing sources.
+- **Agent and skill versioning:** When modifying an agent prompt or skill, always create a new version folder in the source tree rather than editing the existing one in-place. For example, copy `agent-definition-source/intake/v1/` to `agent-definition-source/intake/v2/`, apply your changes in `v2/`, then run `python3 core/materialize.py`. Materialization automatically selects the highest version number, so the new version is picked up without any other configuration change.
 - `change_id` is the stable join key across the whole system: artifact directories, event logs, SSE streams, Opik thread IDs, evaluation fixtures, and hermetic cassette filenames all key off it. Preserve it exactly.
+- Work item numbers are used bare (e.g. `12345`) without a `WI-` prefix in folder names, file names, and `change_id` values. Never add a `WI-` prefix to a work item number.
 - Synthetic mode is the default path. If `run.py` gets neither `--ado-url` nor `--story-file`, it falls back to `agent-context/test-fixtures/synthetic_story.json` (`TEST-AC-001`). `workflow_inputs.py` validates fixture shape and rejects mismatched `change_id` values early.
 - Synthetic fixture `acceptance_criteria` may start as either a list or a keyed object, but intake normalizes downstream artifacts to `AC1`, `AC2`, ... in `intake/story.yaml`.
 - Do not assume `planning/assignments.json` is strict JSON. The code explicitly tolerates YAML in that file, including duplicate `batch:` keys under `execution_schedule`; use `run.load_assignments()` rather than direct JSON parsing.

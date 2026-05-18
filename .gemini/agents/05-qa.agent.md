@@ -78,7 +78,7 @@ Follow the **artifact-io** skill protocol. This agent's specific paths:
 10. **Conditionally update the ADO work item** using the **azure-devops-cli** skill when `intake/story.yaml` contains explicit ADO metadata (`ado_provenance.work_item_id` or `raw_input.ado_work_item_id`). Extract `{work_item_id}` from that metadata:
     - If `final_recommendation: approve` or `approve_with_conditions`:
       ```bash
-      az boards work-item update --id {work_item_id} --state "Resolved" \
+      az boards work-item update --id {work_item_id} \
         --discussion "QA passed. ACs validated: {acs_passed}/{acs_total}. Recommendation: {final_recommendation}. {conditions_if_any}"
       ```
     - If `final_recommendation: reject`:

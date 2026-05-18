@@ -168,24 +168,85 @@ async def get_run_events(job_id: str) -> list[dict[str, Any]]:
 
 
 class UserResponseBody(BaseModel):
-    responses: dict[str, str]
+    conversation_id: str | None = None
+    escalation_id: str | None = None
+    message: str | None = None
+    responses: dict[str, str] = Field(default_factory=dict)
 
 
 @router.post("/{job_id}/respond")
 async def respond_to_run(job_id: str, body: UserResponseBody) -> dict[str, Any]:
-    logger.info("respond_to_run: job_id=%s", job_id)
+    logger.info("respond_to_run: job_id=%s conversation_id=%s escalation_id=%s", job_id, body.conversation_id, body.escalation_id)
     job = db.get_job(job_id)
     if not job:
         logger.warning("respond_to_run: job_id=%s not found", job_id)
         raise HTTPException(404, "job not found")
+    terminal_statuses = ("succeeded", "failed", "cancelled")
+    if job["status"] in terminal_statuses:
+        logger.warning("respond_to_run: job_id=%s is terminal (%s)", job_id, job["status"])
+        raise HTTPException(409, f"job is terminal ({job['status']})")
     if job["status"] != "awaiting_input":
         logger.warning("respond_to_run: job_id=%s status=%s not awaiting_input", job_id, job["status"])
         raise HTTPException(409, "job is not awaiting input")
-    responses_path = user_responses_path_for(job["change_id"])
+
+    change_id = job["change_id"]
+
+    # ── New escalation flow (conversation_id + escalation_id present) ──
+    if body.escalation_id:
+        from core.user_escalation import write_user_response
+        from server.events import append_event
+
+        conv_id = body.conversation_id or ""
+        if not conv_id:
+            raise HTTPException(422, "conversation_id is required when escalation_id is provided")
+        try:
+            response_record = write_user_response(
+                change_id=change_id,
+                job_id=job_id,
+                conversation_id=conv_id,
+                escalation_id=body.escalation_id,
+                message=body.message,
+                responses=body.responses,
+            )
+        except ValueError as exc:
+            raise HTTPException(404, str(exc))
+
+        # Emit user.response to the event log (cross-process safe).
+        events_path = job.get("events_path")
+        if events_path:
+            append_event(
+                events_path,
+                "user.response",
+                change_id=change_id,
+                job_id=job_id,
+                conversation_id=conv_id,
+                escalation_id=body.escalation_id,
+                message=body.message,
+                responses=body.responses,
+                pending_count_after=response_record["pending_count_after"],
+                responded_at=response_record["responded_at"],
+            )
+
+        pending = response_record["pending_count_after"]
+        new_status = "awaiting_input" if pending > 0 else "running"
+        db.update_job(job_id, status=new_status)
+        logger.info(
+            "respond_to_run: job_id=%s escalation response written conv=%s esc=%s pending=%d status=%s",
+            job_id, conv_id, body.escalation_id, pending, new_status,
+        )
+        return {
+            "ok": True,
+            "conversation_id": conv_id,
+            "escalation_id": body.escalation_id,
+            "pending_count_after": pending,
+        }
+
+    # ── Legacy intake-only flow (no escalation_id) ──
+    responses_path = user_responses_path_for(change_id)
     responses_path.parent.mkdir(parents=True, exist_ok=True)
     responses_path.write_text(json.dumps({"responses": body.responses}), encoding="utf-8")
     db.update_job(job_id, status="running")
-    logger.info("respond_to_run: job_id=%s responses written to %s", job_id, responses_path)
+    logger.info("respond_to_run: job_id=%s legacy responses written to %s", job_id, responses_path)
     return {"ok": True}
 
 

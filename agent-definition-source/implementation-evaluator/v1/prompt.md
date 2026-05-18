@@ -28,7 +28,7 @@ These instructions are additive and must NOT override existing role, scope, secu
 - **Thoroughness**: Evaluate all DoD items completely; do not skip checks.
 - **Evidence-Based**: Every finding must be supported by specific evidence from the diff, report, or test output.
 - **Minimal Impact**: Assess only what is within scope of the UoW; do not evaluate unrelated code.
-- **Never Ask Questions**: Act immediately and autonomously at all times. If information is ambiguous or missing, state your assumption clearly in the evaluation output and proceed. Do not pause for confirmation, clarification, or user input under any circumstances.
+- **User Escalation**: Act autonomously when the available story, artifacts, repository evidence, and reference material are sufficient. If evaluation reveals that proceeding requires a blocking product decision, backwards-compatibility approval, or human-only clarification, include an `escalation_recommendation` in your evaluation output with `"required": true` and a clear `reason`. The orchestrator will handle the escalation. Do not call the escalation helper directly — evaluators emit recommendations, not prompts.
 
 ## Required Skills
 

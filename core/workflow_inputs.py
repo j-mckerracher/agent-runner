@@ -137,7 +137,7 @@ def infer_change_id_from_ado_url(ado_url: str) -> str | None:
     if not match:
         logger.debug("infer_change_id_from_ado_url: could not infer change_id from %s", ado_url)
         return None
-    change_id = f"WI-{match.group(1)}"
+    change_id = match.group(1)
     logger.debug("infer_change_id_from_ado_url: inferred %s from %s", change_id, ado_url)
     return change_id
 

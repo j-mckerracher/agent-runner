@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import shutil
 import signal
 import sys
 import traceback
@@ -96,8 +97,11 @@ class _Stage:
 
     def __init__(self, name: str) -> None:
         self.name = name
+        self._previous_stage: str | None = None
 
     def __enter__(self):
+        self._previous_stage = os.environ.get("AGENT_RUNNER_CURRENT_STAGE")
+        os.environ["AGENT_RUNNER_CURRENT_STAGE"] = self.name
         logger.info("Stage START: %s", self.name)
         _emit("stage.start", stage=self.name)
         return self
@@ -116,6 +120,10 @@ class _Stage:
         else:
             logger.info("Stage END: %s (ok)", self.name)
         _emit("stage.end", stage=self.name, status=status)
+        if self._previous_stage is None:
+            os.environ.pop("AGENT_RUNNER_CURRENT_STAGE", None)
+        else:
+            os.environ["AGENT_RUNNER_CURRENT_STAGE"] = self._previous_stage
         return False
 
 
@@ -352,6 +360,8 @@ def main(
             "main: resolved change_id=%s repo=%s intake_mode=%s",
             resolved_change_id, resolved_repo, intake_mode,
         )
+        os.environ["AGENT_RUNNER_CHANGE_ID"] = resolved_change_id
+        os.environ["AGENT_RUNNER_REPO"] = resolved_repo
 
         if os.environ.get("AGENT_RUNNER_EVENT_LOG"):
             logger.info("main: skipping clean_workspace; server pre-cleaned artifacts for %s", resolved_change_id)
@@ -478,6 +488,13 @@ def main(
             with _Stage("intake"):
                 failed_stage = "intake"
                 logger.info("main: intake source=%s mode=%s runner=%s", intake_source, intake_mode, runner)
+                # Always purge stale intake artifacts so agents never see data from a
+                # previous run of the same change_id, regardless of how the workflow
+                # was triggered.
+                _intake_artifact_dir = AGENT_CONTEXT_ROOT / resolved_change_id / "intake"
+                if _intake_artifact_dir.is_dir():
+                    shutil.rmtree(_intake_artifact_dir)
+                    logger.info("main: purged stale intake artifacts for change_id=%s", resolved_change_id)
                 print(f"[intake] Starting intake stage: runner={runner} model={resolved_model}")
                 steps.step_intake(
                     intake_source=intake_source,
@@ -496,10 +513,18 @@ def main(
             # ── Stage 2: Task Generation (eval-optimizer loop) ───────────────
             with _Stage("task-generation"):
                 failed_stage = "task-generation"
+                # Always purge stale planning artifacts so the task-generator
+                # never picks up a task plan or assignments from a previous run.
+                _planning_artifact_dir = AGENT_CONTEXT_ROOT / resolved_change_id / "planning"
+                if _planning_artifact_dir.is_dir():
+                    shutil.rmtree(_planning_artifact_dir)
+                    logger.info("main: purged stale planning artifacts for change_id=%s", resolved_change_id)
                 task_gen_input = (
                     f"Generate a task plan for change {resolved_change_id} in {resolved_repo}.\n"
                     f"Read the intake artifacts from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/intake/.\n"
-                    f"Act immediately. Do not ask questions."
+                    f"Act autonomously where the available artifacts and repository evidence are sufficient. "
+                    f"If a blocking ambiguity, approval decision, or human-only product decision prevents safe progress, "
+                    f"use the user escalation protocol and continue after the response."
                 )
                 task_gen_evaluator_prompt = (
                     f"Evaluate the task plan for {resolved_change_id} in {resolved_repo}. "
@@ -527,7 +552,9 @@ def main(
                     f"Read story context from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/intake/story.yaml.\n"
                     f"Read constraints from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/intake/constraints.md.\n"
                     f"Target repo: {resolved_repo}\n"
-                    f"Act immediately. Do not ask questions."
+                    f"Act autonomously where the available artifacts and repository evidence are sufficient. "
+                    f"If a blocking ambiguity, approval decision, or human-only product decision prevents safe progress, "
+                    f"use the user escalation protocol and continue after the response."
                 )
                 assignment_evaluator_prompt = (
                     f"Evaluate the execution schedule for {resolved_change_id}. "
@@ -603,7 +630,9 @@ def main(
                     f"Read all implementation reports from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/execution/*/impl_report.yaml.\n"
                     f"Target repo: {resolved_repo}\n"
                     f"Write your report to {AGENT_CONTEXT_ROOT}/{resolved_change_id}/qa/qa_report.yaml.\n"
-                    f"Act immediately. Do not ask questions."
+                    f"Act autonomously where the available artifacts and repository evidence are sufficient. "
+                    f"If a blocking ambiguity, approval decision, or human-only product decision prevents safe progress, "
+                    f"use the user escalation protocol and continue after the response."
                 )
                 qa_evaluator_prompt = (
                     f"Evaluate the QA report for {resolved_change_id}. "

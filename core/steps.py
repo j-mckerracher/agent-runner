@@ -267,6 +267,161 @@ def _write_synthetic_intake_artifacts(*, intake_source: str, repo: str, change_i
     )
 
 
+def _confirm_acceptance_criteria(change_id: str, intake_mode: str) -> None:
+    """Block until the user confirms (or amends) the normalized acceptance criteria.
+
+    Skips silently when:
+    - intake_mode is 'synthetic' (non-interactive fixture run)
+    - no interactive channel is available (no GUI, no TTY)
+    - story.yaml is missing or contains no acceptance criteria
+    """
+    if intake_mode == "synthetic":
+        logger.info("_confirm_acceptance_criteria: skipping — synthetic mode change_id=%s", change_id)
+        return
+
+    story_path = _intake_story_path(change_id)
+    if not story_path.is_file():
+        logger.warning(
+            "_confirm_acceptance_criteria: story.yaml not found, skipping change_id=%s", change_id
+        )
+        return
+
+    from core.user_escalation import request_user_input  # noqa: PLC0415
+
+    with story_path.open("r", encoding="utf-8") as fh:
+        story = yaml.safe_load(fh)
+    if not isinstance(story, dict):
+        return
+
+    raw_ac = story.get("acceptance_criteria")
+    if not raw_ac:
+        logger.info(
+            "_confirm_acceptance_criteria: no acceptance criteria, skipping change_id=%s", change_id
+        )
+        return
+
+    def _ac_to_dict(ac: object) -> dict[str, str]:
+        if isinstance(ac, dict):
+            return {k: str(v) for k, v in ac.items()}
+        if isinstance(ac, list):
+            return {f"AC{i + 1}": str(v) for i, v in enumerate(ac)}
+        return {}
+
+    def _ac_lines(ac_dict: dict[str, str]) -> str:
+        return "\n".join(f"{k}: {v}" for k, v in ac_dict.items())
+
+    def _parse_amended(text: str) -> dict[str, str] | None:
+        """Try to parse 'ACN: <text>' lines from *text*.  Returns None if no AC lines found."""
+        import re as _re
+        lines = text.strip().splitlines()
+        result: dict[str, str] = {}
+        for line in lines:
+            m = _re.match(r"^\s*(AC\d+)\s*[:\-]\s*(.+)$", line)
+            if m:
+                result[m.group(1)] = m.group(2).strip()
+        return result if result else None
+
+    ac_dict = _ac_to_dict(raw_ac)
+    conversation_id: str | None = None
+    max_rounds = 3
+
+    for round_num in range(1, max_rounds + 1):
+        ac_text = _ac_lines(ac_dict)
+        message = (
+            f"The intake agent has normalized **{len(ac_dict)}** acceptance criteria for `{change_id}`.\n\n"
+            f"Please review them before intake artifacts are finalized:\n\n"
+            f"{ac_text}\n\n"
+            f"Reply **yes** to confirm, or reply with the full corrected list using the format:\n"
+            f"  AC1: <text>\n  AC2: <text>\n  ..."
+        )
+
+        try:
+            response = request_user_input(
+                change_id=change_id,
+                stage="intake",
+                agent="intake-agent",
+                title="Confirm Acceptance Criteria",
+                message=message,
+                questions=[
+                    {
+                        "id": "ac_confirmation",
+                        "label": (
+                            "Are these acceptance criteria correct? "
+                            "Reply 'yes' to confirm, or provide the corrected list."
+                        ),
+                        "kind": "textarea",
+                        "required": True,
+                    }
+                ],
+                severity="approval",
+                conversation_id=conversation_id,
+            )
+        except RuntimeError:
+            logger.info(
+                "_confirm_acceptance_criteria: no interactive channel — skipping change_id=%s", change_id
+            )
+            return
+        except TimeoutError:
+            logger.warning(
+                "_confirm_acceptance_criteria: timed out on round %d — skipping change_id=%s",
+                round_num, change_id,
+            )
+            return
+
+        conversation_id = response.get("conversation_id", conversation_id)
+
+        responses = response.get("responses", {})
+        user_answer: str = (
+            responses.get("ac_confirmation", "") if isinstance(responses, dict) else ""
+        ) or response.get("message", "")
+        user_answer = (user_answer or "").strip()
+
+        if user_answer.lower().startswith("yes"):
+            logger.info(
+                "_confirm_acceptance_criteria: confirmed by user on round %d change_id=%s",
+                round_num, change_id,
+            )
+            meta = story.get("metacognitive_context")
+            if not isinstance(meta, dict):
+                meta = {}
+            meta["ac_confirmation"] = f"User confirmed AC on round {round_num}"
+            story["metacognitive_context"] = meta
+            _write_yaml_artifact(story_path, story)
+            return
+
+        # Check whether the user supplied an amended AC list.
+        amended = _parse_amended(user_answer)
+        if amended:
+            logger.info(
+                "_confirm_acceptance_criteria: user supplied %d amended ACs on round %d change_id=%s",
+                len(amended), round_num, change_id,
+            )
+            ac_dict = amended
+            story["acceptance_criteria"] = ac_dict
+        else:
+            logger.info(
+                "_confirm_acceptance_criteria: non-parseable amendment on round %d change_id=%s — "
+                "keeping current ACs and re-presenting",
+                round_num, change_id,
+            )
+
+        if round_num == max_rounds:
+            logger.warning(
+                "_confirm_acceptance_criteria: max rounds reached change_id=%s — proceeding with last known ACs",
+                change_id,
+            )
+            meta = story.get("metacognitive_context")
+            if not isinstance(meta, dict):
+                meta = {}
+            meta["ac_confirmation"] = (
+                f"AC confirmation reached max rounds ({max_rounds}). "
+                f"Proceeding with last known criteria. "
+                f"Last user response: {user_answer[:200]}"
+            )
+            story["metacognitive_context"] = meta
+            _write_yaml_artifact(story_path, story)
+
+
 def _looks_like_runner_refusal(result: str | None) -> bool:
     normalized = (result or "").lower()
     refusal_markers = (
@@ -647,7 +802,6 @@ def build_intake_prompt(
         prompt = f"Intake the following Azure DevOps story link: {intake_source}\n"
         prompt += f"Change ID: {change_id}\n"
         prompt += f"Target repo: {repo}\n"
-        prompt += "If intake artifacts already exist for this story, you must delete them and create new ones.\n"
         if runner == "gemini" and ado_work_item_json:
             prompt += (
                 "The work item data has already been fetched for you. "
@@ -668,7 +822,6 @@ def build_intake_prompt(
     prompt += f"Target repo: {repo}\n"
     prompt += "This is a local workflow test scenario, not a live Azure DevOps work item.\n"
     prompt += "Read the fixture file directly and normalize it into canonical intake artifacts.\n"
-    prompt += "If intake artifacts already exist for this story, you must delete them and create new ones.\n"
     prompt += "Preserve the fixture contents under raw_input.\n"
     prompt += "Do NOT require or use the azure-devops-cli skill unless the fixture explicitly includes ADO metadata.\n"
     prompt += (
@@ -713,6 +866,7 @@ def step_intake(
             change_id=change_id,
         )
         logger.info("step_intake: synthetic artifacts written change_id=%s", change_id)
+        _confirm_acceptance_criteria(change_id, intake_mode)
         return result
 
     prompt = build_intake_prompt(
@@ -745,6 +899,7 @@ def step_intake(
             "Intake runner returned a refusal without creating intake artifacts: "
             f"{result.strip()[:500]}"
         )
+    _confirm_acceptance_criteria(change_id, intake_mode)
     logger.info("step_intake: completed change_id=%s output_len=%d", change_id, len(result or ""))
     return result
 
@@ -925,7 +1080,9 @@ def step_software_engineer(
         logger.debug("step_software_engineer: uow_id=%s including evaluator feedback (len=%d)", uow_id, len(evaluator_feedback))
         prompt += (
             f"\n\n## Evaluator Issues to Fix:\n{evaluator_feedback}\n\n"
-            f"Address every issue listed above. Do not ask questions — act immediately."
+            f"Address every issue listed above. If resolving an issue requires a blocking "
+            f"product decision, compatibility approval, or user-only clarification, use the "
+            f"user escalation protocol and continue after receiving the response."
         )
     resolved_model = resolve_agent_model("software-engineer-hyperagent", runner, runner_model)
     result = run_agent_cmd(
@@ -1069,7 +1226,9 @@ def step_lessons_optimizer(
         f"Read all execution artifacts under {AGENT_CONTEXT_ROOT}/{change_id}/.\n"
         f"Target repo: {repo}\n"
         f"Write your report to {AGENT_CONTEXT_ROOT}/{change_id}/summary/lessons_optimizer_report.yaml.\n"
-        f"Act immediately. Do not ask questions."
+        f"Act autonomously where the available artifacts and repository evidence are sufficient. "
+        f"If a blocking ambiguity or human-only decision prevents safe progress, "
+        f"use the user escalation protocol and continue after the response."
     )
     resolved_model = resolve_agent_model("lessons-optimizer-hyperagent", runner, runner_model)
     result = run_agent_cmd(

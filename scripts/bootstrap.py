@@ -300,37 +300,99 @@ def _prompt_user_config() -> None:
     from server.config import load_config, save_config
 
     cfg = load_config()
-    current_base = (cfg.get("repo_paths", {}).get("base_dir") or "").strip()
-    if current_base:
-        return
 
-    _echo_step("Repository base directory (optional)")
-    print(
-        "The Repo path dropdown in the UI shows subdirectories of a base directory.\n"
-        "Enter the path to the directory that contains your local repositories.\n"
-        "(Press Enter to skip — you can configure this later in the Settings panel.)",
-        flush=True,
-    )
-    while True:
+    # --- Repo base directory ---
+    current_base = (cfg.get("repo_paths", {}).get("base_dir") or "").strip()
+    if not current_base:
+        _echo_step("Repository base directory (optional)")
+        print(
+            "The Repo path dropdown in the UI shows subdirectories of a base directory.\n"
+            "Enter the path to the directory that contains your local repositories.\n"
+            "(Press Enter to skip — you can configure this later in the Settings panel.)",
+            flush=True,
+        )
+        while True:
+            try:
+                raw = input("  Base directory [skip]: ").strip()
+            except EOFError:
+                print("[bootstrap] No input available; skipping.", flush=True)
+                break
+            if not raw:
+                print("[bootstrap] Skipping — configure it later in Settings.", flush=True)
+                break
+            expanded = Path(os.path.expandvars(raw)).expanduser().resolve()
+            if not expanded.is_dir():
+                print(
+                    f"[bootstrap] Warning: '{expanded}' does not exist or is not a directory. "
+                    "Re-enter or press Enter to skip.",
+                    flush=True,
+                )
+                continue
+            save_config({"repo_paths": {"base_dir": str(expanded)}})
+            print(f"[bootstrap] Repo base directory set to: {expanded}", flush=True)
+            break
+
+    # --- Default runner ---
+    current_runner = (cfg.get("defaults", {}).get("runner") or "").strip()
+    if not current_runner:
+        _echo_step("Default runner")
+        print(
+            "Choose the default AI backend for workflow runs.\n"
+            "Options: claude, copilot, gemini\n"
+            "(Press Enter to use 'claude'.)",
+            flush=True,
+        )
+        valid_runners = ("claude", "copilot", "gemini")
         try:
-            raw = input("  Base directory [skip]: ").strip()
+            raw = input(f"  Default runner [{valid_runners[0]}]: ").strip().lower()
         except EOFError:
-            print("[bootstrap] No input available; skipping.", flush=True)
-            return
-        if not raw:
-            print("[bootstrap] Skipping — configure it later in Settings.", flush=True)
-            return
-        expanded = Path(os.path.expandvars(raw)).expanduser().resolve()
-        if not expanded.is_dir():
+            raw = ""
+        runner = raw if raw in valid_runners else valid_runners[0]
+        save_config({"defaults": {"runner": runner}})
+        print(f"[bootstrap] Default runner set to: {runner}", flush=True)
+
+    # --- Default model ---
+    cfg = load_config()  # reload after possible runner change
+    current_model = cfg.get("defaults", {}).get("model")
+    if not current_model:
+        from core.runner_models import RUNNER_MODEL_CHOICES, RUNNER_DEFAULT_MODELS
+
+        runner = cfg.get("defaults", {}).get("runner", "claude")
+        choices = list(RUNNER_MODEL_CHOICES.get(runner, ()))
+        default_model = RUNNER_DEFAULT_MODELS.get(runner, "")
+        if choices:
+            _echo_step("Default model")
             print(
-                f"[bootstrap] Warning: '{expanded}' does not exist or is not a directory. "
-                "Re-enter or press Enter to skip.",
+                f"Choose the default model for the '{runner}' runner.\n"
+                f"Options: {', '.join(choices)}\n"
+                f"(Press Enter to use '{default_model}'.)",
                 flush=True,
             )
-            continue
-        save_config({"repo_paths": {"base_dir": str(expanded)}})
-        print(f"[bootstrap] Repo base directory set to: {expanded}", flush=True)
-        return
+            try:
+                raw = input(f"  Default model [{default_model}]: ").strip()
+            except EOFError:
+                raw = ""
+            model = raw if raw in choices else default_model
+            save_config({"defaults": {"model": model}})
+            print(f"[bootstrap] Default model set to: {model}", flush=True)
+
+    # --- Default mode ---
+    current_mode = (cfg.get("defaults", {}).get("mode") or "").strip()
+    if not current_mode:
+        _echo_step("Default mode")
+        print(
+            "Choose the default execution mode.\n"
+            "Options: live, hermetic\n"
+            "(Press Enter to use 'live'.)",
+            flush=True,
+        )
+        try:
+            raw = input("  Default mode [live]: ").strip().lower()
+        except EOFError:
+            raw = ""
+        mode = raw if raw in ("live", "hermetic") else "live"
+        save_config({"defaults": {"mode": mode}})
+        print(f"[bootstrap] Default mode set to: {mode}", flush=True)
 
 
 def _save_opik_config(opik_settings: dict[str, str]) -> dict:

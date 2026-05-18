@@ -122,15 +122,15 @@
   "target_dir": "/Users/mckerracher.joshua/Code/agent-workbench/.claude",
   "content_hashes": {
     "agent:assignment-evaluator@v1": "1ded3017b7c1a33444e23d9bc14a04a56a44fd930ddcfd5fc064b7c7dc373a17",
-    "agent:implementation-evaluator@v1": "e46b789c5f34f845a59c6a54f24e4dba8a1d0ebb32dbfe89ff363d547fdf2279",
+    "agent:implementation-evaluator@v1": "cc9ceff2ff76ed6ef2134c414f8245d3152db56b3d2e7467b0da16764860b0ce",
     "agent:information-explorer@v1": "ef143dca543f42cf0bc493f839e8c740c9c286738cfca18e07c9b9c94381d64c",
     "agent:intake@v1": "f23e2d8c5b3693ce3631f1fa2d9bde0e0edfc84d4e68847bacbaf27708fd2436",
     "agent:lessons-optimizer-hyperagent@v1": "ba338c310a00d529912c699dc21d0a232c4a1b6dc97857c66ef716ae52932452",
-    "agent:qa@v1": "89e673acfafa076c3a7d4502c571fc0134ffb6f19a1970a8ce2cb5a74887f77e",
+    "agent:qa@v1": "5f53d71bf84756aad6d17887fa6a69c426a934679acb67ce5d43b7037da5c366",
     "agent:qa-evaluator@v1": "6b57d48666213f1543780050c23f7955d119942a05559150abaf5312c999dcc4",
     "agent:reference-librarian@v1": "6ab127f80d8a7b61087395eecd220d33354cf8a882babdd4cef9b610b1cbf236",
-    "agent:software-engineer-hyperagent@v1": "f70a5cd9b789496eb9ebab4c786c0736b26f4132f5b91f658303cea060f3457a",
-    "agent:task-assigner@v1": "533b80726d9c589f47fe105faf6cba55f34eb0e5b7db4b11cccac318d5aaff80",
+    "agent:software-engineer-hyperagent@v1": "edecb12a0dae4d35fe09b95ba63e449ea5e7f12875f3170d4f1a29638db6cc69",
+    "agent:task-assigner@v1": "835dba057e55cefea69b285a776cd5e1939176ff736a926c59ad47a06cbd4364",
     "agent:task-generator@v1": "762262a7ef6f648a59710260ee535201de657366900e0f4f3f9e16b214a4a9a9",
     "agent:task-plan-evaluator@v1": "f866a32eb6a99fd00380a36e1870bbf95d0036acf36723e2aef178002c57a04d",
     "skill:azure-devops-cli@v1": "4d430b7d743499113d99a2f76eb0fba9068b86dc457fe909f0e6f638566b683c",
@@ -155,7 +155,7 @@
     "script:detect-ui-changes.py@source": "0c96a78969c6b5fadc463c911db395e4c090e60aa99dacee448ad0b9ef70ed3e",
     "script:generate-obsidian-archive.py@source": "e40cb571cad4f35e56cf685af31ce5bd44fb406574a00762c90a37e8ec05b8d2",
     "script:init-artifact-dirs.py@source": "d63966a3b221299670e9c363dfb763546c62c28ee243e812a5f0a5ff28fae43b",
-    "script:init-session-log.py@source": "fe5b534ad5581886882af72846fc6f9a07f6e5a781a144926f3686f41938838e",
+    "script:init-session-log.py@source": "9ea78f083849991408fae6f8708c819248dde35ef7f4ded1d597bc0b28539935",
     "script:parse-lessons.py@source": "d2d42bb9c96e7b01fe0baefba3035753185193f140a2c86d1d54495aadb96340",
     "script:parse-test-steps.py@source": "cb4b587d1e2fd7bdab76edecb8f6ef92c0e6a7b943631bef1ca99cf71dd0d1c1",
     "script:validate-artifact-schema.py@source": "cedf70d4d04d5bee79182eea24c4792051174c708cf4476313ce37f9203441c9",
@@ -163,11 +163,12 @@
     "script:validate-scope.py@source": "acdd22b90d0bde7897de5fadc41480f8960a2c25b86fce494a3fefcdc06d7383",
     "script:__pycache__/generate-obsidian-archive.cpython-314.pyc@source": "cdc4b141d336abf0d6cc885f5cc77846793ad52332b4115ac385618af1f4a801",
     "script:__pycache__/init-artifact-dirs.cpython-314.pyc@source": "85fbd9bd6116e6a35803d9708fb5124d05f1930e88045223522fe6682eeb37cc",
-    "script:__pycache__/init-session-log.cpython-314.pyc@source": "643c4935d787191acaaeb3a6dc7e76988f1f2ab4376b7cf8530b4ce31560fb28",
-    "agent:intake@v2": "55ecaac031bdbc21134e1bc9aae55e7ddd0383f6289a3012e08c0f7f9d78ddb1",
-    "skill:interrogate-eng@v1": "9a711010da4ac7c429b9d203b595dd03163d85b8c6cb4b3b1fdfcbc7473d4746"
+    "script:__pycache__/init-session-log.cpython-314.pyc@source": "0bbb93da4c916c494c4506bd4338d654530e44c8f266f67c2e077c5849509f8e",
+    "agent:intake@v2": "083f7a3cce0c1a2f84b03003c3502ba6196f97d1ab86b74a93cbc0f9e93804f3",
+    "skill:interrogate-eng@v1": "9a711010da4ac7c429b9d203b595dd03163d85b8c6cb4b3b1fdfcbc7473d4746",
+    "script:request-user-input.py@source": "a73c5e274193b428c7da4f26ffbf9a54c51083edf451cec9a503a23d7a85877a"
   },
-  "materialized_at": "2026-05-17T00:35:32Z",
+  "materialized_at": "2026-05-17T16:44:26Z",
   "scripts": [
     {
       "name": "__pycache__/generate-obsidian-archive.cpython-314.pyc",
@@ -215,6 +216,10 @@
     },
     {
       "name": "parse-test-steps.py",
+      "version": "source"
+    },
+    {
+      "name": "request-user-input.py",
       "version": "source"
     },
     {

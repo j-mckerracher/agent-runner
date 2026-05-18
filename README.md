@@ -366,6 +366,29 @@ python3 -m pytest -q tests/test_eval_run_eval.py tests/test_eval_synthesize.py
 python3 -m pytest -q tests/
 ```
 
+### Testing agent escalation
+
+To verify that every agent can surface a blocking question to the user through the GUI or TTY, set `AGENT_RUNNER_FORCE_ESCALATION_TEST=1` before starting a run. When this flag is set, each agent fires one synthetic escalation immediately before its LLM call, pausing the pipeline until you respond.
+
+```bash
+# Start the server so escalations appear in the GUI
+./bootstrap.sh
+
+# In another terminal, run the pipeline with the force flag
+AGENT_RUNNER_FORCE_ESCALATION_TEST=1 python3 run.py --repo /absolute/path/to/target/repo
+```
+
+Each agent will show an `[ESCALATION-TEST] <agent-name>` prompt in the GUI. Reply **ok** to let it proceed. This exercises the full escalation path — request file written, surfaced in the GUI, response file written, agent unblocked — for every agent in one run.
+
+**Teardown** — once you have confirmed all agents can escalate, simply stop passing the env var:
+
+```bash
+# Normal run — no escalations forced
+python3 run.py --repo /absolute/path/to/target/repo
+```
+
+The flag is purely additive: when it is absent, `_force_test_escalation()` in `core/run_cmds.py` is never called and there is no runtime overhead.
+
 ## Troubleshooting
 
 | Error | Cause | Fix |
