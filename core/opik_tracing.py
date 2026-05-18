@@ -91,15 +91,18 @@ def configure_opik_client(settings: dict[str, Any] | None):
     cfg = opik_config_from_settings(settings)
     use_local = _is_local_opik_url(cfg.api_url)
 
-    opik.configure(
-        api_key=_clean(os.environ.get("OPIK_API_KEY")) or None,
-        workspace=cfg.workspace_name if not use_local else None,
-        url=cfg.api_url,
-        url_override=cfg.api_url,
-        project_name=cfg.project_name,
-        use_local=use_local,
-        force=True,
-    )
+    configure_kwargs: dict[str, Any] = {
+        "url_override": cfg.api_url,
+        "project_name": cfg.project_name,
+        "use_local": use_local,
+        "force": True,
+    }
+    if not use_local:
+        api_key = _clean(os.environ.get("OPIK_API_KEY")) or None
+        if api_key:
+            configure_kwargs["api_key"] = api_key
+        configure_kwargs["workspace"] = cfg.workspace_name
+    opik.configure(**configure_kwargs)
     client = opik.Opik(project_name=cfg.project_name, workspace=cfg.workspace_name)
     auth_check = getattr(client, "auth_check", None)
     if callable(auth_check):
