@@ -71,10 +71,18 @@ The current platform is intentionally local-first and workflow-centric. The next
 |---|---|---|
 | `rtk` | No | When `rtk` is available on `PATH`, the workflow routes terminal work through RTK-aware tooling to reduce token usage. Falls back to normal execution when absent. `rtk` means “rust token killer.” Install from the internal [mayo-rtk-ai](https://dev.azure.com/mclm/Mayo%20Open%20Developer%20Network/_git/mayo-rtk-ai) repo — see `requirements.txt` for instructions. |
 
-### Fastest local setup on macOS
+### Fastest local setup on macOS / Linux
 
 ```bash
 ./bootstrap.sh
+```
+
+### Fastest local setup on Windows
+
+Open a PowerShell terminal and run:
+
+```powershell
+.\bootstrap.ps1
 ```
 
 That flow:
