@@ -263,7 +263,7 @@ def _configure_local_opik(candidates: list[str], *, project_name: str) -> dict[s
         api_url = f"{dashboard_url.rstrip('/')}/api"
         try:
             opik.configure(
-                url=api_url,
+                use_local=True,
                 url_override=api_url,
                 project_name=project_name,
                 force=True,
