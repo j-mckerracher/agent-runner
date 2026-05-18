@@ -8,12 +8,12 @@ $RootDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $BootstrapScript = Join-Path $RootDir "bootstrap.py"
 
 if (Get-Command py -ErrorAction SilentlyContinue) {
-    & py -3 $BootstrapScript @ArgsList
+    & py -3 "$RootDir\scripts\bootstrap.py" @ArgsList
     exit $LASTEXITCODE
 }
 
 if (Get-Command python -ErrorAction SilentlyContinue) {
-    & python $BootstrapScript @ArgsList
+    & python "$RootDir\scripts\bootstrap.py" @ArgsList
     exit $LASTEXITCODE
 }
 

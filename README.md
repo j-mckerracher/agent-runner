@@ -61,7 +61,7 @@ The current platform is intentionally local-first and workflow-centric. The next
 |---|---|---|---|
 | Python 3.9+ | Yes | `run.py`, `server_main.py`, bootstrap, eval tools | Bootstrap creates `.venv/`, but does not install Python. |
 | `git` | Yes | bootstrap and normal repo workflows | Used for the repo itself and for syncing the local Opik checkout. |
-| Docker Desktop | No | bundled local Opik stack | Required only when you want bootstrap to start self-hosted Opik. |
+| Docker Desktop | No | bundled local Opik stack | Required only if you opt in to the bundled local Opik stack at bootstrap time (the bootstrap script will prompt you). Skip-able by default or via `--no-opik`. |
 | One AI backend CLI | Yes | actual workflow execution | Install and authenticate at least one of `claude`, `copilot`, or `gemini`. |
 | Azure CLI + `azure-devops` extension | No | live ADO intake mode | Not required for local synthetic stories. |
 
@@ -90,11 +90,11 @@ That flow:
 - creates or reuses `.venv/`
 - installs `requirements.txt`
 - materializes agents, skills, and helper scripts
-- when Docker is healthy, clones or updates a local Opik checkout under `~/.agent-runner/opik`
-- when Docker is healthy, starts the local Opik stack and persists Opik metadata into `~/.agent-runner/config.json`
+- prompts you (y/N) whether to enable the bundled local [Opik](https://github.com/comet-ml/opik/blob/main/README.md) observability stack — answer "n" (default) to skip Docker entirely
+- if enabled: clones / updates `~/.agent-runner/opik`, starts the stack, persists Opik metadata into `~/.agent-runner/config.json`
 - starts the local API + GUI on `http://127.0.0.1:8742`
 
-If Docker Desktop is unavailable or its engine is not healthy, bootstrap now continues without starting local Opik so local development is not blocked. You can still connect Opik later from the Settings UI after Docker is working again.
+Skip the prompt non-interactively with `--with-opik` or `--no-opik`. Enabling Opik requires Docker Desktop to be running.
 
 ### Manual server startup
 
@@ -242,8 +242,10 @@ The current UI includes five views:
 ├── jobs.db
 ├── cassettes/<change-id>.jsonl
 ├── memory/
-└── opik/
+└── opik/        # only present when Opik is enabled at bootstrap (--with-opik)
 ```
+
+The `eval/run_eval.py` CLI has its own `--skip-opik` flag (separate from the bootstrap-time toggle) to bypass Opik metric reporting on a per-run basis.
 
 Server event logs are written in the repo under:
 
