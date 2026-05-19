@@ -22,6 +22,14 @@ DEFAULT_OPIK_PROJECT_NAME = "agent-runner"
 DEFAULT_OPIK_REPO_URL = "https://github.com/comet-ml/opik.git"
 OPIK_INFO_URL = "https://github.com/comet-ml/opik/blob/main/README.md"
 BOOTSTRAP_REEXEC_ENV = "AGENT_RUNNER_BOOTSTRAP_REEXEC"
+OPIK_RUNTIME_ENV_KEYS = (
+    "OPIK_BASE_URL",
+    "OPIK_DASHBOARD_URL",
+    "OPIK_PROJECT_ID",
+    "OPIK_PROJECT_NAME",
+    "OPIK_URL_OVERRIDE",
+    "OPIK_WORKSPACE",
+)
 
 
 class BootstrapError(RuntimeError):
@@ -76,25 +84,32 @@ def _venv_python_path() -> Path:
     return VENV_DIR / "bin" / "python"
 
 
+def _running_in_runner_venv() -> bool:
+    return Path(sys.prefix).resolve() == VENV_DIR.resolve()
+
+
+def _bootstrap_entrypoint() -> Path:
+    return (RUNNER_ROOT / "bootstrap.py").resolve()
+
+
 def _ensure_virtualenv() -> None:
     venv_python = _venv_python_path()
     if not venv_python.exists():
         _echo_step("Creating local virtual environment")
         _run([sys.executable, "-m", "venv", str(VENV_DIR)])
 
-    current_python = Path(sys.executable).resolve()
-    target_python = venv_python.resolve()
-    if current_python == target_python:
+    if _running_in_runner_venv():
         return
     if os.environ.get(BOOTSTRAP_REEXEC_ENV) == "1":
         raise BootstrapError(
-            f"Bootstrap re-exec expected {target_python}, but still running under {current_python}"
+            f"Bootstrap re-exec expected virtualenv {VENV_DIR}, but still running under {sys.executable}"
         )
 
-    _echo_step(f"Switching bootstrap to {target_python}")
+    entrypoint = _bootstrap_entrypoint()
+    _echo_step(f"Switching bootstrap to {venv_python}")
     env = os.environ.copy()
     env[BOOTSTRAP_REEXEC_ENV] = "1"
-    os.execve(str(target_python), [str(target_python), str(__file__), *sys.argv[1:]], env)
+    os.execve(str(venv_python), [str(venv_python), str(entrypoint), *sys.argv[1:]], env)
 
 
 def _find_command(*names: str) -> str | None:
@@ -417,6 +432,8 @@ def _save_opik_config(opik_settings: dict[str, str]) -> dict:
 
 def _server_env(opik_settings: dict[str, str] | None) -> dict[str, str]:
     env = os.environ.copy()
+    for key in OPIK_RUNTIME_ENV_KEYS:
+        env.pop(key, None)
     if opik_settings is None:
         return env
     env.update(
@@ -466,7 +483,7 @@ def _start_server(*, host: str, port: int, reload: bool, opik_settings: dict[str
         print(f"[bootstrap] local Opik UI: {opik_settings['dashboard_url']}", flush=True)
     cmd: list[object] = [
         sys.executable,
-        str(RUNNER_ROOT / "server" / "main.py"),
+        str(RUNNER_ROOT / "server_main.py"),
         "--host",
         host,
         "--port",
@@ -508,9 +525,9 @@ def main() -> int:
         _materialize_agents()
         _prompt_user_config()
 
-        if args.with_opik:
+        if getattr(args, "with_opik", False):
             enable_opik = True
-        elif args.no_opik:
+        elif getattr(args, "no_opik", False):
             enable_opik = False
         else:
             enable_opik = _prompt_for_opik()

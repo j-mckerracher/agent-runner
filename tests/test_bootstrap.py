@@ -12,6 +12,79 @@ RUNNER_ROOT = Path(__file__).resolve().parent.parent
 
 
 class BootstrapHelpersTests(unittest.TestCase):
+    def test_medium__ensure_virtualenv_reexecs_when_venv_python_resolves_to_base_interpreter(self):
+        with tempfile.TemporaryDirectory(prefix="agentrunner-bootstrap-") as tmpdir:
+            tmp_path = Path(tmpdir)
+            venv_dir = tmp_path / ".venv"
+            venv_python = venv_dir / "bin" / "python"
+            venv_python.parent.mkdir(parents=True)
+            venv_python.write_text("", encoding="utf-8")
+
+            current_python = tmp_path / "homebrew" / "bin" / "python3.14"
+            shared_python = tmp_path / "cellar" / "bin" / "python3.14"
+            current_prefix = tmp_path / "homebrew" / "Frameworks" / "Python.framework" / "Versions" / "3.14"
+
+            real_resolve = Path.resolve
+
+            def fake_resolve(path_self: Path, *args, **kwargs) -> Path:
+                if path_self == current_python:
+                    return shared_python
+                if path_self == venv_python:
+                    return shared_python
+                if path_self == venv_dir:
+                    return venv_dir
+                if path_self == current_prefix:
+                    return current_prefix
+                return real_resolve(path_self, *args, **kwargs)
+
+            with (
+                patch.object(bootstrap, "VENV_DIR", venv_dir),
+                patch.object(bootstrap.sys, "argv", ["bootstrap.py", "--no-opik"]),
+                patch.object(bootstrap.sys, "executable", str(current_python)),
+                patch.object(bootstrap.sys, "prefix", str(current_prefix)),
+                patch.dict(bootstrap.os.environ, {}, clear=True),
+                patch.object(Path, "resolve", autospec=True, side_effect=fake_resolve),
+                patch.object(bootstrap.os, "execve") as execve_mock,
+            ):
+                bootstrap._ensure_virtualenv()
+
+            execve_mock.assert_called_once()
+            exec_args = execve_mock.call_args.args
+            self.assertEqual(exec_args[0], str(venv_python))
+            self.assertEqual(exec_args[1], [str(venv_python), str(RUNNER_ROOT / "bootstrap.py"), "--no-opik"])
+            self.assertEqual(exec_args[2][bootstrap.BOOTSTRAP_REEXEC_ENV], "1")
+
+    def test_medium__ensure_virtualenv_creates_missing_venv_before_reexec(self):
+        with tempfile.TemporaryDirectory(prefix="agentrunner-bootstrap-") as tmpdir:
+            tmp_path = Path(tmpdir)
+            venv_dir = tmp_path / ".venv"
+            venv_python = venv_dir / "bin" / "python"
+            current_python = tmp_path / "python3.14"
+
+            def fake_run(cmd, **kwargs):
+                self.assertEqual(cmd, [str(current_python), "-m", "venv", str(venv_dir)])
+                venv_python.parent.mkdir(parents=True)
+                venv_python.write_text("", encoding="utf-8")
+                return SimpleNamespace(returncode=0)
+
+            with (
+                patch.object(bootstrap, "VENV_DIR", venv_dir),
+                patch.object(bootstrap.sys, "argv", ["bootstrap.py", "--no-opik"]),
+                patch.object(bootstrap.sys, "executable", str(current_python)),
+                patch.object(bootstrap, "_running_in_runner_venv", return_value=False),
+                patch.object(bootstrap, "_run", side_effect=fake_run) as run_mock,
+                patch.dict(bootstrap.os.environ, {}, clear=True),
+                patch.object(bootstrap.os, "execve") as execve_mock,
+            ):
+                bootstrap._ensure_virtualenv()
+
+            run_mock.assert_called_once()
+            execve_mock.assert_called_once_with(
+                str(venv_python),
+                [str(venv_python), str(RUNNER_ROOT / "bootstrap.py"), "--no-opik"],
+                {bootstrap.BOOTSTRAP_REEXEC_ENV: "1"},
+            )
+
     def test_medium__candidate_dashboard_urls_prefers_detected_localhost_urls(self):
         output = """
         Started services successfully.
@@ -95,95 +168,34 @@ class BootstrapHelpersTests(unittest.TestCase):
             ],
         )
 
-    def test_medium__bootstrap_entrypoint_prefers_original_argv0(self):
-        expected = (RUNNER_ROOT / "bootstrap.py").resolve()
-
-        with patch.object(bootstrap.sys, "argv", [str(expected), "--reload"]):
-            entrypoint = bootstrap._bootstrap_entrypoint()
-
-        self.assertEqual(entrypoint, expected)
-
-    def test_medium__reexec_bootstrap_uses_subprocess_on_windows(self):
-        target_python = Path("C:/tmp/.venv/Scripts/python.exe")
-        env = {"AGENT_RUNNER_BOOTSTRAP_REEXEC": "1"}
-
-        with (
-            patch.object(bootstrap, "_is_windows", return_value=True),
-            patch.object(bootstrap, "_bootstrap_entrypoint", return_value=RUNNER_ROOT / "bootstrap.py"),
-            patch.object(bootstrap.sys, "argv", ["bootstrap.py", "--reload"]),
-            patch.object(bootstrap.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as run_mock,
-            patch.object(bootstrap.os, "execve") as execve_mock,
-        ):
-            with self.assertRaises(SystemExit) as raised:
-                bootstrap._reexec_bootstrap(target_python, env)
-
-        self.assertEqual(raised.exception.code, 0)
-        run_mock.assert_called_once_with(
-            [str(target_python), str(RUNNER_ROOT / "bootstrap.py"), "--reload"],
-            env=env,
-            text=True,
-        )
-        execve_mock.assert_not_called()
-
-    def test_medium__check_docker_retries_until_probe_succeeds(self):
-        timeout_error = subprocess.TimeoutExpired(["docker", "info"], timeout=15)
-
+    def test_medium__check_docker_runs_docker_info_probe(self):
         with (
             patch.object(bootstrap, "_require_command", return_value="docker"),
-            patch.object(bootstrap, "DOCKER_READY_TIMEOUT_SECONDS", 30),
-            patch.object(bootstrap, "DOCKER_PROBE_TIMEOUT_SECONDS", 15),
-            patch.object(bootstrap, "DOCKER_PROBE_DELAY_SECONDS", 0),
-            patch.object(bootstrap, "_docker_info_probe", side_effect=[timeout_error, None]) as probe_mock,
-            patch.object(bootstrap.time, "sleep") as sleep_mock,
+            patch.object(bootstrap.subprocess, "run") as run_mock,
         ):
             bootstrap._check_docker()
 
-        self.assertEqual(probe_mock.call_count, 2)
-        sleep_mock.assert_called_once_with(0)
+        run_mock.assert_called_once_with(
+            ["docker", "info"],
+            stdout=bootstrap.subprocess.DEVNULL,
+            stderr=bootstrap.subprocess.DEVNULL,
+            check=True,
+            text=True,
+        )
 
-    def test_medium__check_docker_times_out_after_retry_window(self):
-        timeout_error = subprocess.TimeoutExpired(["docker", "info"], timeout=15)
-
+    def test_medium__check_docker_raises_when_daemon_is_unavailable(self):
         with (
             patch.object(bootstrap, "_require_command", return_value="docker"),
-            patch.object(bootstrap, "DOCKER_READY_TIMEOUT_SECONDS", 1),
-            patch.object(bootstrap, "DOCKER_PROBE_TIMEOUT_SECONDS", 15),
-            patch.object(bootstrap, "DOCKER_PROBE_DELAY_SECONDS", 0),
-            patch.object(bootstrap, "_docker_info_probe", side_effect=timeout_error),
-            patch.object(bootstrap.time, "monotonic", side_effect=[0, 0, 2]),
-            patch.object(bootstrap.time, "sleep") as sleep_mock,
+            patch.object(
+                bootstrap.subprocess,
+                "run",
+                side_effect=subprocess.CalledProcessError(returncode=1, cmd=["docker", "info"]),
+            ),
         ):
             with self.assertRaises(bootstrap.BootstrapError) as raised:
                 bootstrap._check_docker()
 
-        self.assertIn("Docker did not respond after 1 seconds.", str(raised.exception))
-        sleep_mock.assert_not_called()
-
-    def test_medium__docker_info_probe_kills_hung_process_tree_on_windows(self):
-        proc = SimpleNamespace(
-            pid=4242,
-            args=["docker", "info"],
-            wait=unittest.mock.Mock(side_effect=[subprocess.TimeoutExpired(["docker", "info"], timeout=15), 0]),
-            poll=unittest.mock.Mock(return_value=None),
-            kill=unittest.mock.Mock(),
-        )
-
-        with (
-            patch.object(bootstrap, "_is_windows", return_value=True),
-            patch.object(bootstrap.subprocess, "Popen", return_value=proc),
-            patch.object(bootstrap.subprocess, "run") as run_mock,
-        ):
-            with self.assertRaises(subprocess.TimeoutExpired):
-                bootstrap._docker_info_probe(timeout=15)
-
-        run_mock.assert_called_once_with(
-            ["taskkill", "/PID", "4242", "/T", "/F"],
-            stdout=bootstrap.subprocess.DEVNULL,
-            stderr=bootstrap.subprocess.DEVNULL,
-            check=False,
-            text=True,
-        )
-        proc.wait.assert_called_with(timeout=5)
+        self.assertIn("Docker is not running or not accessible.", str(raised.exception))
 
 
 class BootstrapConfigPersistenceTests(unittest.TestCase):
@@ -206,16 +218,14 @@ class BootstrapConfigPersistenceTests(unittest.TestCase):
 
 
 class BootstrapServerStartupTests(unittest.TestCase):
-    def test_medium__start_server_invokes_repo_server_main_entrypoint(self):
+    def test_medium__start_server_uses_repo_server_main_wrapper(self):
         with (
             patch.object(bootstrap, "_echo_step"),
             patch.object(bootstrap, "_server_env", return_value={"EXAMPLE": "1"}),
-            patch.object(bootstrap, "_open_browser_when_server_ready") as open_browser_mock,
             patch.object(bootstrap, "_run") as run_mock,
         ):
             bootstrap._start_server(host="127.0.0.1", port=8742, reload=False, opik_settings=None)
 
-        open_browser_mock.assert_called_once_with("http://127.0.0.1:8742")
         run_mock.assert_called_once_with(
             [
                 bootstrap.sys.executable,
@@ -230,32 +240,9 @@ class BootstrapServerStartupTests(unittest.TestCase):
             echo=True,
         )
 
-    def test_medium__open_browser_when_server_ready_starts_waiter_thread_on_windows(self):
-        started = []
-
-        class FakeThread:
-            def __init__(self, *, target, name, daemon):
-                self.target = target
-                self.name = name
-                self.daemon = daemon
-
-            def start(self):
-                started.append((self.name, self.daemon, self.target))
-
-        with (
-            patch.object(bootstrap, "_is_windows", return_value=True),
-            patch.object(bootstrap.threading, "Thread", side_effect=FakeThread) as thread_ctor,
-        ):
-            bootstrap._open_browser_when_server_ready("http://127.0.0.1:8742")
-
-        thread_ctor.assert_called_once()
-        self.assertEqual(len(started), 1)
-        self.assertEqual(started[0][0], "bootstrap-open-browser")
-        self.assertTrue(started[0][1])
-
 
 class BootstrapMainFlowTests(unittest.TestCase):
-    def test_medium__main_continues_when_docker_is_unavailable(self):
+    def test_medium__main_defaults_to_prompt_flow_when_opik_flags_are_missing(self):
         args = SimpleNamespace(host="127.0.0.1", port=8742, reload=False)
 
         with (
@@ -266,7 +253,8 @@ class BootstrapMainFlowTests(unittest.TestCase):
             patch.object(bootstrap, "_install_requirements"),
             patch.object(bootstrap, "_materialize_agents"),
             patch.object(bootstrap, "_prompt_user_config"),
-            patch.object(bootstrap, "_check_docker", side_effect=bootstrap.BootstrapError("docker down")),
+            patch.object(bootstrap, "_prompt_for_opik", return_value=False),
+            patch.object(bootstrap, "_check_docker") as check_docker_mock,
             patch.object(bootstrap, "_opik_repo_dir") as opik_repo_dir_mock,
             patch.object(bootstrap, "_sync_opik_repo") as sync_opik_repo_mock,
             patch.object(bootstrap, "_start_local_opik") as start_local_opik_mock,
@@ -276,6 +264,7 @@ class BootstrapMainFlowTests(unittest.TestCase):
             result = bootstrap.main()
 
         self.assertEqual(result, 0)
+        check_docker_mock.assert_not_called()
         opik_repo_dir_mock.assert_not_called()
         sync_opik_repo_mock.assert_not_called()
         start_local_opik_mock.assert_not_called()
@@ -289,10 +278,10 @@ class BootstrapMainFlowTests(unittest.TestCase):
 
 
 class BootstrapWrapperTests(unittest.TestCase):
-    def test_medium__bootstrap_sh_invokes_scripts_bootstrap_py(self):
+    def test_medium__bootstrap_sh_invokes_repo_bootstrap_py(self):
         content = (RUNNER_ROOT / "bootstrap.sh").read_text(encoding="utf-8")
 
-        self.assertIn('"$ROOT_DIR/scripts/bootstrap.py"', content)
+        self.assertIn('"$ROOT_DIR/bootstrap.py"', content)
 
     def test_medium__bootstrap_py_delegates_to_scripts_bootstrap_main(self):
         content = (RUNNER_ROOT / "bootstrap.py").read_text(encoding="utf-8")
