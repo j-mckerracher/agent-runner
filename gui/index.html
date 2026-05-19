@@ -741,7 +741,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  cursor:help;
+  cursor:pointer;
   flex:0 0 auto;
   transition:border-color .15s,color .15s,background .15s,transform .12s;
 }
@@ -1351,10 +1351,11 @@ function createSettingsHelpTrigger(helpKey, context={}, ariaLabel="More info"){
   btn.className = "set-help-trigger";
   btn.dataset.helpKey = helpKey;
   btn.dataset.helpContext = JSON.stringify(context || {});
+  const nativeText = resolveSettingsHelpText(helpKey, context);
+  if(nativeText) btn.dataset.helpText = nativeText;
   btn.setAttribute("aria-label", ariaLabel);
   btn.textContent = "i";
-  // Set native title as fallback so browsers always show help on hover
-  const nativeText = resolveSettingsHelpText(helpKey, context);
+  // Keep native title as a fallback only until the custom tooltip takes over.
   if(nativeText) btn.title = nativeText;
   return btn;
 }
@@ -1382,12 +1383,12 @@ function positionSettingsHelpTooltip(trigger){
 function showSettingsHelpTooltip(trigger){
   const tooltip = $("#settings-help-tooltip");
   if(!tooltip) return;
-  const text = resolveSettingsHelpText(trigger.dataset.helpKey, parseSettingsHelpContext(trigger));
+  const text = trigger.dataset.helpText || resolveSettingsHelpText(trigger.dataset.helpKey, parseSettingsHelpContext(trigger));
   if(!text) return;
   if(activeSettingsHelpTrigger && activeSettingsHelpTrigger !== trigger){
     activeSettingsHelpTrigger.removeAttribute("aria-describedby");
     // Restore native title on previous trigger
-    const prevText = resolveSettingsHelpText(activeSettingsHelpTrigger.dataset.helpKey, parseSettingsHelpContext(activeSettingsHelpTrigger));
+    const prevText = activeSettingsHelpTrigger.dataset.helpText || resolveSettingsHelpText(activeSettingsHelpTrigger.dataset.helpKey, parseSettingsHelpContext(activeSettingsHelpTrigger));
     if(prevText) activeSettingsHelpTrigger.title = prevText;
   }
   activeSettingsHelpTrigger = trigger;
@@ -1404,7 +1405,7 @@ function hideSettingsHelpTooltip(){
   if(activeSettingsHelpTrigger){
     activeSettingsHelpTrigger.removeAttribute("aria-describedby");
     // Restore native title
-    const text = resolveSettingsHelpText(activeSettingsHelpTrigger.dataset.helpKey, parseSettingsHelpContext(activeSettingsHelpTrigger));
+    const text = activeSettingsHelpTrigger.dataset.helpText || resolveSettingsHelpText(activeSettingsHelpTrigger.dataset.helpKey, parseSettingsHelpContext(activeSettingsHelpTrigger));
     if(text) activeSettingsHelpTrigger.title = text;
   }
   activeSettingsHelpTrigger = null;
@@ -2288,7 +2289,7 @@ $("#settings-save").addEventListener("click", async ()=>{
         delete agentDefaults[agentName];
       }
     });
-    
+
     const defaultModel = $("#s-model").value || null;
     await api("/settings", {method:"PUT", headers:{"content-type":"application/json"}, body:JSON.stringify({
       api:{host:$("#s-host").value, port:parseInt($("#s-port").value,10)},
@@ -2358,11 +2359,11 @@ function syncRunConfigSelects(){
 }
 $("#f-runner").addEventListener("change", ()=>syncModelSelectFor("#f-runner", "#f-model"));
 $("#eval-runner").addEventListener("change", ()=>syncModelSelectFor("#eval-runner", "#eval-model"));
-document.addEventListener("mouseover", event => {
+document.addEventListener("pointerover", event => {
   const trigger = event.target.closest(".set-help-trigger");
   if(trigger) showSettingsHelpTooltip(trigger);
 });
-document.addEventListener("mouseout", event => {
+document.addEventListener("pointerout", event => {
   const trigger = event.target.closest(".set-help-trigger");
   if(!trigger || trigger !== activeSettingsHelpTrigger) return;
   if(event.relatedTarget?.closest?.(".set-help-trigger") === trigger) return;
