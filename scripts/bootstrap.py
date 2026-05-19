@@ -21,6 +21,9 @@ DEFAULT_OPIK_DASHBOARD_URL = "http://localhost:5173"
 DEFAULT_OPIK_PROJECT_NAME = "agent-runner"
 DEFAULT_OPIK_REPO_URL = "https://github.com/comet-ml/opik.git"
 OPIK_INFO_URL = "https://github.com/comet-ml/opik/blob/main/README.md"
+RTK_REPO_URL = "https://dev.azure.com/mclm/Mayo%20Open%20Developer%20Network/_git/mayo-rtk-ai"
+RTK_TAG = "mayo-v0.39.0"
+RTK_INSTALL_INFO_URL = "https://dev.azure.com/mclm/Mayo%20Open%20Developer%20Network/_git/mayo-rtk-ai"
 BOOTSTRAP_REEXEC_ENV = "AGENT_RUNNER_BOOTSTRAP_REEXEC"
 OPIK_RUNTIME_ENV_KEYS = (
     "OPIK_BASE_URL",
@@ -174,15 +177,66 @@ def _register_rtk_global_permission() -> None:
         print(f"[bootstrap] Bash(rtk *) already present in {settings_path}", flush=True)
 
 
-def _check_rtk() -> None:
-    if not _find_command("rtk"):
+def _install_rtk() -> bool:
+    """Build and install rtk from the Mayo ADO repo. Returns True on success."""
+    _echo_step("Installing rtk (token-optimized CLI proxy)")
+
+    if not _find_command("cargo"):
         print(
-            "[bootstrap] Warning: rtk not found. Token compression will be disabled for the claude runner.\n"
-            "  Install: brew install rtk\n"
-            "  See: https://dev.azure.com/mclm/Mayo%20Open%20Developer%20Network/_git/mayo-rtk-ai",
+            "[bootstrap] Warning: Rust toolchain not found (cargo missing). rtk install skipped.\n"
+            "  Install Rust: https://rustup.rs\n"
+            "  Then install rtk manually: see " + RTK_INSTALL_INFO_URL,
             flush=True,
         )
-        return
+        return False
+
+    git_cmd = _find_command("git")
+    if not git_cmd:
+        print("[bootstrap] Warning: git not found. rtk install skipped.", flush=True)
+        return False
+
+    build_dir = RUNNER_ROOT / ".rtk-build"
+    try:
+        if build_dir.exists():
+            _run(["rm", "-rf", str(build_dir)])
+        _run([git_cmd, "clone", "--branch", RTK_TAG, "--depth", "1", RTK_REPO_URL, str(build_dir)])
+        _run(["cargo", "build", "--release"], cwd=build_dir)
+
+        if _is_windows():
+            dest_dir = Path.home() / ".cargo" / "bin"
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            src = build_dir / "target" / "release" / "rtk.exe"
+            shutil.copy2(str(src), str(dest_dir / "rtk.exe"))
+        else:
+            dest_dir = Path.home() / ".local" / "bin"
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            src = build_dir / "target" / "release" / "rtk"
+            shutil.copy2(str(src), str(dest_dir / "rtk"))
+            if sys.platform == "darwin":
+                subprocess.run(
+                    ["codesign", "-s", "-", str(dest_dir / "rtk")],
+                    check=False, capture_output=True,
+                )
+
+        print(f"[bootstrap] rtk installed to {dest_dir}", flush=True)
+        return True
+    except BootstrapError as exc:
+        print(f"[bootstrap] Warning: rtk build/install failed: {exc}", flush=True)
+        return False
+    finally:
+        if build_dir.exists():
+            _run(["rm", "-rf", str(build_dir)])
+
+
+def _check_rtk() -> None:
+    if not _find_command("rtk"):
+        if not _install_rtk():
+            print(
+                "[bootstrap] Warning: rtk not available. Token compression will be disabled.\n"
+                "  See: " + RTK_INSTALL_INFO_URL,
+                flush=True,
+            )
+            return
     print("[bootstrap] rtk found — running rtk init -g to register global Claude Code hook.", flush=True)
     try:
         subprocess.run(["rtk", "init", "-g"], check=True, capture_output=True, text=True)
