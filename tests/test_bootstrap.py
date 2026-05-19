@@ -249,7 +249,7 @@ class BootstrapMainFlowTests(unittest.TestCase):
             patch.object(bootstrap, "parse_args", return_value=args),
             patch.object(bootstrap, "_ensure_virtualenv"),
             patch.object(bootstrap, "_warn_if_no_ai_backend"),
-            patch.object(bootstrap, "_check_ztk"),
+            patch.object(bootstrap, "_check_rtk"),
             patch.object(bootstrap, "_install_requirements"),
             patch.object(bootstrap, "_materialize_agents"),
             patch.object(bootstrap, "_prompt_user_config"),

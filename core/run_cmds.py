@@ -981,8 +981,8 @@ def run_claude_cmd(
     if not prompt:
         raise ValueError(f"prompt must not be empty (agent={agent})")
     logger.info("run_claude_cmd: agent=%s model=%s prompt_len=%d", agent, model, len(prompt))
-    if not shutil.which("ztk"):
-        logger.warning("run_claude_cmd: ztk not found — Bash output compression disabled (install: brew install codejunkie99/ztk/ztk)")
+    if not shutil.which("rtk"):
+        logger.warning("run_claude_cmd: rtk not found — Bash output compression disabled (install: brew install rtk)")
     print(f"Starting Claude Code via {agent}...")
     print(f"Prompt: {prompt}")
     print(f"Model: {model}")
