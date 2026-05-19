@@ -6,12 +6,9 @@ import os
 import re
 import shlex
 import shutil
-import socket
 import subprocess
 import sys
-import threading
 import time
-import webbrowser
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import unquote, urlparse
@@ -25,11 +22,6 @@ DEFAULT_OPIK_PROJECT_NAME = "agent-runner"
 DEFAULT_OPIK_REPO_URL = "https://github.com/comet-ml/opik.git"
 OPIK_INFO_URL = "https://github.com/comet-ml/opik/blob/main/README.md"
 BOOTSTRAP_REEXEC_ENV = "AGENT_RUNNER_BOOTSTRAP_REEXEC"
-DOCKER_READY_TIMEOUT_SECONDS = 90
-DOCKER_PROBE_TIMEOUT_SECONDS = 15
-DOCKER_PROBE_DELAY_SECONDS = 3
-SERVER_READY_TIMEOUT_SECONDS = 30
-SERVER_READY_POLL_INTERVAL_SECONDS = 0.5
 
 
 class BootstrapError(RuntimeError):
@@ -84,21 +76,6 @@ def _venv_python_path() -> Path:
     return VENV_DIR / "bin" / "python"
 
 
-def _bootstrap_entrypoint() -> Path:
-    argv0 = sys.argv[0] if sys.argv else ""
-    if argv0 and argv0 != "-c":
-        return Path(argv0).resolve()
-    return (RUNNER_ROOT / "bootstrap.py").resolve()
-
-
-def _reexec_bootstrap(target_python: Path, env: dict[str, str]) -> None:
-    cmd = [str(target_python), str(_bootstrap_entrypoint()), *sys.argv[1:]]
-    if _is_windows():
-        result = subprocess.run(cmd, env=env, text=True)
-        raise SystemExit(result.returncode)
-    os.execve(str(target_python), cmd, env)
-
-
 def _ensure_virtualenv() -> None:
     venv_python = _venv_python_path()
     if not venv_python.exists():
@@ -108,7 +85,6 @@ def _ensure_virtualenv() -> None:
     current_python = Path(sys.executable).resolve()
     target_python = venv_python.resolve()
     if current_python == target_python:
-        print(f"[bootstrap] Virtual environment ready ({target_python})", flush=True)
         return
     if os.environ.get(BOOTSTRAP_REEXEC_ENV) == "1":
         raise BootstrapError(
@@ -118,7 +94,7 @@ def _ensure_virtualenv() -> None:
     _echo_step(f"Switching bootstrap to {target_python}")
     env = os.environ.copy()
     env[BOOTSTRAP_REEXEC_ENV] = "1"
-    _reexec_bootstrap(target_python, env)
+    os.execve(str(target_python), [str(target_python), str(__file__), *sys.argv[1:]], env)
 
 
 def _find_command(*names: str) -> str | None:
@@ -201,76 +177,18 @@ def _check_ztk() -> None:
     _register_ztk_global_permission()
 
 
-def _terminate_process(proc: subprocess.Popen[str]) -> None:
-    if proc.poll() is not None:
-        return
-    if _is_windows():
+def _check_docker() -> None:
+    _require_command("docker", install_hint="Install Docker Desktop and make sure it is running.")
+    try:
         subprocess.run(
-            ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+            ["docker", "info"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            check=False,
+            check=True,
             text=True,
         )
-    else:
-        proc.kill()
-    try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait()
-
-
-def _docker_info_probe(timeout: int) -> None:
-    proc = subprocess.Popen(
-        ["docker", "info"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        text=True,
-    )
-    try:
-        returncode = proc.wait(timeout=timeout)
-    except subprocess.TimeoutExpired as exc:
-        _terminate_process(proc)
-        raise subprocess.TimeoutExpired(proc.args, timeout) from exc
-    if returncode != 0:
-        raise subprocess.CalledProcessError(returncode, proc.args)
-
-
-def _check_docker() -> None:
-    _echo_step("Checking Docker")
-    _require_command("docker", install_hint="Install Docker Desktop and make sure it is running.")
-    print(
-        "[bootstrap] Waiting for Docker engine to respond "
-        f"(up to {DOCKER_READY_TIMEOUT_SECONDS}s)...",
-        flush=True,
-    )
-    last_error: Exception | None = None
-    deadline = time.monotonic() + DOCKER_READY_TIMEOUT_SECONDS
-    while True:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            break
-        try:
-            _docker_info_probe(timeout=min(DOCKER_PROBE_TIMEOUT_SECONDS, max(1, int(remaining))))
-            print("[bootstrap] Docker OK", flush=True)
-            return
-        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-            last_error = exc
-            if time.monotonic() >= deadline:
-                break
-            time.sleep(min(DOCKER_PROBE_DELAY_SECONDS, max(0, deadline - time.monotonic())))
-
-    if isinstance(last_error, subprocess.TimeoutExpired):
-        raise BootstrapError(
-            f"Docker did not respond after {DOCKER_READY_TIMEOUT_SECONDS} seconds. "
-            "Docker Desktop may be open before the engine is ready; wait for it to finish starting "
-            "or restart Docker Desktop and rerun bootstrap."
-        ) from last_error
-    raise BootstrapError(
-        "Docker is installed but the engine is not ready yet. "
-        "Wait for Docker Desktop to finish starting or restart it, then rerun bootstrap."
-    ) from last_error
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise BootstrapError("Docker is not running or not accessible. Start Docker Desktop first.") from exc
 
 
 def _install_requirements() -> None:
@@ -342,9 +260,8 @@ def _configure_local_opik(candidates: list[str], *, project_name: str) -> dict[s
     import opik
 
     last_error: Exception | None = None
-    for attempt, dashboard_url in enumerate(candidates, 1):
+    for dashboard_url in candidates:
         api_url = f"{dashboard_url.rstrip('/')}/api"
-        print(f"[bootstrap] Connecting to Opik at {api_url} (attempt {attempt}/{len(candidates)})...", flush=True)
         try:
             opik.configure(
                 use_local=True,
@@ -369,10 +286,8 @@ def _configure_local_opik(candidates: list[str], *, project_name: str) -> dict[s
             settings["api_url"] = api_url
             settings["project_name"] = project_name
             settings["project_url"] = project_url
-            print(f"[bootstrap] Opik connected: {project_url}", flush=True)
             return settings
         except Exception as exc:  # noqa: BLE001 - bootstrap should surface concrete failure after retries.
-            print(f"[bootstrap] Warning: could not connect to {api_url}: {exc}", flush=True)
             last_error = exc
             time.sleep(1)
     raise BootstrapError(f"Unable to configure the local Opik instance. Last error: {last_error}") from last_error
@@ -502,17 +417,7 @@ def _save_opik_config(opik_settings: dict[str, str]) -> dict:
 
 def _server_env(opik_settings: dict[str, str] | None) -> dict[str, str]:
     env = os.environ.copy()
-    opik_keys = (
-        "OPIK_BASE_URL",
-        "OPIK_DASHBOARD_URL",
-        "OPIK_PROJECT_ID",
-        "OPIK_PROJECT_NAME",
-        "OPIK_URL_OVERRIDE",
-        "OPIK_WORKSPACE",
-    )
     if opik_settings is None:
-        for key in opik_keys:
-            env.pop(key, None)
         return env
     env.update(
         {
@@ -525,43 +430,6 @@ def _server_env(opik_settings: dict[str, str] | None) -> dict[str, str]:
         }
     )
     return env
-
-
-def _wait_for_server(url: str, *, timeout_seconds: float = SERVER_READY_TIMEOUT_SECONDS) -> bool:
-    parsed = urlparse(url)
-    host = parsed.hostname
-    if not host:
-        return False
-    port = parsed.port
-    if port is None:
-        port = 443 if parsed.scheme == "https" else 80
-
-    deadline = time.monotonic() + timeout_seconds
-    while time.monotonic() < deadline:
-        try:
-            with socket.create_connection((host, port), timeout=1):
-                return True
-        except OSError:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            time.sleep(min(SERVER_READY_POLL_INTERVAL_SECONDS, remaining))
-    return False
-
-
-def _open_browser_when_server_ready(url: str) -> None:
-    if not _is_windows():
-        return
-
-    def _worker() -> None:
-        if _wait_for_server(url):
-            try:
-                webbrowser.open(url)
-            except Exception as exc:  # noqa: BLE001 - browser launch should not break bootstrap.
-                print(f"[bootstrap] Warning: could not open browser for {url}: {exc}", flush=True)
-
-    thread = threading.Thread(target=_worker, name="bootstrap-open-browser", daemon=True)
-    thread.start()
 
 
 def _prompt_for_opik() -> bool:
@@ -593,14 +461,12 @@ def _start_local_opik(opik_dir: Path) -> dict[str, str]:
 
 def _start_server(*, host: str, port: int, reload: bool, opik_settings: dict[str, str] | None) -> None:
     _echo_step("Starting agent-runner server")
-    server_url = f"http://{host}:{port}"
-    print(f"[bootstrap] agent-runner UI: {server_url}", flush=True)
+    print(f"[bootstrap] agent-runner UI: http://{host}:{port}", flush=True)
     if opik_settings is not None:
         print(f"[bootstrap] local Opik UI: {opik_settings['dashboard_url']}", flush=True)
-    _open_browser_when_server_ready(server_url)
     cmd: list[object] = [
         sys.executable,
-        str(RUNNER_ROOT / "server_main.py"),
+        str(RUNNER_ROOT / "server" / "main.py"),
         "--host",
         host,
         "--port",
@@ -635,9 +501,6 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     try:
-        _echo_step("agent-runner bootstrap")
-        print(f"[bootstrap] Python: {sys.executable}", flush=True)
-        print(f"[bootstrap] Root:   {RUNNER_ROOT}", flush=True)
         _ensure_virtualenv()
         _warn_if_no_ai_backend()
         _check_ztk()
@@ -661,7 +524,6 @@ def main() -> int:
         else:
             opik_settings = None
             print("[bootstrap] Opik disabled. Re-run with --with-opik to enable later.", flush=True)
-
 
         _start_server(host=args.host, port=args.port, reload=args.reload, opik_settings=opik_settings)
         return 0
