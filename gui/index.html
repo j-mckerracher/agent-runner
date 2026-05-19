@@ -726,14 +726,15 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
   gap:8px;
   max-width:100%;
 }
-.view[data-view="settings"] .set-help-trigger{
+/* Global help trigger + tooltip (works in all views) */
+.set-help-trigger{
   width:18px;
   height:18px;
-  border:1px solid var(--set-border);
+  border:1px solid rgba(255,255,255,.12);
   border-radius:999px;
   background:rgba(255,255,255,.02);
-  color:var(--set-text-secondary);
-  font-family:var(--set-mono);
+  color:var(--t2,#8a8580);
+  font-family:var(--mono);
   font-size:10px;
   font-weight:700;
   line-height:1;
@@ -744,38 +745,53 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
   flex:0 0 auto;
   transition:border-color .15s,color .15s,background .15s,transform .12s;
 }
-.view[data-view="settings"] .set-help-trigger:hover,
-.view[data-view="settings"] .set-help-trigger:focus-visible{
-  border-color:rgba(232,160,48,.5);
-  color:var(--set-amber);
-  background:rgba(232,160,48,.08);
+.set-help-trigger:hover,
+.set-help-trigger:focus-visible{
+  border-color:rgba(196,135,58,.5);
+  color:var(--acc);
+  background:rgba(196,135,58,.08);
   outline:none;
   transform:translateY(-1px);
 }
-.view[data-view="settings"] .set-help-tooltip{
+.set-help-tooltip{
   position:fixed;
   z-index:1200;
   max-width:300px;
   padding:10px 12px;
-  border:1px solid rgba(232,160,48,.22);
+  border:1px solid rgba(196,135,58,.22);
   border-radius:8px;
   background:rgba(10,12,17,.98);
   box-shadow:0 18px 40px rgba(0,0,0,.38);
-  color:var(--set-text-primary);
+  color:var(--t1,#e2ddd5);
   font-size:12px;
   line-height:1.5;
   pointer-events:none;
   backdrop-filter:blur(12px);
   -webkit-backdrop-filter:blur(12px);
 }
-.view[data-view="settings"] .set-help-tooltip::before{
+.set-help-tooltip::before{
   content:"";
   position:absolute;
   inset:0;
   border-radius:inherit;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
 }
-.view[data-view="settings"] .set-help-tooltip[hidden]{display:none}
+.set-help-tooltip[hidden]{display:none}
+/* Settings-specific overrides (use settings design tokens when inside that view) */
+.view[data-view="settings"] .set-help-trigger{
+  border-color:var(--set-border);
+  color:var(--set-text-secondary);
+  font-family:var(--set-mono);
+}
+.view[data-view="settings"] .set-help-trigger:hover,
+.view[data-view="settings"] .set-help-trigger:focus-visible{
+  border-color:rgba(232,160,48,.5);
+  color:var(--set-amber);
+  background:rgba(232,160,48,.08);
+}
+/* Inline help wrappers for non-settings views */
+.field .set-help-inline{display:inline-flex;align-items:center;gap:6px}
+.field .set-help-trigger{margin-left:2px;vertical-align:middle}
 
 .view[data-view="settings"] .set-btn-connect{
   background:transparent;
@@ -1286,37 +1302,37 @@ const ACTIVE_JOB_BY_SURFACE = {runs:null, evaluate:null};
 const TRACE_EVENTS = {runs:[], evaluate:[]};
 const STREAM_EVENT_TYPES = ["job.start","stage.start","stage.end","cli.invoke","cli.exit","log","metrics","opik.start","opik.end","job.end","stream.end","user.prompt","user.response","user.prompt.timeout","user.escalation.resolved"];
 const SETTINGS_HELP_COPY = {
-  "s-host":"Host interface for the local API server. Use 127.0.0.1 for local-only access, or 0.0.0.0 only if you intentionally want other devices on your network to connect.",
-  "s-port":"Network port used by the local API server and GUI requests. Changing it updates saved config, but the running server keeps its current port until restart.",
-  "s-runner":"Default runner preselected for new workflow runs. This controls which backend family is used unless you choose another runner per run.",
-  "s-model":"Default model paired with the selected default runner. Available options change when the runner changes.",
-  "s-mode":"Default execution mode for new runs. Live uses real backend calls; hermetic is for recorded/replay-style workflows.",
-  "s-conc":"Maximum number of workflow jobs the local server may execute at the same time. Increase carefully if your machine and backend quotas can handle it.",
-  "s-data":"Base data directory for local runner state such as jobs, caches, cassettes, and other persisted server artifacts.",
-  "s-server-restart-note":"Host and port are read at server startup. Saving new values updates the config file, but you must restart the server before the new bind address takes effect.",
-  "settings-save":"Write all current Settings tab values to the config file used by the local server and GUI.",
-  "s-alias-add-btn":"Open the form for defining a custom runner alias. Aliases appear alongside built-in runners in runner selectors.",
-  "s-alias-name":"Unique config key for this alias. Use a descriptive stable name, because it becomes the runner value shown in the UI and stored in run records.",
-  "s-alias-provider":"Provider prefix used to qualify the model for this alias, such as openai-compat or another LiteLLM-compatible provider string.",
-  "s-alias-model-name":"Base model name for the alias. The runner resolves this together with the provider when building the final model string.",
-  "s-alias-api-key-env":"Optional environment variable name containing the API key used by this alias. Leave blank if the backend does not need one or is authenticated another way.",
-  "s-alias-base-url":"Optional custom API base URL for this alias, such as an Azure OpenAI endpoint or self-hosted LiteLLM gateway.",
-  "s-alias-api-version":"Optional API version string forwarded to the alias transport when the target backend requires one.",
-  "s-alias-num-retries":"Optional retry count for alias requests. Use this when the backend is bursty or occasionally rate-limited.",
-  "s-alias-timeout":"Optional request timeout in seconds for alias calls. Increase it for slower providers or long-context workloads.",
-  "s-alias-cancel-btn":"Close the alias editor without persisting changes from the current draft form.",
-  "s-alias-save-btn":"Save the alias into config so it becomes available in runner dropdowns and agent model overrides.",
-  "s-repo-base-dir":"Directory scanned for repo suggestions in the Run and Evaluate tabs. Immediate non-hidden child directories are offered as quick repo choices.",
-  "repo-custom-value":({value})=>`Remembered custom repo path: ${value}. It stays available in repo pickers even if it is outside the configured base directory.`,
-  "runner-alias-row":({name, providerModel})=>`Saved runner alias ${name} → ${providerModel}. This alias appears in runner selectors and resolves to the configured backend/model combination.`,
-  "s-opik-url":"Base dashboard URL for the Opik workspace used by workflow tracing and evaluation drill-down links.",
-  "s-opik-connect":"Try to resolve the workspace and project identifiers from the dashboard URL and project name, then fill those fields automatically.",
-  "s-opik-workspace":"Workspace slug used when building Opik dashboard links and API requests for this project.",
-  "s-opik-project-id":"Stable Opik project identifier used for deep links into the correct traced project.",
-  "s-opik-project-name":"Human-readable Opik project name. Bootstrap and connect flows use this when creating or finding the project.",
-  "s-opik-status":"Status summary for the current Opik configuration. If required fields are missing, workflow runs that depend on tracing will fail fast.",
-  "agent-default-row":({agentName})=>`Per-agent model overrides for ${agentName}. Use these when one agent should consistently use a different model than the runner default.`,
-  "agent-default-cell":({agentName, runner})=>`Model override for ${agentName} when the runner is ${runner}. Leave it on (default) to inherit the runner's default model.`,
+  "s-host":"The network interface the API server binds to. Use 127.0.0.1 (default) to keep it local-only. Set to 0.0.0.0 if you need to access the GUI from another machine on your network.",
+  "s-port":"TCP port for the API server and GUI. Default is 8742. If another service uses this port, change it here — but you must restart the server for the new port to take effect.",
+  "s-runner":"Which AI backend to use by default when submitting new runs. Claude, Copilot, and Gemini are built-in; any configured aliases also appear here.",
+  "s-model":"The specific model variant for the selected runner. For example: claude-sonnet-4-20250514 for Claude, or gpt-4o for a Copilot alias. Options update when you change the runner.",
+  "s-mode":"Live mode makes real LLM calls and costs real tokens. Hermetic mode records or replays cassette files for deterministic testing without API costs.",
+  "s-conc":"How many workflow runs can execute simultaneously. Each run spawns a subprocess, so set this based on your machine's resources and API rate limits. Default is 2.",
+  "s-data":"Where the server stores jobs.db, cassettes, and memory files. Defaults to ~/.agent-runner/. Change this if you want project-specific isolation or a different disk location.",
+  "s-server-restart-note":"Changing Host or Port updates the saved config file immediately, but the running server process continues listening on the old address. Restart the server to apply.",
+  "settings-save":"Writes all values on this page to ~/.agent-runner/config.json. The server picks up most changes immediately; host/port require a restart.",
+  "s-alias-add-btn":"Create a custom runner alias that wraps any LiteLLM-compatible provider. Aliases appear in all runner dropdowns alongside built-in options.",
+  "s-alias-name":"A stable short name for this alias (e.g. 'azure-gpt4o'). This becomes the value stored in run records and shown in the UI, so keep it descriptive and don't change it later.",
+  "s-alias-provider":"The LiteLLM provider prefix (e.g. 'openai-compat', 'azure', 'anthropic'). This determines how the model string and auth are constructed when calling the backend.",
+  "s-alias-model-name":"The model identifier passed to the provider (e.g. 'gpt-4o', 'claude-sonnet-4-20250514'). Combined with the provider to form the full model string.",
+  "s-alias-api-key-env":"Name of an environment variable holding the API key (e.g. 'AZURE_OPENAI_API_KEY'). The server reads this var at runtime. Leave blank if auth is handled another way.",
+  "s-alias-base-url":"Custom endpoint URL for this alias (e.g. 'https://my-org.openai.azure.com'). Required for Azure deployments or self-hosted gateways. Omit for standard provider endpoints.",
+  "s-alias-api-version":"API version string required by some providers (e.g. '2024-02-01' for Azure OpenAI). Leave blank if the provider doesn't require a version parameter.",
+  "s-alias-num-retries":"Number of automatic retries on transient failures (rate limits, timeouts). Higher values help with bursty providers but increase wait time on hard failures. Default: provider's built-in retry.",
+  "s-alias-timeout":"Maximum seconds to wait for a single LLM response. Increase for slow providers or large-context requests (e.g. 600 for long code generation). Default: provider's built-in timeout.",
+  "s-alias-cancel-btn":"Discard the current alias form without saving. No changes are persisted.",
+  "s-alias-save-btn":"Save this alias to config. It immediately becomes available in all runner dropdowns across Runs, Evaluate, and Agent Model Defaults.",
+  "s-repo-base-dir":"Root directory scanned for repo path suggestions. Immediate child folders (excluding hidden ones like .git) appear in the repo picker dropdown on Runs and Evaluate tabs.",
+  "repo-custom-value":({value})=>`Remembered custom repo path: ${value}. This path stays in the repo picker dropdown even if it's not under the configured base directory. Click Remove to forget it.`,
+  "runner-alias-row":({name, providerModel})=>`Runner alias "${name}" resolves to ${providerModel}. It appears in runner selectors alongside built-in runners, and can have per-agent model overrides below.`,
+  "s-opik-url":"The base URL for your Opik dashboard (e.g. 'https://www.comet.com/opik' or your self-hosted instance). Used for building trace links and API calls.",
+  "s-opik-connect":"Auto-detect workspace and project ID from the dashboard URL and project name. Fills in the fields below so you don't have to find the IDs manually.",
+  "s-opik-workspace":"Your Opik workspace slug (visible in the dashboard URL after /workspaceGuard/). Required for building correct trace and evaluation deep links.",
+  "s-opik-project-id":"The UUID of your Opik project. Found in the project settings or URL. Needed for API calls and deep links to the correct project.",
+  "s-opik-project-name":"Human-readable project name in Opik (e.g. 'agent-runner'). Used by bootstrap and connect to find or create the project. Must match what's configured in Opik.",
+  "s-opik-status":"Shows whether Opik is fully configured. All four fields (URL, workspace, project ID, project name) are required — workflow runs will fail fast if any are missing.",
+  "agent-default-row":({agentName})=>`Per-agent model overrides for "${agentName}". When set, this agent always uses the specified model instead of the runner's default. Useful for giving complex agents a more capable model.`,
+  "agent-default-cell":({agentName, runner})=>`Model override for "${agentName}" when using ${runner}. Select a specific model, or leave on (default) to inherit whatever model the runner is configured with.`,
 };
 let activeSettingsHelpTrigger = null;
 
@@ -1337,6 +1353,9 @@ function createSettingsHelpTrigger(helpKey, context={}, ariaLabel="More info"){
   btn.dataset.helpContext = JSON.stringify(context || {});
   btn.setAttribute("aria-label", ariaLabel);
   btn.textContent = "i";
+  // Set native title as fallback so browsers always show help on hover
+  const nativeText = resolveSettingsHelpText(helpKey, context);
+  if(nativeText) btn.title = nativeText;
   return btn;
 }
 function parseSettingsHelpContext(trigger){
@@ -1348,8 +1367,9 @@ function positionSettingsHelpTooltip(trigger){
   if(!tooltip || tooltip.hidden) return;
   const rect = trigger.getBoundingClientRect();
   const pad = 12;
-  const width = tooltip.offsetWidth;
-  const height = tooltip.offsetHeight;
+  // Force layout so offsetWidth/offsetHeight are available
+  const width = tooltip.offsetWidth || 200;
+  const height = tooltip.offsetHeight || 40;
   let left = rect.left + (rect.width / 2) - (width / 2);
   left = Math.max(pad, Math.min(left, window.innerWidth - width - pad));
   let top = rect.bottom + 10;
@@ -1366,20 +1386,29 @@ function showSettingsHelpTooltip(trigger){
   if(!text) return;
   if(activeSettingsHelpTrigger && activeSettingsHelpTrigger !== trigger){
     activeSettingsHelpTrigger.removeAttribute("aria-describedby");
+    // Restore native title on previous trigger
+    const prevText = resolveSettingsHelpText(activeSettingsHelpTrigger.dataset.helpKey, parseSettingsHelpContext(activeSettingsHelpTrigger));
+    if(prevText) activeSettingsHelpTrigger.title = prevText;
   }
   activeSettingsHelpTrigger = trigger;
+  // Suppress native title while custom tooltip is active (avoids double tooltip)
+  trigger.title = "";
   trigger.setAttribute("aria-describedby", "settings-help-tooltip");
   tooltip.textContent = text;
   tooltip.hidden = false;
+  tooltip.style.display = "block";
   positionSettingsHelpTooltip(trigger);
 }
 function hideSettingsHelpTooltip(){
   const tooltip = $("#settings-help-tooltip");
   if(activeSettingsHelpTrigger){
     activeSettingsHelpTrigger.removeAttribute("aria-describedby");
+    // Restore native title
+    const text = resolveSettingsHelpText(activeSettingsHelpTrigger.dataset.helpKey, parseSettingsHelpContext(activeSettingsHelpTrigger));
+    if(text) activeSettingsHelpTrigger.title = text;
   }
   activeSettingsHelpTrigger = null;
-  if(tooltip) tooltip.hidden = true;
+  if(tooltip){ tooltip.hidden = true; tooltip.style.display = "none"; }
 }
 function ensureSettingsFieldHead(labelEl){
   if(labelEl.parentElement?.classList.contains("set-field-head")) return labelEl.parentElement;

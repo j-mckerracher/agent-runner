@@ -1,5 +1,6 @@
 ### Local/generated artifacts
 .DS_Store
+.materialization.json
 __pycache__/
 *.py[cod]
 .pytest_cache/

@@ -5,7 +5,7 @@ description: Manage Azure DevOps resources via CLI including projects, repos, pi
 
 # Azure DevOps CLI
 
-This Skill helps manage Azure DevOps resources using the Azure CLI with Azure DevOps extension.
+This Skill helps manage Azure DevOps resources using the Azure CLI with Azure DevOps extension. ALWAYS ATTEMPT TO LOGIN FIRST WITH `az login` or `az devops login`
 
 **CLI Version:** 2.81.0 (current as of 2025)
 
@@ -82,6 +82,9 @@ az artifacts       # Azure Artifacts
 ### Login to Azure DevOps
 
 ```bash
+# Login to Azure CLI (opens browser)
+az login
+
 # Interactive login (prompts for PAT)
 az devops login --organization https://dev.azure.com/{org}
 
