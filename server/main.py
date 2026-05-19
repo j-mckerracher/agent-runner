@@ -5,6 +5,9 @@ import argparse
 from copy import deepcopy
 import logging
 import logging.config
+import threading
+import time
+import webbrowser
 from typing import Any, cast
 
 import uvicorn
@@ -87,6 +90,15 @@ def main(argv: list[str] | None = None) -> None:
     logger.debug("Loaded config: api=%s, concurrency=%s", api_cfg, cfg.get("concurrency"))
 
     logger.info("Starting uvicorn on %s:%s (reload=%s)", args.host, args.port, args.reload)
+    url = f"http://{args.host}:{args.port}"
+
+    def _open_browser() -> None:
+        time.sleep(1.5)
+        webbrowser.open(url)
+        logger.info("Opened browser at %s", url)
+
+    threading.Thread(target=_open_browser, daemon=True).start()
+
     uvicorn.run(
         "server.app:app",
         host=args.host,
