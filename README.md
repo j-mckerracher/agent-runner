@@ -1,6 +1,6 @@
 # agent-workbench
 
-**Agent Workbench is a local mission-control UI for AI-assisted software delivery.** It turns a synthetic story or Azure DevOps work item into a traceable multi-agent workflow you can launch, monitor, inspect, and evaluate locally.
+**Agent Workbench is a local UI for AI-assisted software delivery.** It turns a synthetic story or Azure DevOps work item into a traceable multi-agent workflow you can launch, monitor, inspect, and evaluate locally.
 
 The current runner executes a six-stage workflow:
 
