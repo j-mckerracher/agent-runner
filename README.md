@@ -58,12 +58,12 @@ The current platform is intentionally local-first and workflow-centric. The next
 ### Prerequisites
 
 | Dependency | Required | Required for | Notes |
-|---|---|---|---|
-| Python 3.9+ | Yes | `run.py`, `server_main.py`, bootstrap, eval tools | Bootstrap creates `.venv/`, but does not install Python. |
-| `git` | Yes | bootstrap and normal repo workflows | Used for the repo itself and for syncing the local Opik checkout. |
-| Docker Desktop | No | bundled local Opik stack | Required only if you opt in to the bundled local Opik stack at bootstrap time (the bootstrap script will prompt you). Skip-able by default or via `--no-opik`. |
-| One AI backend CLI | Yes | actual workflow execution | Install and authenticate at least one of `claude`, `copilot`, or `gemini`. |
-| Azure CLI + `azure-devops` extension | No | live ADO intake mode | Not required for local synthetic stories. |
+|---|----------|---|---|
+| Python 3.9+ | Yes      | `run.py`, `server_main.py`, bootstrap, eval tools | Bootstrap creates `.venv/`, but does not install Python. |
+| `git` | Yes      | bootstrap and normal repo workflows | Used for the repo itself and for syncing the local Opik checkout. |
+| Docker Desktop | No       | bundled local Opik stack | Required only if you opt in to the bundled local Opik stack at bootstrap time (the bootstrap script will prompt you). Skip-able by default or via `--no-opik`. |
+| One AI backend CLI | Yes      | actual workflow execution | Install and authenticate at least one of `claude`, `copilot`, or `gemini`. |
+| Azure CLI + `azure-devops` extension | Yes      | live ADO intake mode | Not required for local synthetic stories. |
 
 ### Optional tooling
 
