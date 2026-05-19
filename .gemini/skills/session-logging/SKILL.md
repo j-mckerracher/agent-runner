@@ -1,7 +1,7 @@
 ---
 name: session-logging
 description: |
-  Agent session logging protocol for multi-agent workflows. Use this skill whenever an agent is spawned and needs to produce a structured log entry. Provides: (1) Standard log file naming convention — logs/{CHANGE-ID}/{agent_name}/{YYYYMMDD_HHMMSS}_session.json, (2) Required log fields — log_type, timestamp, change_id, iteration, session_summary, decisions_made, issues_encountered, notes, (3) Log content requirements — input/output artifacts, librarian queries, key decisions with rationale. Keywords: session log, log entry, agent logging, spawned, log file naming, timestamp, YYYYMMDD, session summary, decisions made, issues encountered, workflow logging.
+  Agent session logging protocol for multi-agent workflows. Use this skill whenever an agent is spawned and needs to produce a structured log entry. Provides: (1) Standard log file naming convention — logs/{agent_name}/{YYYYMMDD_HHMMSS}_session.json, (2) Required log fields — log_type, timestamp, change_id, iteration, session_summary, decisions_made, issues_encountered, notes, (3) Log content requirements — input/output artifacts, librarian queries, key decisions with rationale. Keywords: session log, log entry, agent logging, spawned, log file naming, timestamp, YYYYMMDD, session summary, decisions made, issues encountered, workflow logging.
 ---
 
 # Agent Session Logging Protocol
@@ -24,27 +24,27 @@ Activate this skill when:
 ## Log Directory Structure
 
 ```
-logs/{CHANGE-ID}/{agent_name}/
+logs/{agent_name}/
 ```
 
-Each agent writes to its own subdirectory:
+Each agent writes to its own subdirectory directly under `logs/`. There is no change-id level — the change_id is recorded inside the JSON log file.
 
 | Agent                | Log Directory                |
 | -------------------- | ---------------------------- |
-| Orchestrator         | `logs/{CHANGE-ID}/orchestrator/`         |
-| Intake               | `logs/{CHANGE-ID}/intake/`               |
-| Reference Librarian  | `logs/{CHANGE-ID}/reference_librarian/`  |
-| Task Generator       | `logs/{CHANGE-ID}/task_generator/`       |
-| Task Assigner        | `logs/{CHANGE-ID}/assignment/`           |
-| Software Engineer    | `logs/{CHANGE-ID}/software_engineer/`    |
-| QA Engineer          | `logs/{CHANGE-ID}/qa/`                   |
-| Information Explorer | `logs/{CHANGE-ID}/information_explorer/` |
-| Lessons Optimizer    | `logs/{CHANGE-ID}/lessons_optimizer/`    |
+| Orchestrator         | `logs/orchestrator/`         |
+| Intake               | `logs/intake/`               |
+| Reference Librarian  | `logs/reference_librarian/`  |
+| Task Generator       | `logs/task_generator/`       |
+| Task Assigner        | `logs/assignment/`           |
+| Software Engineer    | `logs/software_engineer/`    |
+| QA Engineer          | `logs/qa/`                   |
+| Information Explorer | `logs/information_explorer/` |
+| Lessons Optimizer    | `logs/lessons_optimizer/`    |
 
 ## Log File Naming Convention
 
 ```
-logs/{CHANGE-ID}/{agent_name}/{YYYYMMDD_HHMMSS}_{identifier}.json
+logs/{agent_name}/{YYYYMMDD_HHMMSS}_{identifier}.json
 ```
 
 - **Date format**: `YYYYMMDD` (e.g., `20260127`)
@@ -70,7 +70,7 @@ Every log entry MUST include these fields:
 ```yaml
 log_type: '<agent_type>'
 timestamp: '<ISO 8601 timestamp>'
-change_id: '<CHANGE-ID>'
+change_id: '<the actual change id for this run>'
 iteration: <attempt number>
 session_summary:
   input_artifacts_read: ['<list of input files>']
@@ -118,7 +118,7 @@ Logs enable workflow debugging:
 
 ## Automated Log Initialization Script
 
-Use `~/.github/scripts/init-session-log.py` to create properly named and structured log files under `logs/{CHANGE-ID}/...`:
+Use `~/.github/scripts/init-session-log.py` to create properly named and structured log files under `logs/{agent_name}/...`:
 
 ```bash
 ~/.github/scripts/init-session-log.py <artifact_root> <change_id> <agent_name> <identifier> [iteration]
@@ -135,3 +135,4 @@ Use `~/.github/scripts/init-session-log.py` to create properly named and structu
 **Output**: The created file path to stdout.
 
 **Exit codes**: 0 = success, 1 = failure, 2 = usage error.
+

@@ -32,7 +32,8 @@ def main() -> int:
         logs_root = artifact_root_path.parent / "logs"
     else:
         logs_root = artifact_root_path / "logs"
-    logs_base = logs_root / change_id
+    # Log dirs are logs/{agent_name}/ — no change_id subdirectory.
+    # The change_id is recorded inside each JSON log file.
 
     artifact_dirs = [
         os.path.join(base, "intake"),
@@ -45,19 +46,19 @@ def main() -> int:
     ]
 
     log_dirs = [
-        logs_base / "orchestrator",
-        logs_base / "intake",
-        logs_base / "reference_librarian",
-        logs_base / "task_generator",
-        logs_base / "assignment",
-        logs_base / "task_plan_evaluator",
-        logs_base / "assignment_evaluator",
-        logs_base / "software_engineer",
-        logs_base / "implementation_evaluator",
-        logs_base / "qa",
-        logs_base / "qa_evaluator",
-        logs_base / "information_explorer",
-        logs_base / "lessons_optimizer",
+        logs_root / "orchestrator",
+        logs_root / "intake",
+        logs_root / "reference_librarian",
+        logs_root / "task_generator",
+        logs_root / "assignment",
+        logs_root / "task_plan_evaluator",
+        logs_root / "assignment_evaluator",
+        logs_root / "software_engineer",
+        logs_root / "implementation_evaluator",
+        logs_root / "qa",
+        logs_root / "qa_evaluator",
+        logs_root / "information_explorer",
+        logs_root / "lessons_optimizer",
     ]
 
     for d in artifact_dirs:

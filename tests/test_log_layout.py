@@ -73,7 +73,8 @@ class LogLayoutTests(unittest.TestCase):
                 rc = module.main()
 
             self.assertEqual(rc, 0)
-            log_dir = tmp_root / "logs" / "TEST-LOG-004" / "qa"
+            # Logs go to logs/{agent_name}/ — no change_id subdirectory
+            log_dir = tmp_root / "logs" / "qa"
             log_files = list(log_dir.glob("*_session.json"))
             self.assertEqual(len(log_files), 1)
             payload = json.loads(log_files[0].read_text(encoding="utf-8"))
@@ -95,8 +96,9 @@ class LogLayoutTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertTrue((artifact_root / "TEST-LOG-005" / "intake").is_dir())
             self.assertTrue((artifact_root / "TEST-LOG-005" / "qa" / "evidence" / "logs").is_dir())
-            self.assertTrue((tmp_root / "logs" / "TEST-LOG-005" / "software_engineer").is_dir())
-            self.assertTrue((tmp_root / "logs" / "TEST-LOG-005" / "qa_evaluator").is_dir())
+            # Logs go to logs/{agent_name}/ — no change_id subdirectory
+            self.assertTrue((tmp_root / "logs" / "software_engineer").is_dir())
+            self.assertTrue((tmp_root / "logs" / "qa_evaluator").is_dir())
             self.assertFalse((artifact_root / "TEST-LOG-005" / "logs").exists())
 
     def test_medium__generate_obsidian_archive_discovers_top_level_logs_with_legacy_fallback(self):

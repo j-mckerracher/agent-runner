@@ -172,6 +172,8 @@ Current built-in default models are:
 - `copilot` → `gpt-5-mini`
 - `gemini` → `gemini-2.5-flash`
 
+Want to create a custom alias for a local or third-party LLM endpoint (for example, LM Studio, OpenRouter, or a LiteLLM proxy)? See [`docs/openai-compat-setup.md`](docs/openai-compat-setup.md).
+
 Pass extra context into intake:
 
 ```bash

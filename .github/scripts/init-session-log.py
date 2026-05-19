@@ -91,7 +91,9 @@ def main() -> int:
         logs_root = root_path.parent / "logs"
     else:
         logs_root = root_path / "logs"
-    log_dir = str(logs_root / change_id / agent_name)
+    # Log path is logs/{agent_name}/ — change_id is stored inside the JSON payload,
+    # not encoded in the directory structure, so multiple runs share the same dir tree.
+    log_dir = str(logs_root / agent_name)
     log_file = os.path.join(log_dir, f"{ts_file}_{identifier}.json")
 
     # --- create directory ---
