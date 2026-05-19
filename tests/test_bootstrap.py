@@ -205,6 +205,55 @@ class BootstrapConfigPersistenceTests(unittest.TestCase):
                 self.assertEqual(saved["opik"]["project_name"], "agent-runner")
 
 
+class BootstrapServerStartupTests(unittest.TestCase):
+    def test_medium__start_server_invokes_repo_server_main_entrypoint(self):
+        with (
+            patch.object(bootstrap, "_echo_step"),
+            patch.object(bootstrap, "_server_env", return_value={"EXAMPLE": "1"}),
+            patch.object(bootstrap, "_open_browser_when_server_ready") as open_browser_mock,
+            patch.object(bootstrap, "_run") as run_mock,
+        ):
+            bootstrap._start_server(host="127.0.0.1", port=8742, reload=False, opik_settings=None)
+
+        open_browser_mock.assert_called_once_with("http://127.0.0.1:8742")
+        run_mock.assert_called_once_with(
+            [
+                bootstrap.sys.executable,
+                str(RUNNER_ROOT / "server_main.py"),
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8742",
+            ],
+            cwd=RUNNER_ROOT,
+            env={"EXAMPLE": "1"},
+            echo=True,
+        )
+
+    def test_medium__open_browser_when_server_ready_starts_waiter_thread_on_windows(self):
+        started = []
+
+        class FakeThread:
+            def __init__(self, *, target, name, daemon):
+                self.target = target
+                self.name = name
+                self.daemon = daemon
+
+            def start(self):
+                started.append((self.name, self.daemon, self.target))
+
+        with (
+            patch.object(bootstrap, "_is_windows", return_value=True),
+            patch.object(bootstrap.threading, "Thread", side_effect=FakeThread) as thread_ctor,
+        ):
+            bootstrap._open_browser_when_server_ready("http://127.0.0.1:8742")
+
+        thread_ctor.assert_called_once()
+        self.assertEqual(len(started), 1)
+        self.assertEqual(started[0][0], "bootstrap-open-browser")
+        self.assertTrue(started[0][1])
+
+
 class BootstrapMainFlowTests(unittest.TestCase):
     def test_medium__main_continues_when_docker_is_unavailable(self):
         args = SimpleNamespace(host="127.0.0.1", port=8742, reload=False)

@@ -6,9 +6,12 @@ import os
 import re
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
+import threading
 import time
+import webbrowser
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import unquote, urlparse
@@ -25,6 +28,8 @@ BOOTSTRAP_REEXEC_ENV = "AGENT_RUNNER_BOOTSTRAP_REEXEC"
 DOCKER_READY_TIMEOUT_SECONDS = 90
 DOCKER_PROBE_TIMEOUT_SECONDS = 15
 DOCKER_PROBE_DELAY_SECONDS = 3
+SERVER_READY_TIMEOUT_SECONDS = 30
+SERVER_READY_POLL_INTERVAL_SECONDS = 0.5
 
 
 class BootstrapError(RuntimeError):
@@ -522,6 +527,43 @@ def _server_env(opik_settings: dict[str, str] | None) -> dict[str, str]:
     return env
 
 
+def _wait_for_server(url: str, *, timeout_seconds: float = SERVER_READY_TIMEOUT_SECONDS) -> bool:
+    parsed = urlparse(url)
+    host = parsed.hostname
+    if not host:
+        return False
+    port = parsed.port
+    if port is None:
+        port = 443 if parsed.scheme == "https" else 80
+
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=1):
+                return True
+        except OSError:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(SERVER_READY_POLL_INTERVAL_SECONDS, remaining))
+    return False
+
+
+def _open_browser_when_server_ready(url: str) -> None:
+    if not _is_windows():
+        return
+
+    def _worker() -> None:
+        if _wait_for_server(url):
+            try:
+                webbrowser.open(url)
+            except Exception as exc:  # noqa: BLE001 - browser launch should not break bootstrap.
+                print(f"[bootstrap] Warning: could not open browser for {url}: {exc}", flush=True)
+
+    thread = threading.Thread(target=_worker, name="bootstrap-open-browser", daemon=True)
+    thread.start()
+
+
 def _prompt_for_opik() -> bool:
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return False
@@ -551,12 +593,14 @@ def _start_local_opik(opik_dir: Path) -> dict[str, str]:
 
 def _start_server(*, host: str, port: int, reload: bool, opik_settings: dict[str, str] | None) -> None:
     _echo_step("Starting agent-runner server")
-    print(f"[bootstrap] agent-runner UI: http://{host}:{port}", flush=True)
+    server_url = f"http://{host}:{port}"
+    print(f"[bootstrap] agent-runner UI: {server_url}", flush=True)
     if opik_settings is not None:
         print(f"[bootstrap] local Opik UI: {opik_settings['dashboard_url']}", flush=True)
+    _open_browser_when_server_ready(server_url)
     cmd: list[object] = [
         sys.executable,
-        str(RUNNER_ROOT / "server" / "main.py"),
+        str(RUNNER_ROOT / "server_main.py"),
         "--host",
         host,
         "--port",
