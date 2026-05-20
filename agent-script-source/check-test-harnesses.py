@@ -40,6 +40,11 @@ def _is_component_ts(path: str) -> bool:
 
 
 def main() -> int:
+    # -- stack detection: skip gracefully if not an Angular repo ---------
+    if not os.path.isfile("angular.json"):
+        print(json.dumps({"status": "skipped", "reason": "angular.json not found at working directory — not an Angular repository"}))
+        return 0
+
     # -- collect paths from args or stdin --------------------------------
     paths: list[str] = []
 

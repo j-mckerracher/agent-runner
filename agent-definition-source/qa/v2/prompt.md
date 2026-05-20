@@ -92,10 +92,12 @@ Follow the **artifact-io** skill protocol. This agent's specific paths:
 
 Validation methods:
 
-- **Cypress component tests**: Run `nx component-test <project> --browser=chrome` for all projects containing modified components. Test results are primary evidence for AC validation.
+- **Automated tests**: Run the project's automated test suite appropriate to the stack (component tests, unit tests). Test results are primary evidence for AC validation.
 - **Manual verification**: Step through the functionality in the running app.
 - **Log analysis**: Check for errors/warnings.
 - **Visual inspection**: Screenshots for UI changes.
+
+> **Stack-specific gates** — Apply only if `nx.json` AND `angular.json` exist at the root of the repository you are working in. If the stack is not detected, use the appropriate test runner for the detected stack and skip the Nx/Cypress-specific commands below.
 
 ### Running Tests
 
@@ -112,7 +114,7 @@ nx build <project-name>
 
 Evidence requirements for each AC validation:
 
-- **Cypress test result**: Preferred evidence — reference the test file, test name, and pass/fail output.
+- **Test result**: Preferred evidence — reference the test file, test name, and pass/fail output.
 - Clear reference to evidence (test name, screenshot path, etc.).
 - Reproduction steps if manual.
 - Timestamp of validation.
@@ -122,9 +124,11 @@ Evidence requirements for each AC validation:
 
 Before accepting a QA pass, verify:
 
-- All modified Angular components have corresponding `.cy.ts` test files
-- Cypress component tests specifically exercise the AC behavior (not just that the component mounts)
-- If Cypress tests are absent for modified components, flag as a **critical issue** requiring remediation
+- All modified components have corresponding automated test files
+- Component tests specifically exercise the AC behavior (not just that the component mounts)
+- If component tests are absent for modified components, flag as a **critical issue** requiring remediation
+
+> **Stack-specific (Nx + Angular):** Look for `.cy.ts` files adjacent to every modified component and verify they exercise the AC behavior.
 
 ## Issue Classification & Failure Handling
 
