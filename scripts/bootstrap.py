@@ -244,6 +244,14 @@ def _check_rtk() -> None:
         print("[bootstrap] rtk init -g completed.", flush=True)
     except subprocess.CalledProcessError as exc:
         print(f"[bootstrap] Warning: rtk init -g failed: {exc.stderr or exc}. Hook may not be registered.", flush=True)
+    print("[bootstrap] Running rtk init -g --gemini to register global Gemini hook.", flush=True)
+    try:
+        subprocess.run(["rtk", "init", "-g", "--gemini"], check=True, capture_output=True, text=True)
+        subprocess.run(["rtk", "init", "-g", "--copilot"], check=True, capture_output=True, text=True)
+        subprocess.run(["rtk", "init", "-g", "--codex"], check=True, capture_output=True, text=True)
+        print("[bootstrap] rtk init -g --gemini completed.", flush=True)
+    except subprocess.CalledProcessError as exc:
+        print(f"[bootstrap] Warning: rtk init failed: {exc.stderr or exc}. The hook may not be registered.", flush=True)
     _register_rtk_global_permission()
 
 
