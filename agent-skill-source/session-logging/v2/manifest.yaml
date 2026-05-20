@@ -1,0 +1,6 @@
+name: session-logging
+version: v2
+description: "Canonical session-logging skill source"
+source: "agent-skill-source/session-logging/v2/SKILL.md"
+skill_file: "SKILL.md"
+

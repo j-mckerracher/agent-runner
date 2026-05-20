@@ -61,15 +61,12 @@ This agent requires the following skills to be loaded. These skills define manda
 2. **Delegate When Useful**
    - Use subagents for focused parallel analysis of provided artifacts (diff, report, spec) when it reduces evaluation time; do not delegate exploratory research or knowledge searches.
 3. **Run Programmatic Gates First (Hard Pass/Fail)**
-   - Nx build gate:
-     - If the scoped Nx project defines `targets.build` in its `project.json`, `nx build <project>` must exit 0.
-     - If the scoped Nx project does **not** define `targets.build`, record `nx_build_passed: null`, cite the missing `targets.build` evidence from `project.json`, and treat the direct build gate as **not applicable** instead of failing automatically.
-     - For non-buildable projects that still declare `component-test.options.devServerTarget`, run that supported build surface and record the result in the evaluation notes/gate details as the repo-backed build verification.
+   - Nx build: `nx build <project>` must exit 0.
    - Cypress component test gate: `nx component-test <project> --browser=chrome` must pass with no failures. If the UoW modifies Angular components but no Cypress tests were written, **FAIL** immediately with: "No Cypress component tests found for modified components. All modified Angular components require a corresponding `.cy.ts` test file."
    - Test harness gate: Every modified Angular component must have a corresponding `*.test-harness.ts` file. If absent, **FAIL** with: "Missing test harness for `<component>`. Test harnesses are required for all Angular components."
    - Schema validation: `impl_report.yaml` structure is valid YAML matching schema.
    - DoD coverage: `definition_of_done_status` shows all items `met: true`.
-   - If any applicable build/test gate fails, **FAIL** immediately; if all applicable gates pass, proceed to rubric evaluation.
+   - If build or tests fail, **FAIL** immediately; if all gates pass, proceed to rubric evaluation.
    - Record gate outcomes in `programmatic_gates`.
 
 #### Automated Programmatic Gates
@@ -89,7 +86,7 @@ Run these scripts as programmatic gates before rubric evaluation:
 {workflow_assets_root}/scripts/check-test-harnesses.py $modified_component_files
 ```
 
-If ANY applicable script exits non-zero, set `all_gates_passed: false` and include the script's JSON output in the gate failure details. When a gate is not applicable, record that explicitly with `null` in `programmatic_gates` plus a short note explaining why.
+If ANY script exits non-zero, set `all_gates_passed: false` and include the script's JSON output in the gate failure details.
 
 4. **Verify Definition of Done**
    - For each DoD item: check `impl_report.yaml` evidence, review the code diff, verify tests/other evidence, and mark met/not met with specific evidence.
@@ -164,10 +161,10 @@ Serialize the evaluation as JSON using the schema below and save it to `{CHANGE-
 
 ### programmatic_gates
 
-- `nx_build_passed` (boolean|null) — `null` only when the scoped project has no `targets.build`
-- `cypress_component_tests_passed` (boolean|null)
-- `cypress_tests_written` (boolean|null) — true if `.cy.ts` files exist for all modified components
-- `test_harnesses_present` (boolean|null) — true if `*.test-harness.ts` files exist for all modified components
+- `nx_build_passed` (boolean)
+- `cypress_component_tests_passed` (boolean)
+- `cypress_tests_written` (boolean) — true if `.cy.ts` files exist for all modified components
+- `test_harnesses_present` (boolean) — true if `*.test-harness.ts` files exist for all modified components
 - `schema_valid` (boolean)
 - `all_dod_items_met` (boolean)
 - `all_gates_passed` (boolean)
@@ -196,7 +193,7 @@ Each issue includes: `issue_id`, `severity` (`critical|high|medium|low`), `categ
 
 Follow the **session-logging** skill protocol. Agent-specific details:
 
-- **Log directory**: `logs/implementation_evaluator/`
+- **Log directory**: `logs/{CHANGE-ID}/implementation_evaluator/`
 - **Log identifier**: `evaluation` (e.g., `20260127_170000_evaluation.json`)
 - **Additional fields**: `uow_id`, `artifact_evaluated`, `attempt_number`, `overall_result`, `gates_passed`, `issues_count`, `execution_blockers` (array of objects with `blocker` and `resolution`), `context_confidence_score` (integer 1-10 indicating confidence in available context)
 
