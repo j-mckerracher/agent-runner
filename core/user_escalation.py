@@ -217,6 +217,14 @@ def _do_request(
     escalation_mode = os.environ.get("AGENT_RUNNER_USER_ESCALATION", "")
     event_log = os.environ.get("AGENT_RUNNER_EVENT_LOG", "")
 
+    if os.environ.get("AGENT_RUNNER_HEADLESS", "").strip().lower() in {"1", "true", "yes", "auto"} or escalation_mode == "auto":
+        return _auto_respond_headless(
+            change_id=change_id,
+            conversation_id=conversation_id,
+            escalation_id=escalation_id,
+            request_record=request_record,
+        )
+
     if escalation_mode == "gui" or event_log:
         # GUI mode — poll for response file.
         return _poll_for_response(
@@ -239,6 +247,59 @@ def _do_request(
             "User escalation required but no GUI/event log or TTY is available. "
             f"Title: {title}\nMessage: {message}"
         )
+
+
+def _headless_answer_for_question(question: dict, *, severity: str) -> str:
+    qid = str(question.get("id") or "").lower()
+    label = str(question.get("label") or "").lower()
+    text = f"{qid} {label}"
+    if severity == "approval" or "confirm" in text or "approve" in text or "yes/no" in text:
+        return "yes"
+    return (
+        "Headless mode: proceed using the safest repository-supported interpretation; "
+        "no additional user constraints are provided."
+    )
+
+
+def _auto_respond_headless(
+    *,
+    change_id: str,
+    conversation_id: str,
+    escalation_id: str,
+    request_record: dict,
+) -> dict:
+    """Write and return a deterministic synthetic response for non-interactive eval runs."""
+    questions = request_record.get("questions") or []
+    severity = str(request_record.get("severity") or "blocking")
+    responses = {
+        str(question.get("id") or f"q{idx + 1}"): _headless_answer_for_question(question, severity=severity)
+        for idx, question in enumerate(questions)
+        if isinstance(question, dict)
+    }
+    message = next(iter(responses.values()), "yes")
+    response = write_user_response(
+        change_id=change_id,
+        job_id=request_record.get("job_id", ""),
+        conversation_id=conversation_id,
+        escalation_id=escalation_id,
+        message=message,
+        responses=responses,
+    )
+    response["headless_auto_approved"] = True
+    response["source"] = "headless"
+    _emit_event(
+        "user.response",
+        change_id=change_id,
+        job_id=request_record.get("job_id", ""),
+        conversation_id=conversation_id,
+        escalation_id=escalation_id,
+        message=message,
+        responses=responses,
+        pending_count_after=response.get("pending_count_after", 0),
+        responded_at=response.get("responded_at"),
+        headless_auto_approved=True,
+    )
+    return response
 
 
 def _poll_for_response(

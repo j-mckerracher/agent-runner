@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "AfterTool": [
+      {
+        "matcher": "write_file|replace_in_file|replace",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".github/scripts/sanitize-artifact-hook.sh",
+            "timeout": 10000
+          }
+        ]
+      }
+    ]
+  }
+}
+

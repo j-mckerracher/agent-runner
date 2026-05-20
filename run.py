@@ -92,6 +92,20 @@ def _emit(type: str, **fields) -> None:
         pass
 
 
+def _workflow_stage_names(*, skip_lessons_optimizer: bool) -> list[str]:
+    stages = [
+        "materialize",
+        "intake",
+        "task-generation",
+        "task-assignment",
+        "execution",
+        "qa",
+    ]
+    if not skip_lessons_optimizer:
+        stages.append("lessons-optimizer")
+    return stages
+
+
 class _Stage:
     """Context manager that emits stage.start/stage.end events around a block."""
 
@@ -305,6 +319,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Use a cheaper one-iteration workflow profile intended for synthesis calibration runs.",
     )
     parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Run without human prompts; escalation requests are auto-answered for eval/CI runs.",
+    )
+    parser.add_argument(
         "--log-level",
         type=normalize_log_level,
         default="warning",
@@ -327,9 +346,13 @@ def main(
     skip_lessons_optimizer: bool = False,
     skip_materialize: bool = False,
     calibration_fast_mode: bool = False,
+    headless: bool = False,
     log_level: str = "warning",
 ):
     configure_logging(log_level)
+    if headless:
+        os.environ["AGENT_RUNNER_HEADLESS"] = "1"
+        os.environ.setdefault("AGENT_RUNNER_USER_ESCALATION", "auto")
     logger.info(
         "main: starting workflow repo=%s change_id=%s runner=%s model=%s",
         repo, change_id, runner, model,
@@ -420,6 +443,8 @@ def main(
         print(f"Model: {resolved_model}")
         if calibration_fast_mode:
             print("Calibration fast mode enabled (single-iteration workflow loops).")
+        if headless:
+            print("Headless mode enabled (human escalations will be auto-answered).")
 
         _emit(
             "job.start",
@@ -579,7 +604,54 @@ def main(
                 failed_stage = "execution"
                 assignments = load_assignments(resolved_change_id)
                 batches = sorted(assignments.get("batches", []), key=lambda b: b["batch_id"])
+                total_uows = sum(len(batch.get("uows", [])) for batch in batches)
+                _emit(
+                    "workflow.plan",
+                    stages=_workflow_stage_names(skip_lessons_optimizer=skip_lessons_optimizer),
+                    total_stages=len(_workflow_stage_names(skip_lessons_optimizer=skip_lessons_optimizer)),
+                    total_uows=total_uows,
+                )
                 logger.info("main: execution stage — %d batch(es) to run", len(batches))
+
+                def _run_uow_with_events(*, uow_id: str, batch_id: int, ordinal: int) -> None:
+                    _emit(
+                        "uow.start",
+                        stage="execution",
+                        batch_id=batch_id,
+                        uow_id=uow_id,
+                        ordinal=ordinal,
+                        total_uows=total_uows,
+                    )
+                    try:
+                        run_uow_eval_loop(
+                            uow_id=uow_id,
+                            change_id=resolved_change_id,
+                            repo=resolved_repo,
+                            iter_count=loop_iter_count,
+                            runner=runner,
+                            **runner_model_kwargs,
+                        )
+                    except BaseException as exc:
+                        _emit(
+                            "uow.end",
+                            stage="execution",
+                            batch_id=batch_id,
+                            uow_id=uow_id,
+                            ordinal=ordinal,
+                            total_uows=total_uows,
+                            status="error",
+                            error=_summarize_exception(exc)[:500],
+                        )
+                        raise
+                    _emit(
+                        "uow.end",
+                        stage="execution",
+                        batch_id=batch_id,
+                        uow_id=uow_id,
+                        ordinal=ordinal,
+                        total_uows=total_uows,
+                        status="ok",
+                    )
 
                 for batch in batches:
                     uow_ids = [uow["uow_id"] for uow in batch.get("uows", [])]
@@ -594,27 +666,21 @@ def main(
                         with ThreadPoolExecutor() as executor:
                             futures = [
                                 executor.submit(
-                                    run_uow_eval_loop,
+                                    _run_uow_with_events,
                                     uow_id=uid,
-                                    change_id=resolved_change_id,
-                                    repo=resolved_repo,
-                                    iter_count=loop_iter_count,
-                                    runner=runner,
-                                    **runner_model_kwargs,
+                                    batch_id=batch["batch_id"],
+                                    ordinal=index,
                                 )
-                                for uid in uow_ids
+                                for index, uid in enumerate(uow_ids, start=1)
                             ]
                             for future in futures:
                                 future.result()
                     else:
-                        for uid in uow_ids:
-                            run_uow_eval_loop(
+                        for index, uid in enumerate(uow_ids, start=1):
+                            _run_uow_with_events(
                                 uow_id=uid,
-                                change_id=resolved_change_id,
-                                repo=resolved_repo,
-                                iter_count=loop_iter_count,
-                                runner=runner,
-                                **runner_model_kwargs,
+                                batch_id=batch["batch_id"],
+                                ordinal=index,
                             )
                 last_completed_stage = "execution"
                 failed_stage = None
@@ -752,6 +818,7 @@ if __name__ == "__main__":
             skip_lessons_optimizer=args.skip_lessons_optimizer,
             skip_materialize=args.skip_materialize,
             calibration_fast_mode=args.calibration_fast_mode,
+            headless=args.headless,
             log_level=args.log_level,
         )
     except INPUT_VALIDATION_ERRORS:

@@ -15,6 +15,7 @@ from urllib.parse import unquote, urlparse
 
 RUNNER_ROOT = Path(__file__).resolve().parent.parent
 VENV_DIR = RUNNER_ROOT / ".venv"
+ENV_FILE = RUNNER_ROOT / ".env"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8742
 DEFAULT_OPIK_DASHBOARD_URL = "http://localhost:5173"
@@ -465,6 +466,207 @@ def _prompt_user_config() -> None:
         print(f"[bootstrap] Default mode set to: {mode}", flush=True)
 
 
+def _read_env_file(path: Path = ENV_FILE) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.exists():
+        return values
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        values[key.strip()] = value
+    return values
+
+
+def _quote_env_value(value: str) -> str:
+    if re.fullmatch(r"[A-Za-z0-9_./:@%+\-=]+", value):
+        return value
+    return json_dumps(value)
+
+
+def json_dumps(value: str) -> str:
+    import json as _json
+
+    return _json.dumps(value)
+
+
+def _write_env_values(values: dict[str, str]) -> None:
+    cleaned = {key: str(value).strip() for key, value in values.items() if str(value).strip()}
+    if not cleaned:
+        return
+    lines = ENV_FILE.read_text(encoding="utf-8").splitlines() if ENV_FILE.exists() else []
+    out: list[str] = []
+    seen: set[str] = set()
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            out.append(line)
+            continue
+        key, _old = stripped.split("=", 1)
+        key = key.strip()
+        if key in cleaned:
+            out.append(f"{key}={_quote_env_value(cleaned[key])}")
+            seen.add(key)
+        else:
+            out.append(line)
+    for key, value in cleaned.items():
+        if key not in seen:
+            out.append(f"{key}={_quote_env_value(value)}")
+    ENV_FILE.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
+
+
+def _git_head_sha(repo: str) -> str | None:
+    if not repo:
+        return None
+    path = Path(os.path.expandvars(repo)).expanduser()
+    if not path.exists():
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "HEAD"],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        return result.stdout.strip() or None
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def _default_eval_runner() -> str:
+    env_values = _read_env_file()
+    if env_values.get("EVAL_RUNNER"):
+        return env_values["EVAL_RUNNER"]
+    try:
+        from server.config import load_config
+
+        configured = (load_config().get("defaults", {}).get("runner") or "").strip()
+        if configured:
+            return configured
+    except Exception:
+        pass
+    return "claude"
+
+
+def _prompt_yes_no(prompt: str, *, default: bool = False) -> bool:
+    suffix = "[Y/n]" if default else "[y/N]"
+    try:
+        raw = input(f"  {prompt} {suffix}: ").strip().lower()
+    except EOFError:
+        return default
+    if not raw:
+        return default
+    return raw in {"y", "yes", "true", "1"}
+
+
+def _collect_eval_config(args: argparse.Namespace) -> dict[str, str | bool]:
+    """Collect optional eval bootstrap settings and persist .env values."""
+    env_values = _read_env_file()
+    interactive = sys.stdin.isatty() and sys.stdout.isatty()
+
+    repo = (args.eval_target_repo or env_values.get("EVAL_TARGET_REPO") or "").strip()
+    sha = (args.eval_target_sha or env_values.get("EVAL_TARGET_SHA") or "").strip()
+    runner = (args.eval_runner or env_values.get("EVAL_RUNNER") or _default_eval_runner()).strip()
+    model = (args.eval_model or env_values.get("EVAL_MODEL") or "").strip()
+
+    generate = bool(args.generate_eval_benchmarks)
+    if args.skip_eval_benchmarks:
+        generate = False
+    elif not generate and interactive:
+        _echo_step("Optional: workflow eval benchmarks")
+        print(
+            "Bootstrap can use your configured LLM CLI to generate three local eval benchmarks "
+            "(easy, medium, hard) for a target repo. These are saved under ignored eval/benchmarks/.",
+            flush=True,
+        )
+        generate = _prompt_yes_no("Generate eval benchmarks now?", default=False)
+
+    if generate:
+        if interactive and not repo:
+            try:
+                repo = input("  Eval target repo path or Git URL: ").strip()
+            except EOFError:
+                repo = ""
+        if not repo:
+            raise BootstrapError("Eval benchmark generation requires --eval-target-repo or interactive repo input.")
+
+        default_sha = sha or _git_head_sha(repo) or ""
+        if interactive and not sha:
+            prompt = f"  Gold-master commit SHA [{default_sha or 'required'}]: "
+            try:
+                raw_sha = input(prompt).strip()
+            except EOFError:
+                raw_sha = ""
+            sha = raw_sha or default_sha
+        elif not sha:
+            sha = default_sha
+        if not sha:
+            raise BootstrapError("Eval benchmark generation requires --eval-target-sha. Could not infer HEAD from target repo.")
+
+        if interactive and not args.eval_runner:
+            try:
+                raw_runner = input(f"  Eval generator runner [{runner}]: ").strip()
+            except EOFError:
+                raw_runner = ""
+            runner = raw_runner or runner
+        if interactive and not args.eval_model:
+            try:
+                raw_model = input("  Eval generator model [runner default]: ").strip()
+            except EOFError:
+                raw_model = ""
+            model = raw_model or model
+
+    elif repo or sha or args.eval_runner or args.eval_model:
+        if not sha:
+            sha = _git_head_sha(repo) or sha
+
+    values = {
+        "EVAL_TARGET_REPO": repo,
+        "EVAL_TARGET_SHA": sha,
+        "EVAL_RUNNER": runner,
+    }
+    if model:
+        values["EVAL_MODEL"] = model
+    if repo or sha or args.eval_runner or args.eval_model or generate:
+        _write_env_values(values)
+        print(f"[bootstrap] Eval config saved to {ENV_FILE}", flush=True)
+
+    return {
+        "generate": generate,
+        "repo": repo,
+        "sha": sha,
+        "runner": runner,
+        "model": model,
+    }
+
+
+def _generate_eval_benchmarks(config: dict[str, str | bool], args: argparse.Namespace) -> None:
+    if not config.get("generate"):
+        return
+    _echo_step("Generating eval benchmarks")
+    cmd: list[object] = [
+        sys.executable,
+        str(RUNNER_ROOT / "eval" / "seed_benchmarks.py"),
+        "--repo",
+        str(config["repo"]),
+        "--sha",
+        str(config["sha"]),
+        "--runner",
+        str(config["runner"]),
+    ]
+    if config.get("model"):
+        cmd.extend(["--model", str(config["model"])])
+    if args.force_eval_benchmarks:
+        cmd.append("--force")
+    if args.verify_eval_gold_fails:
+        cmd.append("--verify-gold-fails")
+    _run(cmd, cwd=RUNNER_ROOT)
+
+
 def _save_opik_config(opik_settings: dict[str, str]) -> dict:
     from server.config import load_config, save_config, validate_config
 
@@ -566,6 +768,15 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip the bundled local Opik stack. Skips the interactive prompt.",
     )
+    parser.add_argument("--eval-target-repo", default=None, help="Target repo path or Git URL used for generated workflow eval benchmarks.")
+    parser.add_argument("--eval-target-sha", default=None, help="Gold-master commit SHA for generated workflow eval benchmarks.")
+    eval_group = parser.add_mutually_exclusive_group()
+    eval_group.add_argument("--generate-eval-benchmarks", action="store_true", help="Use an LLM to generate eval/benchmarks/{easy,medium,hard} during bootstrap.")
+    eval_group.add_argument("--skip-eval-benchmarks", action="store_true", help="Do not prompt for or generate eval benchmarks during bootstrap.")
+    parser.add_argument("--eval-runner", default=None, help="LLM CLI for benchmark generation: claude, copilot, copilot-* alias, or gemini. Defaults to configured runner.")
+    parser.add_argument("--eval-model", default=None, help="Optional model override for benchmark generation.")
+    parser.add_argument("--force-eval-benchmarks", action="store_true", help="Overwrite existing generated benchmark folders.")
+    parser.add_argument("--verify-eval-gold-fails", action="store_true", help="After generation, run hidden tests against gold-master and require normal pytest failures.")
     return parser.parse_args()
 
 
@@ -578,6 +789,8 @@ def main() -> int:
         _install_requirements()
         _materialize_agents()
         _prompt_user_config()
+        eval_config = _collect_eval_config(args)
+        _generate_eval_benchmarks(eval_config, args)
 
         if getattr(args, "with_opik", False):
             enable_opik = True
