@@ -29,14 +29,18 @@ class UiTraceBridgeTests(unittest.TestCase):
         self.tmp.close()
         os.environ["AGENT_RUNNER_EVENT_LOG"] = self.tmp.name
         from server import events
+        from core.ui_trace_bridge import set_opik_tracing_enabled
 
         events._default = None
+        set_opik_tracing_enabled(False)
 
     def tearDown(self):
         os.environ.pop("AGENT_RUNNER_EVENT_LOG", None)
         from server import events
+        from core.ui_trace_bridge import set_opik_tracing_enabled
 
         events._default = None
+        set_opik_tracing_enabled(False)
         try:
             os.unlink(self.tmp.name)
         except OSError:
@@ -44,9 +48,11 @@ class UiTraceBridgeTests(unittest.TestCase):
 
     def test_medium__track_with_ui_emits_opik_trace_start_and_end(self):
         from server.events import read_all
-        from core.ui_trace_bridge import track_with_ui
+        from core.ui_trace_bridge import set_opik_tracing_enabled, track_with_ui
 
         with patch("core.ui_trace_bridge.opik.track", side_effect=_fake_track):
+            set_opik_tracing_enabled(True)
+
             @track_with_ui(
                 name="stage:intake",
                 type="tool",
@@ -67,9 +73,11 @@ class UiTraceBridgeTests(unittest.TestCase):
 
     def test_medium__track_with_ui_marks_error_when_wrapped_call_raises(self):
         from server.events import read_all
-        from core.ui_trace_bridge import track_with_ui
+        from core.ui_trace_bridge import set_opik_tracing_enabled, track_with_ui
 
         with patch("core.ui_trace_bridge.opik.track", side_effect=_fake_track):
+            set_opik_tracing_enabled(True)
+
             @track_with_ui(name="sdk-evaluator", type="llm")
             def explode() -> None:
                 raise ValueError("boom")
@@ -84,12 +92,14 @@ class UiTraceBridgeTests(unittest.TestCase):
 
     def test_medium__start_span_with_ui_tracks_nested_depth(self):
         from server.events import read_all
-        from core.ui_trace_bridge import start_span_with_ui, track_with_ui
+        from core.ui_trace_bridge import set_opik_tracing_enabled, start_span_with_ui, track_with_ui
 
         with (
             patch("core.ui_trace_bridge.opik.track", side_effect=_fake_track),
             patch("core.ui_trace_bridge.opik.start_as_current_span", side_effect=_fake_span),
         ):
+            set_opik_tracing_enabled(True)
+
             @track_with_ui(name="loop:uow-eval", type="general")
             def run_loop() -> None:
                 with start_span_with_ui(
@@ -112,6 +122,35 @@ class UiTraceBridgeTests(unittest.TestCase):
             ],
         )
         self.assertEqual(events[1]["kind"], "span")
+
+    def test_medium__disabled_track_with_ui_skips_opik_sdk_calls(self):
+        from server.events import read_all
+        from core.ui_trace_bridge import track_with_ui
+
+        with patch("core.ui_trace_bridge.opik.track") as opik_track:
+            @track_with_ui(name="stage:qa", type="tool")
+            def sample() -> str:
+                return "ok"
+
+            result = sample()
+
+        self.assertEqual(result, "ok")
+        opik_track.assert_not_called()
+        events = read_all(self.tmp.name)
+        self.assertEqual([event["type"] for event in events], ["opik.start", "opik.end"])
+
+    def test_medium__disabled_start_span_with_ui_returns_passive_span(self):
+        from server.events import read_all
+        from core.ui_trace_bridge import start_span_with_ui
+
+        with patch("core.ui_trace_bridge.opik.start_as_current_span") as start_span:
+            with start_span_with_ui("uow-iteration-1", type="general") as span:
+                span.input = {"iteration": 1}
+                span.output = {"passed": True}
+
+        start_span.assert_not_called()
+        events = read_all(self.tmp.name)
+        self.assertEqual([event["type"] for event in events], ["opik.start", "opik.end"])
 
 
 if __name__ == "__main__":

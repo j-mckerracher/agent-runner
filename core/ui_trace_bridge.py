@@ -4,6 +4,7 @@ import functools
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar
+from types import SimpleNamespace
 from typing import Any, Callable, Iterator, ParamSpec, TypeVar
 
 import opik
@@ -14,6 +15,16 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 _TRACE_DEPTH: ContextVar[int] = ContextVar("ui_trace_depth", default=0)
+_OPIK_TRACING_ENABLED = False
+
+
+def set_opik_tracing_enabled(enabled: bool) -> None:
+    global _OPIK_TRACING_ENABLED
+    _OPIK_TRACING_ENABLED = enabled
+
+
+def is_opik_tracing_enabled() -> bool:
+    return _OPIK_TRACING_ENABLED
 
 
 def _compact_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
@@ -93,7 +104,13 @@ def track_with_ui(
             with _mirror_trace_events(name=name, trace_type=type, kind="trace", metadata=metadata):
                 return func(*args, **kwargs)
 
-        return opik.track(name=name, type=type)(wrapped)
+        @functools.wraps(func)
+        def runtime_wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
+            if not is_opik_tracing_enabled():
+                return wrapped(*args, **kwargs)
+            return opik.track(name=name, type=type)(wrapped)(*args, **kwargs)
+
+        return runtime_wrapped
 
     return decorator
 
@@ -105,6 +122,11 @@ def start_span_with_ui(
     type: str,
     metadata: dict[str, Any] | None = None,
 ):
+    if not is_opik_tracing_enabled():
+        with _mirror_trace_events(name=name, trace_type=type, kind="span", metadata=metadata):
+            yield SimpleNamespace(input=None, output=None)
+        return
+
     with opik.start_as_current_span(name, type=type) as span:
         with _mirror_trace_events(name=name, trace_type=type, kind="span", metadata=metadata):
             yield span

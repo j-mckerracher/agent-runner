@@ -4,7 +4,13 @@ import unittest
 from contextlib import contextmanager
 from unittest.mock import Mock, patch
 
-from core.opik_tracing import OpikConfigurationError, OpikTracer, opik_config_from_settings
+from core.opik_tracing import (
+    OpikConfigurationError,
+    OpikTracer,
+    build_opik_tracer,
+    opik_config_from_settings,
+    opik_is_configured,
+)
 
 
 @contextmanager
@@ -29,6 +35,10 @@ class OpikTracingTests(unittest.TestCase):
     def test_easy__missing_config_fails_fast(self) -> None:
         with self.assertRaisesRegex(OpikConfigurationError, "opik.dashboard_url"):
             opik_config_from_settings({})
+
+    def test_easy__opik_is_configured_requires_required_fields(self) -> None:
+        self.assertTrue(opik_is_configured(self._settings()))
+        self.assertFalse(opik_is_configured({"project_name": "agent-workbench"}))
 
     def test_medium__api_url_uses_explicit_runtime_env(self) -> None:
         with patch.dict("os.environ", {"OPIK_URL_OVERRIDE": "http://opik.local/api"}, clear=False):
@@ -112,6 +122,33 @@ class OpikTracingTests(unittest.TestCase):
         self.assertEqual(events[-1][0], "opik.end")
         self.assertEqual(events[-1][1]["status"], "error")
         self.assertIn("ValueError: boom", events[-1][1]["error"])
+
+    def test_medium__build_opik_tracer_returns_none_without_required_config(self) -> None:
+        with patch("core.opik_tracing.set_opik_tracing_enabled") as set_enabled:
+            tracer = build_opik_tracer(
+                settings={"project_name": "agent-workbench"},
+                change_id="WI-123",
+                runner="copilot",
+                model="gpt-5.4",
+            )
+
+        self.assertIsNone(tracer)
+        set_enabled.assert_called_once_with(False)
+
+    def test_medium__build_opik_tracer_disables_optional_tracing_when_unreachable(self) -> None:
+        with (
+            patch("core.opik_tracing.opik.configure", side_effect=RuntimeError("workspace not found")),
+            patch("core.opik_tracing.set_opik_tracing_enabled") as set_enabled,
+        ):
+            tracer = build_opik_tracer(
+                settings=self._settings(),
+                change_id="WI-123",
+                runner="copilot",
+                model="gpt-5.4",
+            )
+
+        self.assertIsNone(tracer)
+        set_enabled.assert_called_once_with(False)
 
 
 if __name__ == "__main__":

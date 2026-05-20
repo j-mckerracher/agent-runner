@@ -95,6 +95,7 @@ That flow:
 - starts the local API + GUI on `http://127.0.0.1:8742`
 
 Skip the prompt non-interactively with `--with-opik` or `--no-opik`. Enabling Opik requires Docker Desktop to be running.
+If Opik is skipped, not configured, or temporarily unreachable, workflow runs continue without Opik tracing.
 
 ### Manual server startup
 
@@ -386,7 +387,7 @@ When runs are launched through the local API, the server also records structured
 
 Server-driven runs emit one `llm.call` event per observable LLM call or retry attempt. `summary/run_metrics.yaml` rolls these events up into latency percentiles, per-agent/model token and cost totals, retry/error counts, prompt hash repetition, cache-prefix estimates, loop-depth/tool-call counts, and an `answerability_matrix` that maps common harness-optimization questions to concrete captured fields.
 
-Per-agent `*_session.json` files include local prompt/response text plus hashes, sizes, estimated tokens, duration, model, attempt, and exit status. Hosted CLI runners expose wall-clock CLI duration only; provider-internal network/tokenization/post-processing splits and keep-alive state are recorded as explicit instrumentation limits in the answerability matrix rather than inferred.
+When Opik tracing is active, each agent-call span is annotated with the same non-sensitive LLM telemetry: model, runner, agent, status, latency, retry/error category, prompt/response hashes and sizes, token usage or estimates, cache-prefix estimates, tool-loop counts, parse status, and cost when available. Raw prompt/response text stays local in per-agent `*_session.json` files; hosted CLI runners expose wall-clock CLI duration only, so provider-internal network/tokenization/post-processing splits and keep-alive state are recorded as explicit instrumentation limits in the answerability matrix rather than inferred. If Opik is unavailable, the workflow still emits local event logs and artifacts and simply skips the external Opik spans.
 
 ## Testing
 

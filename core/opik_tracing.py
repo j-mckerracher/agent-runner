@@ -1,16 +1,18 @@
 """Opik tracing helpers for workflow runs.
 
 Failure-mode contract:
-- Missing runtime settings fail fast before the workflow starts.
-- Unreachable Opik fails fast during tracer construction.
-- Opik errors while opening/closing traces or spans propagate, because this
-  integration is intentionally required for workflow observability.
+- Explicit config parsing remains strict so invalid settings are easy to detect.
+- Workflow startup treats Opik as optional and disables tracing when settings are
+  missing or the endpoint is unavailable.
+- If Opik is enabled successfully, runtime trace/span errors still propagate so
+  active observability failures are visible rather than silently ignored.
 """
 
 from __future__ import annotations
 
 import os
 import time
+import logging
 from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -19,8 +21,11 @@ from typing import Any, Callable, Iterator
 import opik
 from opik import opik_context
 
+from .ui_trace_bridge import set_opik_tracing_enabled
+
 
 _TRACE_DEPTH: ContextVar[int] = ContextVar("opik_trace_depth", default=0)
+logger = logging.getLogger(__name__)
 
 
 class OpikConfigurationError(RuntimeError):
@@ -74,6 +79,14 @@ def opik_config_from_settings(settings: dict[str, Any] | None) -> OpikRuntimeCon
         project_id=project_id,
         project_name=project_name,
         api_url=_derive_api_url(dashboard_url),
+    )
+
+
+def opik_is_configured(settings: dict[str, Any] | None) -> bool:
+    cfg = settings or {}
+    return all(
+        _clean(cfg.get(key))
+        for key in ("dashboard_url", "workspace_name", "project_id")
     )
 
 
@@ -291,6 +304,39 @@ class OpikTracer:
         flush = getattr(self.client, "flush", None)
         if callable(flush):
             flush()
+
+
+def build_opik_tracer(
+    *,
+    settings: dict[str, Any] | None,
+    change_id: str,
+    runner: str,
+    model: str | None,
+    emit_event: Callable[..., None] | None = None,
+) -> OpikTracer | None:
+    if not opik_is_configured(settings):
+        set_opik_tracing_enabled(False)
+        logger.info("build_opik_tracer: Opik disabled for change_id=%s (incomplete config)", change_id)
+        return None
+    try:
+        tracer = OpikTracer(
+            settings=settings or {},
+            change_id=change_id,
+            runner=runner,
+            model=model,
+            emit_event=emit_event,
+        )
+    except Exception as exc:
+        set_opik_tracing_enabled(False)
+        logger.warning(
+            "build_opik_tracer: disabling Opik tracing for change_id=%s: %s: %s",
+            change_id,
+            type(exc).__name__,
+            exc,
+        )
+        return None
+    set_opik_tracing_enabled(True)
+    return tracer
 
 
 def maybe_trace(tracer: OpikTracer | None, name: str, **kwargs: Any):

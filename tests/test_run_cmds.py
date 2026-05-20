@@ -134,6 +134,70 @@ class CliSessionLogTests(unittest.TestCase):
             self.assertEqual(payload["prompt_est_tokens"], 3)
 
 
+class LlmCallOpikTelemetryTests(unittest.TestCase):
+    def test_medium__llm_call_event_updates_opik_with_usage_metadata_without_raw_prompt(self):
+        with (
+            patch("core.run_cmds._emit_event") as emit_event,
+            patch("core.run_cmds.opik_context.get_current_span_data", return_value=object()),
+            patch("core.run_cmds.opik_context.get_current_trace_data", return_value=object()),
+            patch("core.run_cmds.opik_context.update_current_span") as update_span,
+            patch("core.run_cmds.opik_context.update_current_trace") as update_trace,
+        ):
+            run_cmds._emit_llm_call_event(
+                runner="claude",
+                agent="task-generator",
+                model="claude-sonnet",
+                status="ok",
+                duration_ms=1234,
+                prompt_text="secret prompt body",
+                response_text="private response body",
+                prompt_tokens=10,
+                completion_tokens=5,
+                cost_usd=0.02,
+                response_parse_ok=True,
+            )
+
+        update_span.assert_called_once()
+        span_kwargs = update_span.call_args.kwargs
+        self.assertEqual(span_kwargs["usage"], {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
+        self.assertEqual(span_kwargs["metadata"]["llm_agent"], "task-generator")
+        self.assertEqual(span_kwargs["metadata"]["llm_duration_ms"], 1234)
+        self.assertEqual(span_kwargs["total_cost"], 0.02)
+        self.assertNotIn("secret prompt body", json.dumps(span_kwargs, default=str))
+        self.assertNotIn("private response body", json.dumps(span_kwargs, default=str))
+        self.assertEqual(span_kwargs["input"]["prompt_chars"], len("secret prompt body"))
+        self.assertEqual(span_kwargs["output"]["response_chars"], len("private response body"))
+        self.assertEqual(span_kwargs["feedback_scores"][0]["name"], "llm_call_success")
+
+        update_trace.assert_called_once()
+        self.assertNotIn("feedback_scores", update_trace.call_args.kwargs)
+        emit_event.assert_called_once()
+        self.assertEqual(emit_event.call_args.args[0], "llm.call")
+        self.assertEqual(emit_event.call_args.kwargs["tokens_in"], 10)
+
+    def test_medium__llm_call_event_skips_opik_when_no_active_context(self):
+        with (
+            patch("core.run_cmds._emit_event") as emit_event,
+            patch("core.run_cmds.opik_context.get_current_span_data", return_value=None),
+            patch("core.run_cmds.opik_context.get_current_trace_data", return_value=None),
+            patch("core.run_cmds.opik_context.update_current_span") as update_span,
+            patch("core.run_cmds.opik_context.update_current_trace") as update_trace,
+        ):
+            run_cmds._emit_llm_call_event(
+                runner="copilot",
+                agent="qa-engineer",
+                model=None,
+                status="ok",
+                duration_ms=25,
+                prompt_text="prompt",
+                response_text="response",
+            )
+
+        update_span.assert_not_called()
+        update_trace.assert_not_called()
+        emit_event.assert_called_once()
+
+
 class OpenaiCompatRunnerTests(unittest.TestCase):
     def test_easy__run_agent_cmd_routes_openai_compat_alias_to_openai_compat_runner(self):
         with (

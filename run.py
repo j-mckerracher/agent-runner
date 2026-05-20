@@ -764,22 +764,20 @@ def main(
             print(f"[ERROR] Failed to resolve runner model config: {type(exc).__name__}: {exc}")
             raise
 
-        from core.opik_tracing import OpikTracer
+        from core.opik_tracing import build_opik_tracer, maybe_trace
 
-        logger.info("main: constructing OpikTracer")
-        try:
-            tracer = OpikTracer(
-                settings=config.get("opik") or {},
-                change_id=resolved_change_id,
-                runner=runner,
-                model=resolved_model,
-                emit_event=_emit,
-            )
-            logger.info("main: OpikTracer constructed successfully")
-        except Exception as exc:
-            logger.error("main: OpikTracer construction FAILED: %s: %s", type(exc).__name__, exc)
-            print(f"[ERROR] Failed to initialize Opik tracer: {type(exc).__name__}: {exc}")
-            raise
+        logger.info("main: building Opik tracer")
+        tracer = build_opik_tracer(
+            settings=config.get("opik") or {},
+            change_id=resolved_change_id,
+            runner=runner,
+            model=resolved_model,
+            emit_event=_emit,
+        )
+        if tracer is None:
+            logger.info("main: Opik tracing disabled; continuing without Opik")
+        else:
+            logger.info("main: Opik tracer constructed successfully")
 
         print(f"Running workflow for {resolved_change_id}")
         print(f"Target repo: {resolved_repo}")
@@ -832,8 +830,9 @@ def main(
         runner_model_kwargs: dict = {"runner_model": resolved_model}
         loop_iter_count = 1 if calibration_fast_mode else 3
 
-        logger.info("main: entering Opik trace context")
-        with tracer.trace(
+        logger.info("main: entering workflow trace context")
+        with maybe_trace(
+            tracer,
             name="workflow:run",
             input={
                 "change_id": resolved_change_id,
@@ -843,7 +842,7 @@ def main(
                 "intake_mode": intake_mode,
             },
         ):
-            logger.info("main: inside Opik trace context, starting stages")
+            logger.info("main: inside workflow trace context, starting stages")
             with _Stage("materialize"):
                 if not skip_materialize:
                     logger.info("main: materializing agents and skills from source trees")

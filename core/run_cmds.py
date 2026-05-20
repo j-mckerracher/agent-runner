@@ -13,6 +13,8 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+from opik import opik_context
+
 from .agent_prompts import load_agent_system_prompt
 from .materialized_paths import normalize_runner, runner_skill_dir
 from .runner_models import (
@@ -189,7 +191,62 @@ def _emit_llm_call_event(
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
-    _emit_event("llm.call", **{key: value for key, value in fields.items() if value is not None})
+    clean_fields = {key: value for key, value in fields.items() if value is not None}
+    usage = {
+        "prompt_tokens": prompt_tokens if prompt_tokens is not None else clean_fields["prompt_est_tokens"],
+        "completion_tokens": completion_tokens if completion_tokens is not None else clean_fields["response_est_tokens"],
+        "total_tokens": (
+            (prompt_tokens if prompt_tokens is not None else clean_fields["prompt_est_tokens"])
+            + (completion_tokens if completion_tokens is not None else clean_fields["response_est_tokens"])
+        ),
+    }
+    feedback_scores = [
+        {"name": "llm_call_success", "value": 1.0 if status in ("ok", "tool_call") else 0.0},
+        {"name": "llm_call_retryable", "value": 1.0 if retryable else 0.0},
+    ]
+    if duration_ms is not None:
+        feedback_scores.append({"name": "llm_call_latency_ms", "value": float(duration_ms)})
+    if cost_usd is not None:
+        feedback_scores.append({"name": "llm_call_cost_usd", "value": float(cost_usd)})
+    if response_parse_ok is not None:
+        feedback_scores.append({"name": "llm_call_parse_ok", "value": 1.0 if response_parse_ok else 0.0})
+    if opik_context.get_current_span_data() is not None:
+        opik_context.update_current_span(
+            metadata={f"llm_{key}": value for key, value in clean_fields.items()},
+            input={
+                "prompt_sha256": clean_fields["prompt_sha256"],
+                "prompt_chars": clean_fields["prompt_chars"],
+                "prompt_est_tokens": clean_fields["prompt_est_tokens"],
+                "system_prompt_chars": system_prompt_chars,
+                "cache_static_prefix_est_tokens": cache_static_prefix_est_tokens,
+            },
+            output={
+                "response_sha256": clean_fields["response_sha256"],
+                "response_chars": clean_fields["response_chars"],
+                "response_est_tokens": clean_fields["response_est_tokens"],
+                "status": status,
+                "error_category": error_category,
+                "tool_call_count": tool_call_count,
+                "tool_step_count": tool_step_count,
+            },
+            usage=usage,
+            feedback_scores=feedback_scores,
+            model=model,
+            total_cost=cost_usd,
+        )
+    if opik_context.get_current_trace_data() is not None:
+        opik_context.update_current_trace(
+            metadata={
+                "last_llm_agent": agent,
+                "last_llm_runner": runner,
+                "last_llm_model": model,
+                "last_llm_status": status,
+                "last_llm_duration_ms": duration_ms,
+                "last_llm_prompt_sha256": clean_fields["prompt_sha256"],
+                "last_llm_response_sha256": clean_fields["response_sha256"],
+            },
+        )
+    _emit_event("llm.call", **clean_fields)
 
 
 def _record_cassette(**fields) -> None:
