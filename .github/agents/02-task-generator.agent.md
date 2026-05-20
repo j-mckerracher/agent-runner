@@ -95,7 +95,7 @@ story_id: "<CHANGE-ID>"
 librarian_queries:
   - query: "What existing tooltip patterns exist?"
     confidence_received: "full"
-    answer_summary: "PrimeNG pTooltip directive with tooltipPosition"
+    answer_summary: "<LibraryName> <ComponentName> with <prop>"
 librarian_exploration_summaries:
   - query: "Where is the PersonService located?"
     summary_received: "Found in src/services/PersonService.ts, uses repository pattern"
@@ -157,19 +157,21 @@ Consider these typical task categories:
 
 ### Testing Must Be Included in Task DoD
 
-Every task that creates or modifies Angular components **must** include Cypress component tests and test harnesses in its Definition of Done. Testing is **not** a separate optional task — it is part of the same task as the component implementation.
+Every task that creates or modifies UI components **must** include automated component tests in its Definition of Done. Testing is **not** a separate optional task — it is part of the same task as the component implementation.
 
 When defining a task's DoD for a UI component task, always include:
 
 ```yaml
 definition_of_done:
   - 'Component renders correctly with expected inputs'
-  - 'Cypress component test written covering all AC behaviors'
+  - 'Automated component test written covering all AC behaviors'
   - 'Test harness created/updated with all data-test-id selectors'
-  - 'nx component-test passes with no failures'
+  - 'Component test suite passes with no failures'
 ```
 
-If a task covers service or pure function logic only (no Angular template involvement), Jest unit tests are acceptable instead of Cypress.
+If a task covers service or pure function logic only (no template involvement), unit tests are acceptable instead of component tests.
+
+> **Stack-specific (Nx + Angular):** If `nx.json` AND `angular.json` exist at the repo root, use Cypress component tests (`nx component-test <project-name> --browser=chrome`) and Jest for pure logic.
 
 ## Revision Guidelines
 

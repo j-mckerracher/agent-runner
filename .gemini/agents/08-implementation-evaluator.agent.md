@@ -61,16 +61,15 @@ This agent requires the following skills to be loaded. These skills define manda
 2. **Delegate When Useful**
    - Use subagents for focused parallel analysis of provided artifacts (diff, report, spec) when it reduces evaluation time; do not delegate exploratory research or knowledge searches.
 3. **Run Programmatic Gates First (Hard Pass/Fail)**
-   - Nx build gate:
-     - If the scoped Nx project defines `targets.build` in its `project.json`, `nx build <project>` must exit 0.
-     - If the scoped Nx project does **not** define `targets.build`, record `nx_build_passed: null`, cite the missing `targets.build` evidence from `project.json`, and treat the direct build gate as **not applicable** instead of failing automatically.
-     - For non-buildable projects that still declare `component-test.options.devServerTarget`, run that supported build surface and record the result in the evaluation notes/gate details as the repo-backed build verification.
-   - Cypress component test gate: `nx component-test <project> --browser=chrome` must pass with no failures. If the UoW modifies Angular components but no Cypress tests were written, **FAIL** immediately with: "No Cypress component tests found for modified components. All modified Angular components require a corresponding `.cy.ts` test file."
-   - Test harness gate: Every modified Angular component must have a corresponding `*.test-harness.ts` file. If absent, **FAIL** with: "Missing test harness for `<component>`. Test harnesses are required for all Angular components."
    - Schema validation: `impl_report.yaml` structure is valid YAML matching schema.
    - DoD coverage: `definition_of_done_status` shows all items `met: true`.
    - If any applicable build/test gate fails, **FAIL** immediately; if all applicable gates pass, proceed to rubric evaluation.
    - Record gate outcomes in `programmatic_gates`.
+
+   > **Stack-specific gates** — Apply only if `nx.json` AND `angular.json` exist at the root of the repository you are working in. If the stack is not detected, record all stack-specific gate fields as `null` (not applicable) and continue.
+   - Build gate: If the scoped project defines `targets.build` in its `project.json`, run `nx build <project>` — it must exit 0. If not defined, record `nx_build_passed: null`, cite the missing `targets.build` evidence, and treat the gate as not applicable. For non-buildable projects that declare `component-test.options.devServerTarget`, run that build surface and record the result.
+   - Component test gate: `nx component-test <project> --browser=chrome` must pass with no failures. If the UoW modifies components but no component tests were written, **FAIL** immediately with: "No component tests found for modified components. All modified components require a corresponding `.cy.ts` test file."
+   - Test harness gate: Every modified component must have a corresponding `*.test-harness.ts` file. If absent, **FAIL** with: "Missing test harness for `<component>`. Test harnesses are required for all components."
 
 #### Automated Programmatic Gates
 
@@ -164,10 +163,10 @@ Serialize the evaluation as JSON using the schema below and save it to `{CHANGE-
 
 ### programmatic_gates
 
-- `nx_build_passed` (boolean|null) — `null` only when the scoped project has no `targets.build`
-- `cypress_component_tests_passed` (boolean|null)
-- `cypress_tests_written` (boolean|null) — true if `.cy.ts` files exist for all modified components
-- `test_harnesses_present` (boolean|null) — true if `*.test-harness.ts` files exist for all modified components
+- `nx_build_passed` (boolean|null) — `null` when project has no `targets.build` or stack not detected
+- `cypress_component_tests_passed` (boolean|null) — `null` when stack not detected
+- `cypress_tests_written` (boolean|null) — `null` when stack not detected; true if `.cy.ts` files exist for all modified components
+- `test_harnesses_present` (boolean|null) — `null` when stack not detected; true if `*.test-harness.ts` files exist for all modified components
 - `schema_valid` (boolean)
 - `all_dod_items_met` (boolean)
 - `all_gates_passed` (boolean)

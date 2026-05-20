@@ -230,6 +230,29 @@ def workflow_env(event_log_path: Path | None = None) -> dict[str, str]:
     return env
 
 
+def _make_run_id(benchmark_name: str) -> str:
+    """Generate a unique run ID scoped to this eval run.
+
+    Format: ``<benchmark>-YYYYMMDD-HHMMSSffffff`` — keeps the benchmark name
+    at the front so ``agent-context/`` stays intuitive while the timestamp
+    suffix prevents collisions when the same benchmark runs in parallel.
+    """
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S%f")
+    return f"{benchmark_name}-{stamp}"
+
+
+def _prepare_run_story(source: Path, dest: Path, run_id: str) -> Path:
+    """Copy *source* story.json to *dest* with ``change_id`` overridden to *run_id*.
+
+    This ensures each eval run writes to its own ``agent-context/<run_id>/``
+    directory so parallel runs of the same benchmark never collide.
+    """
+    data = json.loads(source.read_text(encoding="utf-8"))
+    data["change_id"] = run_id
+    dest.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    return dest
+
+
 def validate_benchmark(path: Path) -> None:
     story = path / "story.json"
     tests = path / "hidden_tests.py"
@@ -266,14 +289,20 @@ def prepare_workspace(repo: str, sha: str, workspace: Path) -> None:
         raise RuntimeError(f"git checkout failed:\n{tail(result.stderr)}")
 
 
-def build_workflow_command(path: Path, workspace: Path, args: argparse.Namespace) -> list[str]:
+def build_workflow_command(
+    path: Path,
+    workspace: Path,
+    args: argparse.Namespace,
+    *,
+    story_file: Path | None = None,
+) -> list[str]:
     cmd = [
         sys.executable,
         str(RUN_PY),
         "--repo",
         str(workspace),
         "--story-file",
-        str(path / "story.json"),
+        str(story_file if story_file is not None else path / "story.json"),
         "--runner",
         args.runner,
         "--headless",
@@ -354,8 +383,14 @@ def run_workflow_with_progress(
         return completed
 
 
-def invoke_workflow(path: Path, workspace: Path, args: argparse.Namespace) -> subprocess.CompletedProcess[str]:
-    cmd = build_workflow_command(path, workspace, args)
+def invoke_workflow(
+    path: Path,
+    workspace: Path,
+    args: argparse.Namespace,
+    *,
+    story_file: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
+    cmd = build_workflow_command(path, workspace, args, story_file=story_file)
     return run_workflow_with_progress(
         cmd,
         cwd=ROOT,
@@ -393,14 +428,21 @@ def run_one(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         sandbox = Path(sandbox_obj.name)
     workspace = sandbox / "workspace"
 
+    # --- collision prevention --------------------------------------------------
+    # Each eval run gets its own unique change_id so parallel runs of the same
+    # benchmark don't clobber each other's agent-context/ artifacts.
+    run_id = _make_run_id(path.name)
+    run_story = _prepare_run_story(path / "story.json", sandbox / "story.json", run_id)
+    # --------------------------------------------------------------------------
+
     print(f"\n== {path.name} ==")
-    result: dict[str, Any] = {"name": path.name, "status": "FAIL", "error": "", "seconds": None}
+    result: dict[str, Any] = {"name": path.name, "status": "FAIL", "error": "", "seconds": None, "run_id": run_id}
     try:
         print("Preparing sandbox")
         prepare_workspace(args.repo, args.sha, workspace)
 
         print("Running workflow")
-        workflow = invoke_workflow(path, workspace, args)
+        workflow = invoke_workflow(path, workspace, args, story_file=run_story)
         if workflow.returncode != 0:
             print(tail(workflow.stdout))
             print(tail(workflow.stderr), file=sys.stderr)
@@ -480,8 +522,8 @@ def write_report(results: list[dict[str, Any]], args: argparse.Namespace) -> Non
         "model": args.model,
         "results": results,
     }
-    # Filename: YYYY-MM-DD-HHMM-<difficulty>.json  e.g. 2026-05-20-1430-easy.json
-    stamp = now.strftime("%Y-%m-%d-%H%M")
+    # Filename: YYYY-MM-DD-HHMMss-<difficulty>.json  e.g. 2026-05-20-143022-easy.json
+    stamp = now.strftime("%Y-%m-%d-%H%M%S")
     difficulty = _difficulty_label(results)
     report_path = DEFAULT_REPORTS / f"{stamp}-{difficulty}.json"
     latest_path = DEFAULT_REPORTS / "latest.json"

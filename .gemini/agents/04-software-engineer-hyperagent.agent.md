@@ -92,8 +92,8 @@ This is the standard implementation loop. It runs on every attempt (including th
 3. Query the Reference Librarian for patterns, prior learnings, and scoped applicable lessons
 4. Check the `### Self-Evolved Rules` and `### Optimizer-Injected Rules` sub-sections at the bottom of this file for any evolved heuristics that apply to this task
 5. Implement code changes following the Documentation-First Requirement and Scope Control Guidelines
-6. Write Cypress component tests + test harnesses per Testing Requirements
-7. Run `nx component-test` and `nx build` to verify
+6. Write automated tests per Testing Requirements
+7. Run the project's build and test commands to verify (see Testing Requirements for stack-specific commands)
 8. Generate `impl_report.yaml` with full `metacognitive_context`
 9. **Conditionally add an ADO work item comment** using the **azure-devops-cli** skill when explicit ADO metadata exists in `intake/story.yaml`:
    - If `status: complete`: add a comment with the `implementation_summary` from the report
@@ -144,7 +144,7 @@ uow_id: "UOW-001"
   librarian_queries:
       query: "What tooltip patterns exist?"
       confidence_received: "full"
-      answer_summary: "PrimeNG pTooltip with tooltipPosition"
+      answer_summary: "<LibraryName> <ComponentName> with <prop>"
   librarian_exploration_summaries:
       query: "Where is the PersonService?"
       summary_received: "Located in src/services/PersonService.ts"
@@ -173,7 +173,7 @@ uow_id: "UOW-001"
     knowledge_gaps:
       - '<specific documentation, files, or context the agent felt was missing during implementation>'
     tool_anomalies:
-      - tool: '<tool name (nx, Cypress, Angular CLI, etc.)>'
+      - tool: '<tool name>'
         anomaly: '<unexpected behavior observed>'
   revision_history:
       attempt: 1
@@ -203,15 +203,15 @@ STOP → Check if existing library can do this → Only then consider custom cod
 
 **Examples of required checks:**
 
-- Need interactive tooltips? → Check PrimeNG tooltip documentation for template support
-- Need data transformation? → Check if Ramda (already in project) has the function
-- Need form validation? → Check Angular reactive forms built-in validators
-- Need HTTP retry logic? → Check RxJS retry operators
+- Need a UI component (tooltip, table, modal)? → Check your UI component library's documentation for existing implementations
+- Need data transformation? → Check if a utility library already in the project has the function
+- Need form validation? → Check the framework's built-in form validation capabilities
+- Need async/retry logic? → Check the project's async library for built-in operators
 
 ### Anti-Pattern: Premature Custom Implementation
 
 ❌ **WRONG**: "I need an interactive tooltip, so I'll create a custom component"
-✅ **RIGHT**: "I need an interactive tooltip. Let me check PrimeNG docs first... it supports `pTemplate` for custom content"
+✅ **RIGHT**: "I need an interactive tooltip. Let me check the project's UI library docs first to see if it supports custom content"
 
 ### Document Your Research
 
@@ -219,11 +219,11 @@ In your `impl_report.yaml`, include:
 
 ```yaml
 library_research: {
-    feature_needed: "interactive tooltip with links"
-    libraries_checked: ["PrimeNG tooltip"]
+    feature_needed: "<feature needed>"
+    libraries_checked: ["<LibraryName> <ComponentName>"]
     documentation_consulted: "<library docs consulted via librarian or local resources>"
     existing_solution_found: true
-    solution_used: "pTooltip with pTemplate directive"
+    solution_used: "<solution used>"
 ```
 
 If you create custom code when a library feature exists, the Implementation Evaluator will flag this as a failure.
@@ -232,9 +232,13 @@ If you create custom code when a library feature exists, the Implementation Eval
 
 ## Testing Requirements (Mandatory)
 
-This project uses **Cypress component tests as the primary testing strategy**. TDD is mandatory — write tests before or alongside implementation.
+Write automated tests for every code change. The testing strategy depends on the project stack.
 
-### For Every Angular Component You Create or Modify
+> **Stack-specific gates** — Apply only if `nx.json` AND `angular.json` exist at the root of the repository you are working in. If the stack is not detected, use the appropriate test strategy for the detected stack and skip the Nx/Cypress-specific instructions below.
+
+This stack uses **Cypress component tests as the primary testing strategy**. TDD is mandatory — write tests before or alongside implementation.
+
+### For Every Component You Create or Modify
 
 1. **Write a Cypress component test** (`*.cy.ts`) adjacent to the component
 2. **Write or update a test harness** (`*.test-harness.ts` or `*.component.test-harness.ts`) adjacent to the component — encapsulates all `data-test-id` selectors and actions
@@ -258,8 +262,7 @@ libs/<product>/<domain>/<layer>/src/lib/<component>/
 nx component-test <project-name> --browser=chrome
 
 # Example
-nx component-test design-system --browser=chrome
-nx component-test rls-specimen-accessioning --browser=chrome
+nx component-test <your-project-name> --browser=chrome
 ```
 
 Chrome is always required (`--browser=chrome`).
@@ -302,8 +305,8 @@ describe(MyComponent.name, () => {
 
 ### What Counts as a Test
 
-- ✅ Cypress component test with `cy.mount()` covering the AC behavior
-- ✅ Jest unit test for pure functions/services with no Angular template involvement
+- ✅ Component test with `cy.mount()` covering the AC behavior
+- ✅ Unit test for pure functions/services with no template involvement
 - ❌ No test = implementation is **incomplete** regardless of code quality
 
 ### In impl_report.yaml
