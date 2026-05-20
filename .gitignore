@@ -9,3 +9,7 @@ __pycache__/
 /eval/.run_fixtures/
 /CHANGE-ID/
 /logs/
+
+.env
+eval/benchmarks/
+eval/reports/

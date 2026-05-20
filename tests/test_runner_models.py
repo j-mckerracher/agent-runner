@@ -158,6 +158,12 @@ class TestResolveAgentModel(unittest.TestCase):
 
 
 class RunnerLlmConfigTests(unittest.TestCase):
+    def test_builtin_runner_rejects_invalid_explicit_model(self):
+        with self.assertRaises(ValueError) as ctx:
+            resolve_runner_llm_config("copilot", explicit_model="claude-sonnet-4-6")
+        self.assertIn("claude-sonnet-4-6", str(ctx.exception))
+        self.assertIn("claude-sonnet-4.6", str(ctx.exception))
+
     def test_alias_llm_config_reads_transport_settings(self):
         config = {
             "runner_aliases": {

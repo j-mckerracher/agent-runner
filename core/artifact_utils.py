@@ -40,6 +40,25 @@ def _normalize_batch(batch: dict[str, Any]) -> dict[str, Any]:
     return batch
 
 
+def _extract_json_block(raw: str) -> str | None:
+    """Try to extract a JSON object from markdown fences or surrounding text."""
+    # Strip markdown code fences
+    m = re.search(r"```(?:json)?\s*\n(.*?)```", raw, re.DOTALL)
+    if m:
+        candidate = m.group(1).strip()
+        # Remove stray chars (like >) between quoted values and structural tokens
+        candidate = re.sub(r'(?<=")\s*>[^"\n{}\[\],]*(?=\s*[},\]])', '', candidate)
+        return candidate
+    # Find first { … last }
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start != -1 and end > start:
+        candidate = raw[start : end + 1]
+        candidate = re.sub(r'(?<=")\s*>[^"\n{}\[\],]*(?=\s*[},\]])', '', candidate)
+        return candidate
+    return None
+
+
 def parse_assignments_text(raw: str) -> dict[str, Any]:
     """Parse assignments content that may be strict JSON or legacy YAML.
 
@@ -47,10 +66,28 @@ def parse_assignments_text(raw: str) -> dict[str, Any]:
     ``batch_id`` keys on each batch dict, regardless of whether the input
     uses the legacy ``execution_schedule`` / ``batch`` shape.
     """
+    # Try strict JSON first
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        data = yaml.safe_load(raw)
+        # Try extracting a JSON block from surrounding prose/fences
+        extracted = _extract_json_block(raw)
+        if extracted:
+            try:
+                data = json.loads(extracted)
+            except json.JSONDecodeError:
+                data = None
+        else:
+            data = None
+
+        # Fall back to YAML only if JSON extraction failed
+        if data is None:
+            try:
+                data = yaml.safe_load(raw)
+            except yaml.YAMLError as exc:
+                raise ValueError(
+                    f"assignments artifact is neither valid JSON nor valid YAML: {exc}"
+                ) from exc
     if not isinstance(data, dict):
         raise ValueError("assignments artifact must parse to a mapping")
 
@@ -73,7 +110,53 @@ def parse_assignments_text(raw: str) -> dict[str, Any]:
 
 
 def load_assignments_file(path: Path) -> dict[str, Any]:
-    return parse_assignments_text(path.read_text(encoding="utf-8"))
+    """Load and parse assignments, sanitizing malformed content in place first."""
+    raw = path.read_text(encoding="utf-8")
+    try:
+        return parse_assignments_text(raw)
+    except (ValueError, yaml.YAMLError):
+        # Attempt in-place sanitization before giving up
+        sanitized = _sanitize_json_content(raw)
+        if sanitized and sanitized != raw:
+            logger.warning("load_assignments_file: sanitized malformed content in %s", path)
+            path.write_text(sanitized, encoding="utf-8")
+            return parse_assignments_text(sanitized)
+        raise
+
+
+def _sanitize_json_content(raw: str) -> str | None:
+    """Try to extract and re-serialize valid JSON from potentially malformed content."""
+    # Strip markdown fences
+    stripped = raw
+    m = re.search(r"```(?:json|yaml|yml)?\s*\n(.*?)```", raw, re.DOTALL)
+    if m:
+        stripped = m.group(1).strip()
+
+    # Remove stray characters between quoted values and structural JSON chars
+    # e.g. "value"> }  →  "value" }
+    cleaned = re.sub(r'(?<=")\s*>[^"\n{}\[\],]*(?=\s*[},\]])', '', stripped)
+
+    # Try trailing comma fix
+    for candidate in [cleaned, stripped]:
+        fixed = re.sub(r",\s*([}\]])", r"\1", candidate)
+        try:
+            data = json.loads(fixed)
+            return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+        except json.JSONDecodeError:
+            pass
+
+    # Extract outermost braces
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start != -1 and end > start:
+        candidate = re.sub(r",\s*([}\]])", r"\1", cleaned[start : end + 1])
+        try:
+            data = json.loads(candidate)
+            return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+        except json.JSONDecodeError:
+            pass
+
+    return None
 
 
 def normalize_assignments_file(path: Path) -> bool:
