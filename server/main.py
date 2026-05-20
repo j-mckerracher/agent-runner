@@ -92,8 +92,21 @@ def main(argv: list[str] | None = None) -> None:
     logger.info("Starting uvicorn on %s:%s (reload=%s)", args.host, args.port, args.reload)
     url = f"http://{args.host}:{args.port}"
 
+    def _is_url_already_open(target_url: str) -> bool:
+        """Return True if the target URL is already open in a browser window."""
+        import urllib.request
+        import urllib.error
+        try:
+            with urllib.request.urlopen(target_url, timeout=1) as resp:  # noqa: S310
+                return resp.status == 200
+        except Exception:
+            return False
+
     def _open_browser() -> None:
         time.sleep(1.5)
+        if _is_url_already_open(url):
+            logger.info("Browser already open at %s — skipping auto-open", url)
+            return
         webbrowser.open(url)
         logger.info("Opened browser at %s", url)
 
