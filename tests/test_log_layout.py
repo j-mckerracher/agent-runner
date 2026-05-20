@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import run
+import yaml
 from server.paths import RUNNER_ROOT, events_path_for
 from server.runner_proc import prepare_job_paths
 
@@ -122,7 +123,71 @@ class LogLayoutTests(unittest.TestCase):
             discovered_legacy = module.discover_agent_logs(str(legacy_dir))
             self.assertIn("qa", discovered_legacy)
 
+    def test_medium__workflow_status_writes_self_contained_run_metrics_from_events(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_root = Path(tmpdir)
+            agent_context_root = tmp_root / "agent-context"
+            logs_root = tmp_root / "logs"
+            (agent_context_root / "TEST-METRICS-001" / "summary").mkdir(parents=True)
+            event_log = logs_root / "TEST-METRICS-001" / "events.jsonl"
+            event_log.parent.mkdir(parents=True)
+            event_log.write_text(
+                "\n".join(
+                    [
+                        '{"ts":"2026-05-20T16:00:00.000000Z","type":"stage.start","stage":"execution"}',
+                        '{"ts":"2026-05-20T16:00:01.000000Z","type":"uow.start","uow_id":"UOW-001"}',
+                        '{"ts":"2026-05-20T16:00:02.000000Z","type":"opik.start","name":"uow-iteration-1","metadata":{"uow_id":"UOW-001"}}',
+                        '{"ts":"2026-05-20T16:00:03.000000Z","type":"cli.exit","agent":"software-engineer-hyperagent","duration_ms":2500,"exit_code":0}',
+                        '{"ts":"2026-05-20T16:00:03.100000Z","type":"llm.call","agent":"software-engineer-hyperagent","runner":"claude","model":"claude-sonnet","status":"ok","duration_ms":2500,"attempt":1,"max_attempts":1,"prompt_est_tokens":100,"response_est_tokens":25,"tokens_in":90,"tokens_out":20,"cost_usd":0.02,"prompt_sha256":"abc","response_sha256":"def","response_parse_ok":true}',
+                        '{"ts":"2026-05-20T16:00:04.000000Z","type":"metrics","tokens_in":10,"tokens_out":5,"cost_usd":0.01}',
+                        '{"ts":"2026-05-20T16:00:05.000000Z","type":"uow.end","uow_id":"UOW-001","status":"ok"}',
+                        '{"ts":"2026-05-20T16:00:06.000000Z","type":"stage.end","stage":"execution","status":"ok"}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            with patch.object(run, "AGENT_CONTEXT_ROOT", agent_context_root), patch.object(run, "LOGS_ROOT", logs_root):
+                run._write_workflow_status(
+                    change_id="TEST-METRICS-001",
+                    status="succeeded",
+                    runner="claude",
+                    model="claude-sonnet",
+                    repo="/tmp/repo",
+                    exit_code=0,
+                    last_completed_stage="qa",
+                )
+
+            status = yaml.safe_load(
+                (agent_context_root / "TEST-METRICS-001" / "summary" / "workflow_status.yaml").read_text(
+                    encoding="utf-8"
+                )
+            )
+            metrics = yaml.safe_load(
+                (agent_context_root / "TEST-METRICS-001" / "summary" / "run_metrics.yaml").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+            self.assertEqual(status["observability"]["event_log_artifact"], "summary/events.jsonl")
+            self.assertTrue((agent_context_root / "TEST-METRICS-001" / "summary" / "events.jsonl").is_file())
+            self.assertEqual(metrics["metrics"]["stage_durations_seconds"]["execution"], 6.0)
+            self.assertEqual(metrics["metrics"]["uow_iterations"]["UOW-001"], 1)
+            self.assertEqual(metrics["metrics"]["totals"]["source"], "llm.call")
+            self.assertEqual(metrics["metrics"]["totals"]["cost_usd"], 0.02)
+            self.assertEqual(metrics["metrics"]["legacy_metric_totals"]["cost_usd"], 0.01)
+            self.assertEqual(metrics["metrics"]["totals"]["llm_calls"], 1)
+            self.assertEqual(metrics["metrics"]["llm_latency"]["overall"]["p95_ms"], 2500.0)
+            self.assertEqual(
+                metrics["metrics"]["llm_calls_by_agent"]["software-engineer-hyperagent"]["tokens_in"],
+                90,
+            )
+            self.assertEqual(
+                metrics["metrics"]["answerability_matrix"]["retry_rate_error_categories_and_recovery"]["status"],
+                "direct",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
-

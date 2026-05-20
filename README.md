@@ -348,15 +348,27 @@ agent-context/<change-id>/
 │   └── assignments.json
 ├── execution/
 │   └── <uow-id>/
-│       └── impl_report.yaml
+│       ├── impl_report.yaml
+│       ├── impl_report_validation.yaml
+│       └── attempts/
+│           └── attempt-001/
+│               └── impl_report.yaml
 ├── qa/
-│   └── qa_report.yaml
+│   ├── qa_report.yaml
+│   └── evidence/
+│       ├── logs/
+│       ├── screenshots/
+│       └── test_output/
 └── summary/
     ├── lessons_optimizer_report.yaml
-    └── workflow_status.yaml
+    ├── workflow_status.yaml
+    ├── run_metrics.yaml
+    └── events.jsonl              # copy of logs/<change-id>/events.jsonl when present
 
 logs/<change-id>/
-└── events.jsonl
+├── events.jsonl
+└── <agent>/
+    └── *_session.json            # server-driven CLI invocation summaries
 ```
 
 ## Workflow stages
@@ -368,7 +380,13 @@ logs/<change-id>/
 5. **QA** — validates the implementation and writes `qa/qa_report.yaml`
 6. **Lessons** — writes `summary/lessons_optimizer_report.yaml`
 
-When runs are launched through the local API, the server also records structured events in `logs/<change-id>/events.jsonl` and streams them over SSE.
+When runs are launched through the local API, the server also records structured events in `logs/<change-id>/events.jsonl`, streams them over SSE, writes per-agent CLI session summaries under `logs/<change-id>/<agent>/`, and copies event-derived metrics into `summary/run_metrics.yaml`.
+
+### Optimization telemetry
+
+Server-driven runs emit one `llm.call` event per observable LLM call or retry attempt. `summary/run_metrics.yaml` rolls these events up into latency percentiles, per-agent/model token and cost totals, retry/error counts, prompt hash repetition, cache-prefix estimates, loop-depth/tool-call counts, and an `answerability_matrix` that maps common harness-optimization questions to concrete captured fields.
+
+Per-agent `*_session.json` files include local prompt/response text plus hashes, sizes, estimated tokens, duration, model, attempt, and exit status. Hosted CLI runners expose wall-clock CLI duration only; provider-internal network/tokenization/post-processing splits and keep-alive state are recorded as explicit instrumentation limits in the answerability matrix rather than inferred.
 
 ## Testing
 

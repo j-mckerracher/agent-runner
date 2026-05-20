@@ -7,6 +7,7 @@ Difficulty rubric for this file:
   hard   = (none in this file)
 """
 
+import json
 import subprocess
 import tempfile
 import unittest
@@ -82,6 +83,55 @@ class CopilotEmbeddedAgentFallbackTests(unittest.TestCase):
         self.assertEqual(result, "ok")
         cmd = run_cli.call_args.args[0]
         self.assertTrue(all(not arg.startswith("--agent=") for arg in cmd))
+
+
+class CliSessionLogTests(unittest.TestCase):
+    def test_easy__run_cli_writes_per_agent_session_log_when_change_id_is_set(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logs_root = Path(tmpdir) / "logs"
+            result = subprocess.CompletedProcess(
+                args=["agent-cli"],
+                returncode=0,
+                stdout="completed successfully",
+                stderr="",
+            )
+            with (
+                patch.object(run_cmds, "_RUNNER_LOGS_ROOT", logs_root),
+                patch.dict(
+                    run_cmds.os.environ,
+                    {
+                        "AGENT_RUNNER_EVENT_LOG": "/tmp/events.jsonl",
+                        "AGENT_RUNNER_CHANGE_ID": "CHANGE-1",
+                        "AGENT_RUNNER_CURRENT_STAGE": "execution",
+                    },
+                    clear=False,
+                ),
+            ):
+                run_cmds._write_cli_session_log(
+                    runner="claude",
+                    agent="software-engineer-hyperagent",
+                    cmd=["claude", "-p", "hidden prompt"],
+                    result=result,
+                    duration_ms=1234,
+                    model="claude-sonnet",
+                    prompt_text="hidden prompt",
+                    attempt=1,
+                    max_attempts=1,
+                )
+
+            log_files = list((logs_root / "CHANGE-1" / "software-engineer-hyperagent").glob("*_session.json"))
+            self.assertEqual(len(log_files), 1)
+            payload = json.loads(log_files[0].read_text(encoding="utf-8"))
+            self.assertEqual(payload["change_id"], "CHANGE-1")
+            self.assertEqual(payload["stage"], "execution")
+            self.assertEqual(payload["agent"], "software-engineer-hyperagent")
+            self.assertEqual(payload["model"], "claude-sonnet")
+            self.assertEqual(payload["attempt"], 1)
+            self.assertEqual(payload["cmd"], ["claude"])
+            self.assertEqual(payload["prompt_text"], "hidden prompt")
+            self.assertEqual(payload["stdout_tail"], "completed successfully")
+            self.assertEqual(payload["response_text"], "completed successfully")
+            self.assertEqual(payload["prompt_est_tokens"], 3)
 
 
 class OpenaiCompatRunnerTests(unittest.TestCase):

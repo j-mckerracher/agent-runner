@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 import os
 import shutil
@@ -172,6 +173,348 @@ def _workflow_status_path(change_id: str) -> Path:
     return AGENT_CONTEXT_ROOT / change_id / "summary" / WORKFLOW_STATUS_FILENAME
 
 
+def _parse_event_timestamp(value: str | None) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _read_event_rows(change_id: str) -> list[dict]:
+    path = LOGS_ROOT / change_id / "events.jsonl"
+    if not path.is_file():
+        return []
+    rows: list[dict] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError as exc:
+                logger.warning("_read_event_rows: skipped malformed event line in %s: %s", path, exc)
+                continue
+            if isinstance(row, dict):
+                rows.append(row)
+    return rows
+
+
+def _copy_event_log_to_summary(change_id: str) -> str | None:
+    source = LOGS_ROOT / change_id / "events.jsonl"
+    if not source.is_file():
+        return None
+    destination = AGENT_CONTEXT_ROOT / change_id / "summary" / "events.jsonl"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    return "summary/events.jsonl"
+
+
+def _percentile(values: list[float], percentile: float) -> float | None:
+    if not values:
+        return None
+    sorted_values = sorted(values)
+    index = max(0, min(len(sorted_values) - 1, round((percentile / 100) * (len(sorted_values) - 1))))
+    return round(sorted_values[index], 3)
+
+
+def _latency_summary(values: list[float]) -> dict[str, float | int | None]:
+    if not values:
+        return {"count": 0, "mean_ms": None, "p50_ms": None, "p95_ms": None, "p99_ms": None, "max_ms": None}
+    return {
+        "count": len(values),
+        "mean_ms": round(sum(values) / len(values), 3),
+        "p50_ms": _percentile(values, 50),
+        "p95_ms": _percentile(values, 95),
+        "p99_ms": _percentile(values, 99),
+        "max_ms": round(max(values), 3),
+    }
+
+
+def _answerability_matrix() -> dict[str, dict[str, object]]:
+    direct = "direct"
+    proxy = "proxy"
+    limit = "instrumented_limit"
+    return {
+        "latency_wall_clock_distribution": {
+            "status": direct,
+            "data": ["llm_calls.latency_ms", "llm_calls.latency_summary", "stage_durations_seconds", "uow_durations_seconds"],
+        },
+        "latency_internal_breakdown_network_tokenization_prompt_postprocessing": {
+            "status": limit,
+            "data": ["llm_calls.duration_ms", "llm_calls.connection_reuse_observable"],
+            "limit": "External CLI runners expose wall-clock only; OpenAI-compatible API calls expose per-request wall-clock but not provider-side tokenization/network subspans.",
+        },
+        "sequential_vs_parallel_calls": {
+            "status": direct,
+            "data": ["events.jsonl stage/uow/opik timestamps", "uow_iterations", "cli_calls_by_agent"],
+        },
+        "prompt_rebuild_and_cache_static_prefix": {
+            "status": direct,
+            "data": ["llm_calls.prompt_sha256", "llm_calls.cache_static_prefix_chars", "llm_calls.cache_static_prefix_est_tokens"],
+        },
+        "connection_keep_alive": {
+            "status": limit,
+            "data": ["llm_calls.connection_reuse_observable"],
+            "limit": "Only local OpenAI-compatible HTTP calls are observable; hosted CLI connection reuse is hidden behind the provider CLI.",
+        },
+        "token_budget_and_context_utilization": {
+            "status": direct,
+            "data": ["llm_calls.tokens_in", "llm_calls.tokens_out", "llm_calls.prompt_est_tokens", "llm_calls.response_est_tokens"],
+        },
+        "repeated_prompt_parts_cached_pricing_eligibility": {
+            "status": proxy,
+            "data": ["llm_calls.prompt_sha256", "llm_calls.cache_static_prefix_est_tokens", "prompt_repetition"],
+            "limit": "Provider cached-token billing is not exposed by every CLI; repeated prefixes and estimated cached-token eligibility are captured.",
+        },
+        "model_fit_by_subtask": {
+            "status": direct,
+            "data": ["llm_calls.agent", "llm_calls.model", "llm_calls.tokens_in", "llm_calls.cost_usd", "llm_calls.status"],
+        },
+        "max_tokens_and_temperature": {
+            "status": proxy,
+            "data": ["llm_calls.max_tokens", "llm_calls.temperature"],
+            "limit": "Captured when configured for OpenAI-compatible transports; external CLIs may not expose defaults.",
+        },
+        "conversation_history_growth_and_pruning": {
+            "status": proxy,
+            "data": ["llm_calls.prompt_chars", "llm_calls.prompt_est_tokens", "llm_calls.prompt_sha256"],
+            "limit": "The harness captures final prompt payload size/hash; semantic pruning quality requires output review or eval scoring.",
+        },
+        "rag_chunking_ranking_truncation": {
+            "status": limit,
+            "data": ["llm_calls.prompt_text", "llm_calls.tool_call_count"],
+            "limit": "No dedicated RAG retriever telemetry exists unless a tool emits retrieval-specific artifacts.",
+        },
+        "prompt_response_logging": {
+            "status": direct,
+            "data": ["logs/<change-id>/<agent>/*_session.json prompt_text/response_text", "llm_calls prompt/response hashes"],
+        },
+        "quality_regression_tests": {
+            "status": direct,
+            "data": ["qa/qa_report.yaml", "qa/evidence", "eval artifacts when run_kind=evaluation"],
+        },
+        "output_quality_measurement": {
+            "status": direct,
+            "data": ["qa/qa_report.yaml", "eval_* artifacts", "evaluator pass/fail events"],
+        },
+        "retry_rate_error_categories_and_recovery": {
+            "status": direct,
+            "data": ["llm_calls.attempt", "llm_calls.max_attempts", "llm_calls.error_category", "llm_calls.retryable", "llm_calls.status"],
+        },
+        "parse_failure_rate": {
+            "status": direct,
+            "data": ["llm_calls.response_parse_ok", "llm_calls.error_category=malformed_response"],
+        },
+        "circuit_breakers_loop_depth": {
+            "status": direct,
+            "data": ["llm_calls.max_attempts", "llm_calls.tool_step_count", "uow_iterations"],
+        },
+        "cost_anomalies": {
+            "status": direct,
+            "data": ["llm_calls.cost_usd", "cost_by_agent", "cost_anomalies"],
+        },
+        "prompt_diff_output_distribution_changes": {
+            "status": proxy,
+            "data": ["llm_calls.prompt_sha256", "llm_calls.response_sha256", "eval run outputs"],
+            "limit": "Hashes identify changed prompts/responses; distribution comparison requires running the fixed eval set across revisions.",
+        },
+        "llm_vs_non_llm_steps": {
+            "status": direct,
+            "data": ["stage_durations_seconds", "cli_calls_by_agent", "llm_calls_by_agent"],
+        },
+        "shared_mutable_state_scalability": {
+            "status": limit,
+            "data": ["artifact paths", "logs paths", "workflow_status"],
+            "limit": "Runtime telemetry shows file locations and run IDs, but concurrency safety requires code/design review plus stress tests.",
+        },
+    }
+
+
+def _summarize_event_rows(rows: list[dict]) -> dict:
+    stage_starts: dict[str, datetime] = {}
+    stage_durations: dict[str, float] = {}
+    uow_starts: dict[str, datetime] = {}
+    uow_durations: dict[str, float] = {}
+    uow_iterations: dict[str, int] = {}
+    cli_calls_by_agent: dict[str, dict[str, float | int]] = {}
+    llm_calls: list[dict[str, object]] = []
+    llm_latencies_by_agent: dict[str, list[float]] = {}
+    llm_calls_by_agent: dict[str, dict[str, object]] = {}
+    llm_calls_by_model: dict[str, dict[str, object]] = {}
+    error_categories: dict[str, int] = {}
+    prompt_hash_counts: dict[str, int] = {}
+    legacy_metric_totals = {"tokens_in": 0, "tokens_out": 0, "cost_usd": 0.0}
+    totals = {
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "cost_usd": 0.0,
+        "cli_calls": 0,
+        "llm_calls": 0,
+        "metrics_events": 0,
+    }
+
+    for row in rows:
+        event_type = row.get("type")
+        event_ts = _parse_event_timestamp(row.get("ts"))
+        if event_type == "stage.start" and event_ts and row.get("stage"):
+            stage_starts[str(row["stage"])] = event_ts
+        elif event_type == "stage.end" and event_ts and row.get("stage") in stage_starts:
+            stage = str(row["stage"])
+            stage_durations[stage] = round((event_ts - stage_starts[stage]).total_seconds(), 3)
+        elif event_type == "uow.start" and event_ts and row.get("uow_id"):
+            uow_starts[str(row["uow_id"])] = event_ts
+        elif event_type == "uow.end" and event_ts and row.get("uow_id") in uow_starts:
+            uow_id = str(row["uow_id"])
+            uow_durations[uow_id] = round((event_ts - uow_starts[uow_id]).total_seconds(), 3)
+        elif event_type == "opik.start" and str(row.get("name", "")).startswith("uow-iteration-"):
+            metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+            uow_id = metadata.get("uow_id")
+            if uow_id:
+                uow_iterations[str(uow_id)] = uow_iterations.get(str(uow_id), 0) + 1
+        elif event_type == "cli.exit":
+            totals["cli_calls"] += 1
+            agent = str(row.get("agent") or "unknown")
+            summary = cli_calls_by_agent.setdefault(agent, {"count": 0, "duration_ms": 0})
+            summary["count"] = int(summary["count"]) + 1
+            summary["duration_ms"] = int(summary["duration_ms"]) + int(row.get("duration_ms") or 0)
+        elif event_type == "metrics":
+            totals["metrics_events"] += 1
+            legacy_metric_totals["tokens_in"] += int(row.get("tokens_in") or 0)
+            legacy_metric_totals["tokens_out"] += int(row.get("tokens_out") or 0)
+            legacy_metric_totals["cost_usd"] = round(
+                float(legacy_metric_totals["cost_usd"]) + float(row.get("cost_usd") or 0.0),
+                6,
+            )
+        elif event_type == "llm.call":
+            totals["llm_calls"] += 1
+            agent = str(row.get("agent") or "unknown")
+            model = str(row.get("model") or "unknown")
+            duration_ms = row.get("duration_ms")
+            if isinstance(duration_ms, (int, float)):
+                llm_latencies_by_agent.setdefault(agent, []).append(float(duration_ms))
+            for key, bucket_name in ((agent, "agent"), (model, "model")):
+                bucket = llm_calls_by_agent if bucket_name == "agent" else llm_calls_by_model
+                summary = bucket.setdefault(
+                    key,
+                    {"count": 0, "tokens_in": 0, "tokens_out": 0, "cost_usd": 0.0, "errors": 0, "retries": 0},
+                )
+                summary["count"] = int(summary["count"]) + 1
+                summary["tokens_in"] = int(summary["tokens_in"]) + int(row.get("tokens_in") or row.get("prompt_est_tokens") or 0)
+                summary["tokens_out"] = int(summary["tokens_out"]) + int(row.get("tokens_out") or row.get("response_est_tokens") or 0)
+                summary["cost_usd"] = round(float(summary["cost_usd"]) + float(row.get("cost_usd") or 0.0), 6)
+                if row.get("status") not in (None, "ok", "tool_call"):
+                    summary["errors"] = int(summary["errors"]) + 1
+                if int(row.get("attempt") or 1) > 1 or row.get("retryable"):
+                    summary["retries"] = int(summary["retries"]) + 1
+            category = row.get("error_category")
+            if category:
+                error_categories[str(category)] = error_categories.get(str(category), 0) + 1
+            prompt_hash = row.get("prompt_sha256")
+            if isinstance(prompt_hash, str) and prompt_hash:
+                prompt_hash_counts[prompt_hash] = prompt_hash_counts.get(prompt_hash, 0) + 1
+            llm_calls.append(
+                {
+                    key: row.get(key)
+                    for key in (
+                        "runner",
+                        "agent",
+                        "model",
+                        "status",
+                        "duration_ms",
+                        "attempt",
+                        "max_attempts",
+                        "prompt_chars",
+                        "response_chars",
+                        "prompt_est_tokens",
+                        "response_est_tokens",
+                        "tokens_in",
+                        "tokens_out",
+                        "cost_usd",
+                        "error_category",
+                        "retryable",
+                        "response_parse_ok",
+                        "tool_call_count",
+                        "tool_step_count",
+                        "cache_static_prefix_est_tokens",
+                        "connection_reuse_observable",
+                        "max_tokens",
+                        "temperature",
+                        "prompt_sha256",
+                        "response_sha256",
+                    )
+                    if key in row
+                }
+            )
+
+    latency_by_agent = {agent: _latency_summary(values) for agent, values in llm_latencies_by_agent.items()}
+    cost_values = [float(call.get("cost_usd") or 0.0) for call in llm_calls]
+    cost_threshold = (sum(cost_values) / len(cost_values) * 3) if cost_values else 0.0
+    repeated_prompts = {key: count for key, count in prompt_hash_counts.items() if count > 1}
+    if llm_calls:
+        totals["tokens_in"] = sum(int(call.get("tokens_in") or call.get("prompt_est_tokens") or 0) for call in llm_calls)
+        totals["tokens_out"] = sum(int(call.get("tokens_out") or call.get("response_est_tokens") or 0) for call in llm_calls)
+        totals["cost_usd"] = round(sum(float(call.get("cost_usd") or 0.0) for call in llm_calls), 6)
+        totals["source"] = "llm.call"
+    else:
+        totals["tokens_in"] = legacy_metric_totals["tokens_in"]
+        totals["tokens_out"] = legacy_metric_totals["tokens_out"]
+        totals["cost_usd"] = legacy_metric_totals["cost_usd"]
+        totals["source"] = "metrics"
+    return {
+        "stage_durations_seconds": stage_durations,
+        "uow_durations_seconds": uow_durations,
+        "uow_iterations": uow_iterations,
+        "cli_calls_by_agent": cli_calls_by_agent,
+        "llm_calls": llm_calls,
+        "llm_latency": {
+            "overall": _latency_summary([float(call["duration_ms"]) for call in llm_calls if isinstance(call.get("duration_ms"), (int, float))]),
+            "by_agent": latency_by_agent,
+        },
+        "llm_calls_by_agent": llm_calls_by_agent,
+        "llm_calls_by_model": llm_calls_by_model,
+        "error_categories": error_categories,
+        "legacy_metric_totals": legacy_metric_totals,
+        "prompt_repetition": {
+            "repeated_prompt_hashes": repeated_prompts,
+            "repeated_prompt_count": sum(count - 1 for count in repeated_prompts.values()),
+        },
+        "cost_anomalies": [
+            call
+            for call in llm_calls
+            if cost_threshold > 0 and float(call.get("cost_usd") or 0.0) > cost_threshold
+        ],
+        "totals": totals,
+        "answerability_matrix": _answerability_matrix(),
+    }
+
+
+def _write_run_metrics(change_id: str) -> dict | None:
+    run_dir = AGENT_CONTEXT_ROOT / change_id
+    if not run_dir.is_dir():
+        return None
+    event_log_artifact = _copy_event_log_to_summary(change_id)
+    rows = _read_event_rows(change_id)
+    payload = {
+        "change_id": change_id,
+        "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "source_event_log": str(LOGS_ROOT / change_id / "events.jsonl"),
+        "event_log_artifact": event_log_artifact,
+        "events_observed": len(rows),
+        "metrics": _summarize_event_rows(rows),
+    }
+    path = run_dir / "summary" / "run_metrics.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    return {
+        "path": "summary/run_metrics.yaml",
+        "event_log_artifact": event_log_artifact,
+        "events_observed": len(rows),
+        "totals": payload["metrics"]["totals"],
+    }
+
+
 def _write_workflow_status(
     *,
     change_id: str,
@@ -198,6 +541,9 @@ def _write_workflow_status(
         "exit_code": exit_code,
         "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
     }
+    run_metrics = _write_run_metrics(change_id)
+    if run_metrics is not None:
+        payload["observability"] = run_metrics
     if failed_stage:
         payload["failed_stage"] = failed_stage
     if last_completed_stage:
@@ -688,6 +1034,9 @@ def main(
             # ── Stage 5: QA Validation (eval-optimizer loop) ─────────────────
             with _Stage("qa"):
                 failed_stage = "qa"
+                qa_evidence_root = AGENT_CONTEXT_ROOT / resolved_change_id / "qa" / "evidence"
+                for evidence_dir in ("test_output", "logs", "screenshots"):
+                    (qa_evidence_root / evidence_dir).mkdir(parents=True, exist_ok=True)
                 qa_producer_input = (
                     f"Perform QA validation for change {resolved_change_id}.\n"
                     f"Read story ACs from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/intake/story.yaml.\n"
@@ -696,6 +1045,8 @@ def main(
                     f"Read all implementation reports from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/execution/*/impl_report.yaml.\n"
                     f"Target repo: {resolved_repo}\n"
                     f"Write your report to {AGENT_CONTEXT_ROOT}/{resolved_change_id}/qa/qa_report.yaml.\n"
+                    f"When you run tests, lint, build, or manual verification commands, save raw command output under "
+                    f"{qa_evidence_root}/test_output/ or {qa_evidence_root}/logs/ and reference those files from qa_report.yaml.\n"
                     f"Act autonomously where the available artifacts and repository evidence are sufficient. "
                     f"If a blocking ambiguity, approval decision, or human-only product decision prevents safe progress, "
                     f"use the user escalation protocol and continue after the response."

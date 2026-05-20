@@ -1,4 +1,5 @@
 import json
+import hashlib
 import logging
 import os
 import re
@@ -9,6 +10,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .agent_prompts import load_agent_system_prompt
@@ -56,6 +58,7 @@ _OPENAI_COMPAT_MAX_TOOL_STEPS = 40
 _OPENAI_COMPAT_TOOL_RESULT_LIMIT = 12000
 _OPENAI_COMPAT_RUNNER_ROOT = Path(__file__).resolve().parent.parent
 _OPENAI_COMPAT_AGENT_CONTEXT_ROOT = _OPENAI_COMPAT_RUNNER_ROOT / "agent-context"
+_RUNNER_LOGS_ROOT = _OPENAI_COMPAT_RUNNER_ROOT / "logs"
 _FORBIDDEN_WRITE_PATH_PARTS = frozenset({".git", "node_modules", "dist", "build"})
 _FORBIDDEN_WRITE_FILE_NAMES = frozenset({
     "package-lock.json",
@@ -102,6 +105,93 @@ def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+def _sha256_text(text: str | None) -> str | None:
+    if text is None:
+        return None
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _runner_duration_ms(result: subprocess.CompletedProcess) -> int | None:
+    value = getattr(result, "_agent_runner_duration_ms", None)
+    return value if isinstance(value, int) else None
+
+
+def _classify_error(text: str, *, runner: str | None = None) -> str | None:
+    normalized = (text or "").lower()
+    if not normalized:
+        return None
+    if any(marker in normalized for marker in ("429", "rate limit", "too many requests")):
+        return "rate_limit"
+    if any(marker in normalized for marker in ("timeout", "timed out")):
+        return "timeout"
+    if any(marker in normalized for marker in ("json", "parse", "malformed")):
+        return "malformed_response"
+    if is_transient_runner_failure_text(normalized, runner=runner):
+        return "transient"
+    return "non_transient"
+
+
+def _emit_llm_call_event(
+    *,
+    runner: str,
+    agent: str,
+    model: str | None,
+    status: str,
+    duration_ms: int | None,
+    prompt_text: str,
+    response_text: str | None = None,
+    prompt_tokens: int | None = None,
+    completion_tokens: int | None = None,
+    cost_usd: float | None = None,
+    attempt: int = 1,
+    max_attempts: int = 1,
+    exit_code: int | None = None,
+    error_category: str | None = None,
+    retryable: bool = False,
+    system_prompt_chars: int | None = None,
+    tool_call_count: int | None = None,
+    tool_step_count: int | None = None,
+    response_parse_ok: bool | None = None,
+    cache_static_prefix_chars: int | None = None,
+    cache_static_prefix_est_tokens: int | None = None,
+    connection_reuse_observable: bool = False,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+) -> None:
+    response = response_text or ""
+    fields = {
+        "runner": runner,
+        "agent": agent,
+        "model": model,
+        "status": status,
+        "duration_ms": duration_ms,
+        "attempt": attempt,
+        "max_attempts": max_attempts,
+        "exit_code": exit_code,
+        "error_category": error_category,
+        "retryable": retryable,
+        "prompt_chars": len(prompt_text),
+        "response_chars": len(response),
+        "prompt_sha256": _sha256_text(prompt_text),
+        "response_sha256": _sha256_text(response),
+        "prompt_est_tokens": _estimate_tokens(prompt_text),
+        "response_est_tokens": _estimate_tokens(response),
+        "tokens_in": prompt_tokens,
+        "tokens_out": completion_tokens,
+        "cost_usd": cost_usd,
+        "system_prompt_chars": system_prompt_chars,
+        "tool_call_count": tool_call_count,
+        "tool_step_count": tool_step_count,
+        "response_parse_ok": response_parse_ok,
+        "cache_static_prefix_chars": cache_static_prefix_chars,
+        "cache_static_prefix_est_tokens": cache_static_prefix_est_tokens,
+        "connection_reuse_observable": connection_reuse_observable,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    _emit_event("llm.call", **{key: value for key, value in fields.items() if value is not None})
+
+
 def _record_cassette(**fields) -> None:
     if not os.environ.get("AGENT_RUNNER_CASSETTE"):
         return
@@ -110,6 +200,62 @@ def _record_cassette(**fields) -> None:
         record(**fields)
     except Exception:
         pass
+
+
+def _safe_log_name(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_") or "agent"
+
+
+def _write_cli_session_log(
+    *,
+    runner: str,
+    agent: str,
+    cmd: list[str],
+    result: subprocess.CompletedProcess,
+    duration_ms: int,
+    model: str | None = None,
+    prompt_text: str | None = None,
+    attempt: int | None = None,
+    max_attempts: int | None = None,
+) -> None:
+    if not os.environ.get("AGENT_RUNNER_EVENT_LOG"):
+        return
+    change_id = os.environ.get("AGENT_RUNNER_CHANGE_ID")
+    if not change_id:
+        return
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    log_dir = _RUNNER_LOGS_ROOT / change_id / _safe_log_name(agent)
+    payload = {
+        "log_type": "cli_session",
+        "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "change_id": change_id,
+        "stage": os.environ.get("AGENT_RUNNER_CURRENT_STAGE"),
+        "runner": runner,
+        "agent": agent,
+        "model": model,
+        "attempt": attempt,
+        "max_attempts": max_attempts,
+        "cmd": list(cmd[:1]),
+        "argc": max(0, len(cmd) - 1),
+        "exit_code": result.returncode,
+        "duration_ms": duration_ms,
+        "prompt_chars": len(prompt_text or ""),
+        "response_chars": len(result.stdout or ""),
+        "prompt_est_tokens": _estimate_tokens(prompt_text or ""),
+        "response_est_tokens": _estimate_tokens(result.stdout or ""),
+        "prompt_sha256": _sha256_text(prompt_text),
+        "response_sha256": _sha256_text(result.stdout or ""),
+        "prompt_text": prompt_text,
+        "response_text": result.stdout or "",
+        "stdout_tail": _truncate_output(result.stdout, limit=12000),
+        "stderr_tail": _truncate_output(result.stderr, limit=12000),
+    }
+    path = log_dir / f"{timestamp}_session.json"
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except OSError as exc:
+        logger.warning("_write_cli_session_log: could not write %s: %s", path, exc)
 
 
 def _load_runtime_config() -> dict:
@@ -258,7 +404,7 @@ def _openai_compat_request(path: str, payload: dict, *, transport: dict) -> dict
     raise RuntimeError(f"OpenAI-compatible API {path} exhausted retries")
 
 
-def _emit_openai_compat_metrics(response: dict, *, model: str) -> None:
+def _openai_compat_usage(response: dict) -> tuple[int, int]:
     usage = response.get("usage") or {}
     prompt_tokens = int(
         usage.get("prompt_tokens")
@@ -272,6 +418,11 @@ def _emit_openai_compat_metrics(response: dict, *, model: str) -> None:
         or response.get("eval_count")
         or 0
     )
+    return prompt_tokens, completion_tokens
+
+
+def _emit_openai_compat_metrics(response: dict, *, model: str) -> tuple[int, int]:
+    prompt_tokens, completion_tokens = _openai_compat_usage(response)
     if prompt_tokens or completion_tokens:
         _emit_event("metrics", tokens_in=prompt_tokens, tokens_out=completion_tokens, cost_usd=0.0)
         logger.debug(
@@ -280,6 +431,7 @@ def _emit_openai_compat_metrics(response: dict, *, model: str) -> None:
             prompt_tokens,
             completion_tokens,
         )
+    return prompt_tokens, completion_tokens
 
 
 def _openai_compat_chat(
@@ -349,20 +501,60 @@ def run_openai_compat_text(
     logger.info("run_openai_compat_text: base_url=%s", base_url)
     logger.debug("run_openai_compat_text: system_prompt first 300 chars: %s", system_prompt[:300])
     logger.debug("run_openai_compat_text: user prompt first 300 chars: %s", prompt[:300])
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": prompt},
+    ]
+    request_messages_text = json.dumps(messages, ensure_ascii=False, default=str)
+    started = time.monotonic()
     try:
         response = _openai_compat_chat(
             model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ],
+            messages=messages,
             transport=transport,
         )
     except Exception as exc:
         logger.error("run_openai_compat_text: _openai_compat_chat FAILED: %s: %s", type(exc).__name__, exc)
+        _emit_llm_call_event(
+            runner=runner,
+            agent="openai-compat-text",
+            model=model,
+            status="error",
+            duration_ms=int((time.monotonic() - started) * 1000),
+            prompt_text=request_messages_text,
+            response_text=f"{type(exc).__name__}: {exc}",
+            error_category=_classify_error(str(exc), runner=runner),
+            retryable=False,
+            system_prompt_chars=len(system_prompt),
+            cache_static_prefix_chars=len(system_prompt),
+            cache_static_prefix_est_tokens=_estimate_tokens(system_prompt),
+            connection_reuse_observable=True,
+            max_tokens=transport.get("max_tokens") if isinstance(transport.get("max_tokens"), int) else None,
+            temperature=transport.get("temperature") if isinstance(transport.get("temperature"), (int, float)) else None,
+        )
         raise
     message = response.get("message") or {}
     text = str(message.get("content") or "")
+    prompt_tokens, completion_tokens = _openai_compat_usage(response)
+    _emit_llm_call_event(
+        runner=runner,
+        agent="openai-compat-text",
+        model=model,
+        status="ok",
+        duration_ms=int((time.monotonic() - started) * 1000),
+        prompt_text=request_messages_text,
+        response_text=json.dumps(response, ensure_ascii=False, default=str),
+        prompt_tokens=prompt_tokens or _estimate_tokens(request_messages_text),
+        completion_tokens=completion_tokens or _estimate_tokens(text),
+        cost_usd=0.0,
+        system_prompt_chars=len(system_prompt),
+        response_parse_ok=True,
+        cache_static_prefix_chars=len(system_prompt),
+        cache_static_prefix_est_tokens=_estimate_tokens(system_prompt),
+        connection_reuse_observable=True,
+        max_tokens=transport.get("max_tokens") if isinstance(transport.get("max_tokens"), int) else None,
+        temperature=transport.get("temperature") if isinstance(transport.get("temperature"), (int, float)) else None,
+    )
     logger.info("run_openai_compat_text: response content_len=%d", len(text))
     logger.debug("run_openai_compat_text: response content: %s", text[:500])
     return text
@@ -677,11 +869,15 @@ def _run_cli(
     agent: str,
     env: dict | None = None,
     stream_output: bool = False,
+    model: str | None = None,
+    prompt_text: str | None = None,
+    attempt: int | None = None,
+    max_attempts: int | None = None,
 ) -> subprocess.CompletedProcess:
     """Wrapper around subprocess.run that emits structured events / cassette records.
 
-    Behavior is identical to subprocess.run when AGENT_RUNNER_EVENT_LOG and
-    AGENT_RUNNER_CASSETTE are unset.
+    Structured events, cassettes, and local per-agent session summaries remain
+    opt-in via server-driven environment flags.
     """
     logger.info("_run_cli: runner=%s agent=%s cmd=%s", runner, agent, cmd[0])
     logger.debug("_run_cli: full cmd=%s", cmd)
@@ -695,6 +891,7 @@ def _run_cli(
     start = time.monotonic()
     result = _run_cli_live(cmd, env=env) if stream_output else _run_cli_captured(cmd, env=env)
     duration_ms = int((time.monotonic() - start) * 1000)
+    setattr(result, "_agent_runner_duration_ms", duration_ms)
     logger.info(
         "_run_cli: runner=%s agent=%s exit_code=%d duration_ms=%d",
         runner, agent, result.returncode, duration_ms,
@@ -731,6 +928,17 @@ def _run_cli(
         duration_ms=duration_ms,
         stage=agent,
         extra={"runner": runner},
+    )
+    _write_cli_session_log(
+        runner=runner,
+        agent=agent,
+        cmd=cmd,
+        result=result,
+        duration_ms=duration_ms,
+        model=model,
+        prompt_text=prompt_text,
+        attempt=attempt,
+        max_attempts=max_attempts,
     )
     return result
 
@@ -993,9 +1201,17 @@ def run_claude_cmd(
         cmd.extend(extra_flags)
     result = _run_cli(cmd, runner="claude", agent=agent,
                       env=_without_claude_auth_env(),
-                      stream_output=stream_output)
+                      stream_output=stream_output,
+                      model=model,
+                      prompt_text=prompt,
+                      attempt=1,
+                      max_attempts=1)
     stdout_raw = result.stdout or ""
     text_out = stdout_raw
+    ti = _estimate_tokens(prompt)
+    to = _estimate_tokens(text_out)
+    cu = 0.0
+    parse_ok = False
     try:
         parsed = json.loads(stdout_raw)
         ti = int(parsed.get("total_input_tokens") or 0)
@@ -1009,6 +1225,7 @@ def run_claude_cmd(
         if ti > 0 or to > 0:
             _emit_event("metrics", tokens_in=ti, tokens_out=to, cost_usd=cu)
         text_out = str(parsed.get("result") or stdout_raw)
+        parse_ok = True
     except (json.JSONDecodeError, ValueError, TypeError):
         logger.warning("run_claude_cmd: could not parse JSON output for agent=%s", agent)
         ti = _estimate_tokens(prompt)
@@ -1023,7 +1240,42 @@ def run_claude_cmd(
         print(result.stderr)
     if result.returncode != 0:
         logger.error("run_claude_cmd: agent=%s exited %d", agent, result.returncode)
+        combined_error = (result.stdout or "") + (result.stderr or "")
+        _emit_llm_call_event(
+            runner="claude",
+            agent=agent,
+            model=model,
+            status="error",
+            duration_ms=_runner_duration_ms(result),
+            prompt_text=prompt,
+            response_text=text_out,
+            prompt_tokens=ti,
+            completion_tokens=to,
+            cost_usd=cu,
+            exit_code=result.returncode,
+            error_category=_classify_error(combined_error, runner="claude"),
+            retryable=False,
+            response_parse_ok=parse_ok,
+            cache_static_prefix_chars=0,
+            cache_static_prefix_est_tokens=0,
+        )
         raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
+    _emit_llm_call_event(
+        runner="claude",
+        agent=agent,
+        model=model,
+        status="ok",
+        duration_ms=_runner_duration_ms(result),
+        prompt_text=prompt,
+        response_text=text_out,
+        prompt_tokens=ti,
+        completion_tokens=to,
+        cost_usd=cu,
+        exit_code=result.returncode,
+        response_parse_ok=parse_ok,
+        cache_static_prefix_chars=0,
+        cache_static_prefix_est_tokens=0,
+    )
     logger.info("run_claude_cmd: agent=%s completed OK", agent)
     return text_out
 
@@ -1112,6 +1364,10 @@ def run_copilot_cmd(
             agent=agent,
             env=_without_claude_auth_env(),
             stream_output=stream_output,
+            model=model if cli_cmd == "copilot" else cli_cmd,
+            prompt_text=active_prompt,
+            attempt=attempt + 1,
+            max_attempts=_COPILOT_MAX_ATTEMPTS,
         )
         if attempt_result.stdout:
             logger.debug("run_copilot_cmd: stdout length=%d for agent=%s", len(attempt_result.stdout), agent)
@@ -1121,6 +1377,23 @@ def run_copilot_cmd(
             print(attempt_result.stderr)
         if attempt_result.returncode == 0:
             if use_custom_agent and _looks_like_copilot_refusal(attempt_result.stdout):
+                _emit_llm_call_event(
+                    runner=cli_cmd,
+                    agent=agent,
+                    model=model if cli_cmd == "copilot" else cli_cmd,
+                    status="refusal",
+                    duration_ms=_runner_duration_ms(attempt_result),
+                    prompt_text=active_prompt,
+                    response_text=attempt_result.stdout or "",
+                    attempt=attempt + 1,
+                    max_attempts=_COPILOT_MAX_ATTEMPTS,
+                    exit_code=attempt_result.returncode,
+                    error_category="refusal",
+                    retryable=True,
+                    response_parse_ok=None,
+                    cache_static_prefix_chars=0,
+                    cache_static_prefix_est_tokens=0,
+                )
                 logger.warning(
                     "run_copilot_cmd: custom agent=%s via %s returned a refusal; switching to embedded-agent fallback",
                     agent,
@@ -1141,10 +1414,44 @@ def run_copilot_cmd(
             to = _estimate_tokens(attempt_result.stdout or "")
             if ti > 0 or to > 0:
                 _emit_event("metrics", tokens_in=ti, tokens_out=to, cost_usd=0.0)
+            _emit_llm_call_event(
+                runner=cli_cmd,
+                agent=agent,
+                model=model if cli_cmd == "copilot" else cli_cmd,
+                status="ok",
+                duration_ms=_runner_duration_ms(attempt_result),
+                prompt_text=active_prompt,
+                response_text=attempt_result.stdout or "",
+                prompt_tokens=ti,
+                completion_tokens=to,
+                cost_usd=0.0,
+                attempt=attempt + 1,
+                max_attempts=_COPILOT_MAX_ATTEMPTS,
+                exit_code=attempt_result.returncode,
+                retryable=False,
+                cache_static_prefix_chars=0,
+                cache_static_prefix_est_tokens=0,
+            )
             return attempt_result.stdout
         combined = (attempt_result.stdout or "") + (attempt_result.stderr or "")
         is_transient = is_transient_runner_failure_text(combined, runner=cli_cmd)
         if is_transient and attempt < _COPILOT_MAX_ATTEMPTS - 1:
+            _emit_llm_call_event(
+                runner=cli_cmd,
+                agent=agent,
+                model=model if cli_cmd == "copilot" else cli_cmd,
+                status="error",
+                duration_ms=_runner_duration_ms(attempt_result),
+                prompt_text=active_prompt,
+                response_text=combined,
+                attempt=attempt + 1,
+                max_attempts=_COPILOT_MAX_ATTEMPTS,
+                exit_code=attempt_result.returncode,
+                error_category=_classify_error(combined, runner=cli_cmd),
+                retryable=True,
+                cache_static_prefix_chars=0,
+                cache_static_prefix_est_tokens=0,
+            )
             delay = 5 * (2 ** attempt)
             logger.warning(
                 "run_copilot_cmd: transient error on attempt %d/%d for agent=%s via %s; retrying in %ds",
@@ -1158,6 +1465,22 @@ def run_copilot_cmd(
             time.sleep(delay)
             continue
         logger.error("run_copilot_cmd: agent=%s exited %d after %d attempt(s)", agent, attempt_result.returncode, attempt + 1)
+        _emit_llm_call_event(
+            runner=cli_cmd,
+            agent=agent,
+            model=model if cli_cmd == "copilot" else cli_cmd,
+            status="error",
+            duration_ms=_runner_duration_ms(attempt_result),
+            prompt_text=active_prompt,
+            response_text=combined,
+            attempt=attempt + 1,
+            max_attempts=_COPILOT_MAX_ATTEMPTS,
+            exit_code=attempt_result.returncode,
+            error_category=_classify_error(combined, runner=cli_cmd),
+            retryable=False,
+            cache_static_prefix_chars=0,
+            cache_static_prefix_est_tokens=0,
+        )
         raise subprocess.CalledProcessError(
             attempt_result.returncode,
             attempt_result.args,
@@ -1204,6 +1527,10 @@ def run_gemini_cmd(
             agent=agent,
             env=_without_claude_auth_env(),
             stream_output=stream_output,
+            model=model,
+            prompt_text=combined_prompt,
+            attempt=_attempt + 1,
+            max_attempts=5,
         )
         if attempt_result.stdout:
             logger.debug("run_gemini_cmd: stdout length=%d for agent=%s", len(attempt_result.stdout), agent)
@@ -1217,6 +1544,23 @@ def run_gemini_cmd(
             to = _estimate_tokens(attempt_result.stdout or "")
             if ti > 0 or to > 0:
                 _emit_event("metrics", tokens_in=ti, tokens_out=to, cost_usd=0.0)
+            _emit_llm_call_event(
+                runner="gemini",
+                agent=agent,
+                model=model,
+                status="ok",
+                duration_ms=_runner_duration_ms(attempt_result),
+                prompt_text=combined_prompt,
+                response_text=attempt_result.stdout or "",
+                prompt_tokens=ti,
+                completion_tokens=to,
+                cost_usd=0.0,
+                attempt=_attempt + 1,
+                max_attempts=5,
+                exit_code=attempt_result.returncode,
+                cache_static_prefix_chars=0,
+                cache_static_prefix_est_tokens=0,
+            )
             return attempt_result.stdout
         combined = (attempt_result.stdout or "") + (attempt_result.stderr or "")
         is_transient = any(
@@ -1224,6 +1568,22 @@ def run_gemini_cmd(
             for marker in ("503", "UNAVAILABLE", "high demand", "rate limit", "429")
         )
         if is_transient and _attempt < 4:
+            _emit_llm_call_event(
+                runner="gemini",
+                agent=agent,
+                model=model,
+                status="error",
+                duration_ms=_runner_duration_ms(attempt_result),
+                prompt_text=combined_prompt,
+                response_text=combined,
+                attempt=_attempt + 1,
+                max_attempts=5,
+                exit_code=attempt_result.returncode,
+                error_category=_classify_error(combined, runner="gemini"),
+                retryable=True,
+                cache_static_prefix_chars=0,
+                cache_static_prefix_est_tokens=0,
+            )
             delay = 60 * (2 ** _attempt)
             logger.warning(
                 "run_gemini_cmd: transient error on attempt %d/5 for agent=%s; retrying in %ds",
@@ -1235,6 +1595,22 @@ def run_gemini_cmd(
             logger.error(
                 "run_gemini_cmd: agent=%s failed after %d attempt(s) exit_code=%d",
                 agent, _attempt + 1, attempt_result.returncode,
+            )
+            _emit_llm_call_event(
+                runner="gemini",
+                agent=agent,
+                model=model,
+                status="error",
+                duration_ms=_runner_duration_ms(attempt_result),
+                prompt_text=combined_prompt,
+                response_text=combined,
+                attempt=_attempt + 1,
+                max_attempts=5,
+                exit_code=attempt_result.returncode,
+                error_category=_classify_error(combined, runner="gemini"),
+                retryable=False,
+                cache_static_prefix_chars=0,
+                cache_static_prefix_est_tokens=0,
             )
             raise subprocess.CalledProcessError(
                 attempt_result.returncode,
@@ -1332,9 +1708,12 @@ def run_openai_compat_cmd(
 
     _emit_event("cli.invoke", runner=runner, agent=agent, cmd=["openai-compat-api"], argc=0)
     start = time.monotonic()
+    total_tool_calls = 0
     for step in range(_OPENAI_COMPAT_MAX_TOOL_STEPS):
         logger.info("run_openai_compat_cmd: TOOL STEP %d/%d agent=%s messages_count=%d",
                     step + 1, _OPENAI_COMPAT_MAX_TOOL_STEPS, agent, len(messages))
+        request_messages_text = json.dumps(messages, ensure_ascii=False, default=str)
+        api_started = time.monotonic()
         try:
             response = _openai_compat_chat(
                 model=model,
@@ -1345,6 +1724,27 @@ def run_openai_compat_cmd(
         except Exception as exc:
             logger.error("run_openai_compat_cmd: _openai_compat_chat FAILED at step %d: %s: %s", step + 1, type(exc).__name__, exc)
             print(f"[openai-compat] Chat API call failed at step {step + 1}: {type(exc).__name__}: {exc}")
+            _emit_llm_call_event(
+                runner=runner,
+                agent=agent,
+                model=model,
+                status="error",
+                duration_ms=int((time.monotonic() - api_started) * 1000),
+                prompt_text=request_messages_text,
+                response_text=f"{type(exc).__name__}: {exc}",
+                attempt=step + 1,
+                max_attempts=_OPENAI_COMPAT_MAX_TOOL_STEPS,
+                error_category=_classify_error(str(exc), runner=runner),
+                retryable=False,
+                system_prompt_chars=len(system_content),
+                tool_call_count=total_tool_calls,
+                tool_step_count=step,
+                cache_static_prefix_chars=len(system_content),
+                cache_static_prefix_est_tokens=_estimate_tokens(system_content),
+                connection_reuse_observable=True,
+                max_tokens=transport.get("max_tokens") if isinstance(transport.get("max_tokens"), int) else None,
+                temperature=transport.get("temperature") if isinstance(transport.get("temperature"), (int, float)) else None,
+            )
             raise
 
         logger.debug("run_openai_compat_cmd: response keys=%s", list(response.keys()) if response else "EMPTY")
@@ -1354,11 +1754,37 @@ def run_openai_compat_cmd(
         # Log message content
         msg_content = str(message.get("content") or "")
         tool_calls = message.get("tool_calls") or []
+        prompt_tokens, completion_tokens = _openai_compat_usage(response)
         logger.info("run_openai_compat_cmd: step %d — content_len=%d tool_calls=%d",
                     step + 1, len(msg_content), len(tool_calls))
         if msg_content:
             logger.debug("run_openai_compat_cmd: step %d message content: %s", step + 1, msg_content[:500])
         if tool_calls:
+            total_tool_calls += len(tool_calls)
+            _emit_llm_call_event(
+                runner=runner,
+                agent=agent,
+                model=model,
+                status="tool_call",
+                duration_ms=int((time.monotonic() - api_started) * 1000),
+                prompt_text=request_messages_text,
+                response_text=json.dumps(response, ensure_ascii=False, default=str),
+                prompt_tokens=prompt_tokens or _estimate_tokens(request_messages_text),
+                completion_tokens=completion_tokens or _estimate_tokens(json.dumps(response, default=str)),
+                cost_usd=0.0,
+                attempt=step + 1,
+                max_attempts=_OPENAI_COMPAT_MAX_TOOL_STEPS,
+                exit_code=0,
+                system_prompt_chars=len(system_content),
+                tool_call_count=total_tool_calls,
+                tool_step_count=step + 1,
+                response_parse_ok=True,
+                cache_static_prefix_chars=len(system_content),
+                cache_static_prefix_est_tokens=_estimate_tokens(system_content),
+                connection_reuse_observable=True,
+                max_tokens=transport.get("max_tokens") if isinstance(transport.get("max_tokens"), int) else None,
+                temperature=transport.get("temperature") if isinstance(transport.get("temperature"), (int, float)) else None,
+            )
             logger.info("run_openai_compat_cmd: agent=%s tool_step=%d tool_calls=%d", agent, step + 1, len(tool_calls))
             for tc_idx, tool_call in enumerate(tool_calls):
                 function = tool_call.get("function") or {}
@@ -1393,12 +1819,57 @@ def run_openai_compat_cmd(
         if content:
             if stream_output:
                 print(content)
+        _emit_llm_call_event(
+            runner=runner,
+            agent=agent,
+            model=model,
+            status="ok",
+            duration_ms=int((time.monotonic() - api_started) * 1000),
+            prompt_text=request_messages_text,
+            response_text=json.dumps(response, ensure_ascii=False, default=str),
+            prompt_tokens=prompt_tokens or _estimate_tokens(request_messages_text),
+            completion_tokens=completion_tokens or _estimate_tokens(content),
+            cost_usd=0.0,
+            attempt=step + 1,
+            max_attempts=_OPENAI_COMPAT_MAX_TOOL_STEPS,
+            exit_code=0,
+            system_prompt_chars=len(system_content),
+            tool_call_count=total_tool_calls,
+            tool_step_count=step + 1,
+            response_parse_ok=True,
+            cache_static_prefix_chars=len(system_content),
+            cache_static_prefix_est_tokens=_estimate_tokens(system_content),
+            connection_reuse_observable=True,
+            max_tokens=transport.get("max_tokens") if isinstance(transport.get("max_tokens"), int) else None,
+            temperature=transport.get("temperature") if isinstance(transport.get("temperature"), (int, float)) else None,
+        )
         _emit_event("cli.exit", runner=runner, agent=agent, exit_code=0, duration_ms=duration_ms)
         return content
 
     duration_ms = int((time.monotonic() - start) * 1000)
     logger.error("run_openai_compat_cmd: EXCEEDED MAX TOOL STEPS agent=%s max=%d duration_ms=%d",
                  agent, _OPENAI_COMPAT_MAX_TOOL_STEPS, duration_ms)
+    _emit_llm_call_event(
+        runner=runner,
+        agent=agent,
+        model=model,
+        status="error",
+        duration_ms=duration_ms,
+        prompt_text=json.dumps(messages, ensure_ascii=False, default=str),
+        response_text="maximum tool-call steps exceeded",
+        attempt=_OPENAI_COMPAT_MAX_TOOL_STEPS,
+        max_attempts=_OPENAI_COMPAT_MAX_TOOL_STEPS,
+        error_category="tool_loop_exceeded",
+        retryable=False,
+        system_prompt_chars=len(system_content),
+        tool_call_count=total_tool_calls,
+        tool_step_count=_OPENAI_COMPAT_MAX_TOOL_STEPS,
+        cache_static_prefix_chars=len(system_content),
+        cache_static_prefix_est_tokens=_estimate_tokens(system_content),
+        connection_reuse_observable=True,
+        max_tokens=transport.get("max_tokens") if isinstance(transport.get("max_tokens"), int) else None,
+        temperature=transport.get("temperature") if isinstance(transport.get("temperature"), (int, float)) else None,
+    )
     _emit_event("cli.exit", runner=runner, agent=agent, exit_code=1, duration_ms=duration_ms)
     raise RuntimeError(f"OpenAI-compatible agent '{agent}' exceeded the maximum tool-call steps ({_OPENAI_COMPAT_MAX_TOOL_STEPS})")
 

@@ -3,13 +3,222 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shutil
 import textwrap
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 logger = logging.getLogger(__name__)
+
+
+class ImplReportValidationError(ValueError):
+    """Raised when an implementation report does not align with its UoW spec."""
+
+
+_COMMON_DOMAIN_TERMS = {
+    "acceptance",
+    "app",
+    "apps",
+    "base",
+    "common",
+    "criteria",
+    "definition",
+    "description",
+    "directive",
+    "component",
+    "components",
+    "confirm",
+    "coverage",
+    "engineer",
+    "facade",
+    "feature",
+    "guard",
+    "harness",
+    "helper",
+    "implementation",
+    "lib",
+    "libs",
+    "modified",
+    "path",
+    "paths",
+    "project",
+    "pipe",
+    "requested",
+    "resolver",
+    "service",
+    "shared",
+    "src",
+    "status",
+    "store",
+    "test",
+    "tests",
+    "target",
+    "testing",
+    "util",
+    "utils",
+    "verify",
+}
+
+
+def _utc_timestamp() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _load_yaml_mapping(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    with path.open("r", encoding="utf-8") as handle:
+        payload = yaml.safe_load(handle)
+    return payload if isinstance(payload, dict) else {}
+
+
+def _walk_strings(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        strings: list[str] = []
+        for item in value.values():
+            strings.extend(_walk_strings(item))
+        return strings
+    if isinstance(value, list):
+        strings = []
+        for item in value:
+            strings.extend(_walk_strings(item))
+        return strings
+    return []
+
+
+def _normalize_domain_term(value: str) -> str | None:
+    term = value.strip().strip("`'\".,:;()[]{}").lower()
+    term = re.sub(r"\.(ts|tsx|js|jsx|html|scss|css|json|yaml|yml|md)$", "", term)
+    if len(term) < 4 or term in _COMMON_DOMAIN_TERMS:
+        return None
+    if term.isdigit() or re.fullmatch(r"(?:uow|wi|ac|t)-?\d+", term):
+        return None
+    if not re.search(r"[a-z0-9]", term):
+        return None
+    return term
+
+
+def _domain_terms_from_strings(strings: list[str]) -> set[str]:
+    terms: set[str] = set()
+    for text in strings:
+        for raw_path in re.findall(r"[\w@./-]+\.[A-Za-z0-9_-]+", text):
+            for segment in re.split(r"[/._]", raw_path):
+                normalized = _normalize_domain_term(segment)
+                if normalized:
+                    terms.add(normalized)
+        for raw_name in re.findall(
+            r"\b[A-Z][A-Za-z0-9]*(?:Component|Service|Helper|Directive|Pipe|Module|Store|Facade|Resolver|Guard|Harness)\b",
+            text,
+        ):
+            normalized = _normalize_domain_term(raw_name)
+            if normalized:
+                terms.add(normalized)
+        for raw_hyphenated in re.findall(r"\b[A-Za-z0-9]+(?:-[A-Za-z0-9]+){1,}\b", text):
+            normalized = _normalize_domain_term(raw_hyphenated)
+            if normalized:
+                terms.add(normalized)
+            for segment in raw_hyphenated.split("-"):
+                normalized_segment = _normalize_domain_term(segment)
+                if normalized_segment:
+                    terms.add(normalized_segment)
+    return terms
+
+
+def _impl_report_dir(agent_context_root: Path, change_id: str, uow_id: str) -> Path:
+    return agent_context_root / change_id / "execution" / uow_id
+
+
+def snapshot_impl_report_attempt(
+    *,
+    agent_context_root: Path,
+    change_id: str,
+    uow_id: str,
+    attempt: int,
+) -> Path | None:
+    """Copy the current impl_report.yaml into an append-only attempt directory."""
+    source = _impl_report_dir(agent_context_root, change_id, uow_id) / "impl_report.yaml"
+    if not source.is_file():
+        logger.warning(
+            "snapshot_impl_report_attempt: missing impl_report.yaml change_id=%s uow_id=%s attempt=%d",
+            change_id,
+            uow_id,
+            attempt,
+        )
+        return None
+    destination = (
+        _impl_report_dir(agent_context_root, change_id, uow_id)
+        / "attempts"
+        / f"attempt-{attempt:03d}"
+        / "impl_report.yaml"
+    )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    return destination
+
+
+def validate_impl_report_alignment(
+    *,
+    agent_context_root: Path,
+    change_id: str,
+    uow_id: str,
+) -> dict[str, Any]:
+    """Validate that impl_report.yaml belongs to the current UoW before evaluator use."""
+    uow_dir = _impl_report_dir(agent_context_root, change_id, uow_id)
+    spec_path = uow_dir / "uow_spec.yaml"
+    report_path = uow_dir / "impl_report.yaml"
+    spec = _load_yaml_mapping(spec_path)
+    report = _load_yaml_mapping(report_path)
+    if not spec:
+        raise ImplReportValidationError(f"Missing or invalid UoW spec: {spec_path}")
+    if not report:
+        raise ImplReportValidationError(f"Missing or invalid implementation report: {report_path}")
+
+    errors: list[str] = []
+    report_uow_id = report.get("uow_id")
+    if report_uow_id is not None and str(report_uow_id) != uow_id:
+        errors.append(f"impl_report uow_id={report_uow_id!r} does not match expected {uow_id!r}")
+    report_change_id = report.get("change_id") or report.get("story_id")
+    if report_change_id is not None and str(report_change_id) != change_id:
+        errors.append(f"impl_report change/story id={report_change_id!r} does not match expected {change_id!r}")
+
+    spec_terms = _domain_terms_from_strings(_walk_strings(spec))
+    report_text = "\n".join(_walk_strings(report)).lower()
+    matched_terms = sorted(term for term in spec_terms if term in report_text)
+    warnings: list[str] = []
+    if spec_terms and not matched_terms:
+        sample_terms = ", ".join(sorted(spec_terms)[:12])
+        errors.append(
+            "impl_report domain does not match uow_spec.yaml; "
+            f"none of the extracted spec terms appear in the report ({sample_terms})"
+        )
+    elif not spec_terms:
+        warnings.append("No strong domain terms were extracted from uow_spec.yaml; domain-match check skipped.")
+
+    payload: dict[str, Any] = {
+        "change_id": change_id,
+        "uow_id": uow_id,
+        "validated_at": _utc_timestamp(),
+        "status": "fail" if errors else "pass",
+        "spec_path": str(spec_path),
+        "impl_report_path": str(report_path),
+        "domain_terms_checked": sorted(spec_terms)[:50],
+        "matched_domain_terms": matched_terms[:50],
+        "warnings": warnings,
+        "errors": errors,
+    }
+    validation_path = uow_dir / "impl_report_validation.yaml"
+    try:
+        validation_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    except OSError as exc:
+        logger.warning("validate_impl_report_alignment: could not write %s: %s", validation_path, exc)
+    if errors:
+        raise ImplReportValidationError("; ".join(errors))
+    return payload
 
 
 def extract_batches_from_duplicate_yaml(raw: str) -> list[dict[str, Any]]:

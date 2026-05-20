@@ -4,6 +4,7 @@ import re
 from opik import opik_context
 
 from . import steps
+from .artifact_utils import snapshot_impl_report_attempt, validate_impl_report_alignment
 from .runner_models import DEFAULT_GEMINI_MODEL
 from .ui_trace_bridge import start_span_with_ui, track_with_ui
 
@@ -89,14 +90,25 @@ def run_uow_eval_loop(
                 evaluator_feedback=evaluator_out if i > 0 else "",
                 runner=runner,
                 runner_model=runner_model,
-                            )
+            )
+            snapshot_impl_report_attempt(
+                agent_context_root=steps.AGENT_CONTEXT_ROOT,
+                change_id=change_id,
+                uow_id=uow_id,
+                attempt=i + 1,
+            )
+            validate_impl_report_alignment(
+                agent_context_root=steps.AGENT_CONTEXT_ROOT,
+                change_id=change_id,
+                uow_id=uow_id,
+            )
             evaluator_out = steps.step_software_engineer_evaluator(
                 uow_id=uow_id,
                 change_id=change_id,
                 repo=repo,
                 runner=runner,
                 runner_model=runner_model,
-                            )
+            )
             passed = "PASS" in evaluator_out
             logger.info("run_uow_eval_loop: iteration %d/%d uow_id=%s passed=%s", i + 1, iter_count, uow_id, passed)
             span.output = {"passed": passed}
@@ -204,4 +216,3 @@ def run_eval_optimizer_loop(
 
     logger.info("run_eval_optimizer_loop: DONE change_id=%s", change_id)
     return producer_out, evaluator_out
-
