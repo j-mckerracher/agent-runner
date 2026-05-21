@@ -125,7 +125,7 @@ def _load_suite_index() -> dict[str, dict[str, Any]]:
         return index
     try:
         from eval.yaml_io import load_yaml_mapping
-    except RuntimeError as exc:  # pragma: no cover - only in broken environments
+    except ImportError as exc:  # pragma: no cover - only in broken environments
         logger.warning("_load_suite_index: YAML support unavailable: %s", exc)
         return index
     for manifest_path in sorted(suites_root.glob("*/suite_manifest.yaml")):

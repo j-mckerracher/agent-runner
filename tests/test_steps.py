@@ -253,6 +253,114 @@ class CopilotPlanningFallbackTests(unittest.TestCase):
             self.assertEqual([batch["batch_id"] for batch in assignments["batches"]], [1, 2])
             self.assertTrue(uow_spec_path.is_file())
 
+    def test_medium__task_assigner_materializes_uow_specs_for_normal_assignments(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            agent_context = root / "agent-context"
+            planning_path = agent_context / "EVAL-004" / "planning" / "tasks.yaml"
+            planning_path.parent.mkdir(parents=True, exist_ok=True)
+            planning_path.write_text(
+                yaml.safe_dump(
+                    {
+                        "story_id": "EVAL-004",
+                        "tasks": [
+                            {
+                                "id": "T1",
+                                "title": "Implement the primary behavior",
+                                "description": "Update the production code.",
+                                "ac_mapping": ["AC1"],
+                                "dependencies": [],
+                                "priority": "high",
+                                "complexity": "simple",
+                                "definition_of_done": ["Primary behavior implemented"],
+                            },
+                            {
+                                "id": "T2",
+                                "title": "Verify the behavior",
+                                "description": "Add tests and verification.",
+                                "ac_mapping": ["AC1"],
+                                "dependencies": ["T1"],
+                                "priority": "medium",
+                                "complexity": "moderate",
+                                "definition_of_done": ["Coverage added"],
+                                "implementation_hints": ["tests/test_feature.py"],
+                            },
+                        ],
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+
+            assignments_path = agent_context / "EVAL-004" / "planning" / "assignments.json"
+
+            def _write_assignments(*_args, **_kwargs):
+                assignments_path.parent.mkdir(parents=True, exist_ok=True)
+                assignments_path.write_text(
+                    json.dumps(
+                        {
+                            "story_id": "EVAL-004",
+                            "batches": [
+                                {
+                                    "batch_id": 1,
+                                    "uows": [
+                                        {
+                                            "uow_id": "UOW-001",
+                                            "source_task_id": "T1",
+                                            "assigned_role": "software-engineer",
+                                            "priority_in_batch": 1,
+                                            "rationale": "Implement first",
+                                        }
+                                    ],
+                                    "parallel_execution": False,
+                                    "batch_rationale": "Implementation batch",
+                                },
+                                {
+                                    "batch_id": 2,
+                                    "uows": [
+                                        {
+                                            "uow_id": "UOW-002",
+                                            "source_task_id": "T2",
+                                            "assigned_role": "software-engineer",
+                                            "priority_in_batch": 1,
+                                            "rationale": "Verify after implementation",
+                                        }
+                                    ],
+                                    "parallel_execution": False,
+                                    "batch_rationale": "Verification batch",
+                                },
+                            ],
+                        },
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+                return "assignments complete"
+
+            with (
+                patch("core.steps.AGENT_CONTEXT_ROOT", agent_context),
+                patch("core.steps.run_agent_cmd", side_effect=_write_assignments),
+            ):
+                result = step_task_assigner(
+                    context=f"Create an execution schedule from {agent_context}/EVAL-004/planning/tasks.yaml.",
+                    runner="copilot",
+                    runner_model="gpt-5-mini",
+                )
+
+            uow_one = yaml.safe_load(
+                (agent_context / "EVAL-004" / "execution" / "UOW-001" / "uow_spec.yaml").read_text(encoding="utf-8")
+            )
+            uow_two = yaml.safe_load(
+                (agent_context / "EVAL-004" / "execution" / "UOW-002" / "uow_spec.yaml").read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(result, "assignments complete")
+            self.assertEqual(uow_one["title"], "Implement the primary behavior")
+            self.assertEqual(uow_one["story_id"], "EVAL-004")
+            self.assertEqual(uow_two["dependencies"], ["UOW-001"])
+            self.assertEqual(uow_two["definition_of_done"], ["Coverage added"])
+            self.assertEqual(uow_two["implementation_hints"], ["tests/test_feature.py"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,10 +1,25 @@
 import yaml
 import sys
 import json
+from pathlib import Path
+
+from core.yaml_safety import safe_load_yaml_file
+
+
+def _load_tasks(tasks_file: str) -> dict:
+    """Load tasks YAML with error handling. Returns {} on failure."""
+    result = safe_load_yaml_file(Path(tasks_file))
+    return result.data if result.is_valid else {}
+
+
+def _load_story(story_file: str) -> dict:
+    """Load story YAML with error handling. Returns {} on failure."""
+    result = safe_load_yaml_file(Path(story_file))
+    return result.data if result.is_valid else {}
+
 
 def check_schema(tasks_file):
-    with open(tasks_file, 'r') as f:
-        data = yaml.safe_load(f)
+    data = _load_tasks(tasks_file)
     
     tasks = data.get('tasks', [])
     valid = True
@@ -24,10 +39,8 @@ def check_schema(tasks_file):
     return valid, issues
 
 def check_ac_coverage(story_file, tasks_file):
-    with open(story_file, 'r') as f:
-        story = yaml.safe_load(f)
-    with open(tasks_file, 'r') as f:
-        tasks_data = yaml.safe_load(f)
+    story = _load_story(story_file)
+    tasks_data = _load_tasks(tasks_file)
     
     acs = story.get('acceptance_criteria', {})
     if isinstance(acs, list):
@@ -44,8 +57,7 @@ def check_ac_coverage(story_file, tasks_file):
     return len(missing) == 0, missing
 
 def check_dependencies(tasks_file):
-    with open(tasks_file, 'r') as f:
-        data = yaml.safe_load(f)
+    data = _load_tasks(tasks_file)
     
     tasks = data.get('tasks', [])
     adj = {task.get('task_id', task.get('id')): task.get('dependencies', []) for task in tasks}
@@ -80,9 +92,8 @@ def main():
     ac_coverage, missing_acs = check_ac_coverage(story_path, tasks_path)
     dep_valid, dep_issues = check_dependencies(tasks_path)
     
-    with open(tasks_path, 'r') as f:
-        tasks_data = yaml.safe_load(f)
-        task_count = len(tasks_data.get('tasks', []))
+    tasks_data = _load_tasks(tasks_path)
+    task_count = len(tasks_data.get('tasks', []))
     
     task_count_valid = 2 <= task_count <= 15
     

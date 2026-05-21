@@ -1,19 +1,26 @@
 import yaml
 import json
 import sys
+from pathlib import Path
+
+from core.yaml_safety import safe_load_yaml_file
 from .check_gates import check_schema, check_ac_coverage, check_dependencies
+
+def _load_tasks(tasks_file: str) -> dict:
+    result = safe_load_yaml_file(Path(tasks_file))
+    return result.data if result.is_valid else {}
+
 
 def run_gates(change_id):
     tasks_path = f"agent-context/{change_id}/planning/tasks.yaml"
     story_path = f"agent-context/{change_id}/intake/story.yaml"
-    
+
     schema_valid, schema_issues = check_schema(tasks_path)
     ac_coverage, missing_acs = check_ac_coverage(story_path, tasks_path)
     dep_valid, dep_issues = check_dependencies(tasks_path)
-    
-    with open(tasks_path, 'r') as f:
-        tasks_data = yaml.safe_load(f)
-        task_count = len(tasks_data.get('tasks', []))
+
+    tasks_data = _load_tasks(tasks_path)
+    task_count = len(tasks_data.get('tasks', []))
     
     task_count_valid = 2 <= task_count <= 15
     

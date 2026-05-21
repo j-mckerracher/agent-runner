@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from .artifact_utils import normalize_assignments_file
+from .artifact_utils import _load_yaml_mapping, load_assignments_file, normalize_assignments_file
 from opik import opik_context
 from .repo_prep import build_feature_branch_name
 from .run_cmds import run_claude_cmd, run_agent_cmd
@@ -66,14 +66,6 @@ def _task_plan_path(change_id: str) -> Path:
 
 def _assignments_path(change_id: str) -> Path:
     return AGENT_CONTEXT_ROOT / change_id / "planning" / "assignments.json"
-
-
-def _load_yaml_mapping(path: Path) -> dict:
-    if not path.is_file():
-        return {}
-    with path.open("r", encoding="utf-8") as handle:
-        payload = yaml.safe_load(handle)
-    return payload if isinstance(payload, dict) else {}
 
 
 def _intake_dir(change_id: str) -> Path:
@@ -288,10 +280,17 @@ def _confirm_acceptance_criteria(change_id: str, intake_mode: str) -> None:
 
     from core.user_escalation import request_user_input  # noqa: PLC0415
 
-    with story_path.open("r", encoding="utf-8") as fh:
-        story = yaml.safe_load(fh)
-    if not isinstance(story, dict):
+    from core.yaml_safety import safe_load_yaml_file
+
+    result = safe_load_yaml_file(story_path)
+    if not result.is_valid:
+        logger.warning(
+            "_confirm_acceptance_criteria: cannot parse story.yaml for change_id=%s: %s",
+            change_id,
+            "; ".join(result.errors),
+        )
         return
+    story = result.data
 
     raw_ac = story.get("acceptance_criteria")
     if not raw_ac:
@@ -592,10 +591,16 @@ def _normalize_task_plan_artifact(change_id: str) -> bool:
     if not path.is_file():
         return False
 
-    with path.open("r", encoding="utf-8") as handle:
-        data = yaml.safe_load(handle)
-    if not isinstance(data, dict):
+    from core.yaml_safety import safe_load_yaml_file
+
+    result = safe_load_yaml_file(path)
+    if not result.is_valid:
+        logger.warning(
+            "_normalize_task_plan_artifact: cannot parse tasks.yaml: %s",
+            "; ".join(result.errors),
+        )
         return False
+    data = result.data
 
     raw_tasks = data.get("tasks")
     if not isinstance(raw_tasks, list):
@@ -683,6 +688,136 @@ def _normalize_assignments_artifact(change_id: str) -> bool:
     if changed:
         logger.info("_normalize_assignments_artifact: normalized %s", path)
     return changed
+
+
+def _coerce_string_list(value: object, *, task_to_uow: dict[str, str] | None = None) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    items: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        normalized = item.strip()
+        if not normalized:
+            continue
+        if task_to_uow:
+            normalized = task_to_uow.get(normalized, normalized)
+        items.append(normalized)
+    return items
+
+
+def _materialize_uow_specs_from_assignments(change_id: str) -> int:
+    if not change_id:
+        return 0
+    assignments_path = _assignments_path(change_id)
+    if not assignments_path.is_file():
+        return 0
+
+    assignments = load_assignments_file(assignments_path)
+    task_plan = _load_yaml_mapping(_task_plan_path(change_id))
+    raw_tasks = task_plan.get("tasks")
+    tasks = raw_tasks if isinstance(raw_tasks, list) else []
+    task_by_id = {
+        str(task.get("id")): task
+        for task in tasks
+        if isinstance(task, dict) and task.get("id")
+    }
+    task_to_uow: dict[str, str] = {}
+    batches = assignments.get("batches")
+    if not isinstance(batches, list):
+        return 0
+
+    for batch in batches:
+        if not isinstance(batch, dict):
+            continue
+        raw_uows = batch.get("uows")
+        if not isinstance(raw_uows, list):
+            continue
+        for uow in raw_uows:
+            if not isinstance(uow, dict):
+                continue
+            source_task_id = str(uow.get("source_task_id") or "").strip()
+            uow_id = str(uow.get("uow_id") or "").strip()
+            if source_task_id and uow_id:
+                task_to_uow[source_task_id] = uow_id
+
+    written = 0
+    story_id = str(task_plan.get("story_id") or change_id)
+    for batch in batches:
+        if not isinstance(batch, dict):
+            continue
+        batch_rationale = batch.get("batch_rationale")
+        raw_uows = batch.get("uows")
+        if not isinstance(raw_uows, list):
+            continue
+        for uow in raw_uows:
+            if not isinstance(uow, dict):
+                continue
+            uow_id = str(uow.get("uow_id") or "").strip()
+            if not uow_id:
+                continue
+            source_task_id = str(uow.get("source_task_id") or "").strip()
+            task = task_by_id.get(source_task_id, {})
+            assignment_title = uow.get("title")
+            assignment_rationale = uow.get("rationale")
+            description = ""
+            if isinstance(task, dict):
+                task_description = task.get("description")
+                if isinstance(task_description, str) and task_description.strip():
+                    description = task_description.strip()
+            if not description and isinstance(assignment_rationale, str) and assignment_rationale.strip():
+                description = assignment_rationale.strip()
+            if not description and isinstance(batch_rationale, str) and batch_rationale.strip():
+                description = batch_rationale.strip()
+
+            payload = {
+                "uow_id": uow_id,
+                "source_task_id": source_task_id or uow_id,
+                "change_id": change_id,
+                "story_id": story_id,
+                "assigned_role": str(uow.get("assigned_role") or task.get("assigned_role") or "software-engineer"),
+                "title": (
+                    str(task.get("title")).strip()
+                    if isinstance(task, dict) and isinstance(task.get("title"), str) and task.get("title").strip()
+                    else str(assignment_title or source_task_id or uow_id)
+                ),
+                "description": description,
+                "ac_mapping": _coerce_string_list(task.get("ac_mapping") if isinstance(task, dict) else None),
+                "dependencies": _coerce_string_list(
+                    uow.get("dependencies")
+                    if isinstance(uow.get("dependencies"), list)
+                    else (task.get("dependencies") if isinstance(task, dict) else None),
+                    task_to_uow=task_to_uow,
+                ),
+                "definition_of_done": _coerce_string_list(
+                    task.get("definition_of_done") if isinstance(task, dict) else None
+                ),
+                "implementation_hints": _coerce_string_list(
+                    task.get("implementation_hints") if isinstance(task, dict) else None
+                ),
+            }
+
+            if isinstance(task, dict):
+                priority = task.get("priority")
+                complexity = task.get("complexity")
+                if isinstance(priority, str) and priority.strip():
+                    payload["priority"] = priority.strip()
+                if isinstance(complexity, str) and complexity.strip():
+                    payload["complexity"] = complexity.strip()
+
+            _write_yaml_artifact(
+                AGENT_CONTEXT_ROOT / change_id / "execution" / uow_id / "uow_spec.yaml",
+                payload,
+            )
+            written += 1
+
+    if written:
+        logger.info(
+            "_materialize_uow_specs_from_assignments: wrote %d spec(s) for change_id=%s",
+            written,
+            change_id,
+        )
+    return written
 
 
 def _annotate_trace(
@@ -1005,6 +1140,7 @@ def step_task_assigner(
         fallback_summary = _write_assignments_fallback(change_id)
         _normalize_assignments_artifact(change_id)
         result = f"{result.rstrip()}\n\n{fallback_summary}".strip()
+    _materialize_uow_specs_from_assignments(change_id)
     logger.info("step_task_assigner: completed change_id=%s output_len=%d", change_id, len(result or ""))
     return result
 

@@ -68,11 +68,9 @@ def _utc_timestamp() -> str:
 
 
 def _load_yaml_mapping(path: Path) -> dict[str, Any]:
-    if not path.is_file():
-        return {}
-    with path.open("r", encoding="utf-8") as handle:
-        payload = yaml.safe_load(handle)
-    return payload if isinstance(payload, dict) else {}
+    from core.yaml_safety import load_yaml_mapping_safe
+
+    return load_yaml_mapping_safe(path)
 
 
 def _walk_strings(value: Any) -> list[str]:

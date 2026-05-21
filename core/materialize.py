@@ -71,8 +71,13 @@ def latest_version(agent_dir: Path) -> str | None:
 
 def load_manifest(manifest_path: Path) -> dict:
     logger.debug("load_manifest: %s", manifest_path)
-    with manifest_path.open("r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    from core.yaml_safety import safe_load_yaml_file
+
+    result = safe_load_yaml_file(manifest_path)
+    if not result.is_valid:
+        logger.warning("load_manifest: cannot parse %s: %s", manifest_path, "; ".join(result.errors))
+        return {}
+    return result.data
 
 
 def load_materialization(metadata_file: Path) -> dict:
