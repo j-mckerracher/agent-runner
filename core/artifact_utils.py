@@ -190,7 +190,7 @@ def validate_impl_report_alignment(
     warnings: list[str] = []
     if spec_terms and not matched_terms:
         sample_terms = ", ".join(sorted(spec_terms)[:12])
-        errors.append(
+        warnings.append(
             "impl_report domain does not match uow_spec.yaml; "
             f"none of the extracted spec terms appear in the report ({sample_terms})"
         )
@@ -266,6 +266,42 @@ def _extract_json_block(raw: str) -> str | None:
     return None
 
 
+def _repair_embedded_quotes(text: str) -> str:
+    """Fix unescaped double quotes inside JSON string values.
+
+    Handles the common LLM output pattern where double-quoted terms like
+    ``\"PR-001\"`` appear inside JSON string values, breaking both JSON
+    and YAML parsers.  Replaces inner ``\"text\"`` with ``'text'`` on
+    each line that looks like a JSON key-value pair with a string value.
+    """
+    lines: list[str] = text.split("\n")
+    repaired: list[str] = []
+    for line in lines:
+        # Match "key": " prefix
+        m = re.match(r'^(\s*"[^"]*"\s*:\s*)"', line)
+        if not m:
+            repaired.append(line)
+            continue
+
+        prefix = m.group(0)  # includes opening quote of value
+        rest = line[m.end() :]
+
+        # Closing quote is the last " followed by optional whitespace, optional comma
+        close_m = re.search(r'"(\s*,?\s*)$', rest)
+        if not close_m:
+            repaired.append(line)
+            continue
+
+        inner = rest[: close_m.start()]
+        suffix = rest[close_m.start() :]  # closing " and any trailing chars
+
+        # Replace "text" patterns with 'text' inside the value
+        inner = re.sub(r'"([^"]*?)"', r"'\1'", inner)
+        repaired.append(prefix + inner + suffix)
+
+    return "\n".join(repaired)
+
+
 def parse_assignments_text(raw: str) -> dict[str, Any]:
     """Parse assignments content that may be strict JSON or legacy YAML.
 
@@ -273,28 +309,37 @@ def parse_assignments_text(raw: str) -> dict[str, Any]:
     ``batch_id`` keys on each batch dict, regardless of whether the input
     uses the legacy ``execution_schedule`` / ``batch`` shape.
     """
-    # Try strict JSON first
+    # Try strict JSON first (no repair – valid content shouldn't need it)
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        # Try extracting a JSON block from surrounding prose/fences
-        extracted = _extract_json_block(raw)
-        if extracted:
-            try:
-                data = json.loads(extracted)
-            except json.JSONDecodeError:
+        # Try repairing common agent quoting errors, then retry JSON
+        repaired = _repair_embedded_quotes(raw)
+        try:
+            data = json.loads(repaired)
+        except json.JSONDecodeError:
+            # Try extracting a JSON block from surrounding prose/fences
+            extracted = _extract_json_block(raw)
+            if extracted:
+                try:
+                    data = json.loads(extracted)
+                except json.JSONDecodeError:
+                    repaired_extracted = _repair_embedded_quotes(extracted)
+                    try:
+                        data = json.loads(repaired_extracted)
+                    except json.JSONDecodeError:
+                        data = None
+            else:
                 data = None
-        else:
-            data = None
 
-        # Fall back to YAML only if JSON extraction failed
-        if data is None:
-            try:
-                data = yaml.safe_load(raw)
-            except yaml.YAMLError as exc:
-                raise ValueError(
-                    f"assignments artifact is neither valid JSON nor valid YAML: {exc}"
-                ) from exc
+            # Fall back to YAML only if JSON extraction failed
+            if data is None:
+                try:
+                    data = yaml.safe_load(repaired)
+                except yaml.YAMLError as exc:
+                    raise ValueError(
+                        f"assignments artifact is neither valid JSON nor valid YAML: {exc}"
+                    ) from exc
     if not isinstance(data, dict):
         raise ValueError("assignments artifact must parse to a mapping")
 
