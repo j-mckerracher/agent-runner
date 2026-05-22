@@ -184,18 +184,22 @@ python3 run.py \
   --extra-context 'Reference PR: https://dev.azure.com/<org>/<project>/_git/<repo>/pullrequest/456'
 ```
 
-Useful workflow flags:
+### `run.py` — all CLI arguments
 
-| Flag | Purpose |
-|---|---|
-| `--story-file` | Use a local synthetic fixture JSON file |
-| `--ado-url` | Use a live Azure DevOps work item |
-| `--change-id` | Override or supply the workflow change ID |
-| `--runner` / `--model` | Select runner/model or runner alias |
-| `--log-level` | Set CLI logging verbosity (`debug`, `info`, `warning`, `error`, `critical`) |
-| `--extra-context` | Append free-form context to intake |
-| `--skip-lessons-optimizer` | Skip the final lessons stage |
-| `--calibration-fast-mode` | Use a cheaper single-iteration workflow profile for calibration-style runs |
+| Argument | Default | Description |
+|---|---|---|
+| `--repo PATH` | current working directory | Absolute path to the target repository the workflow will operate on. |
+| `--change-id ID` | derived from input | Stable identifier for this workflow run. Derived automatically from the story fixture or ADO item when omitted; only required when you need to override the value embedded in the input. |
+| `--ado-url URL` | none | Azure DevOps work item URL (`https://dev.azure.com/<org>/<project>/_workitems/edit/<id>`). Triggers live ADO intake mode. Mutually exclusive with `--story-file`. |
+| `--story-file PATH` | `workflow-fixtures/synthetic_story.json` | Path to a local synthetic story fixture JSON file. Used for offline / test runs. Falls back to the bundled `TEST-AC-001` fixture when neither `--ado-url` nor `--story-file` is provided. |
+| `--runner NAME` | `claude` | LLM backend to use: `claude` (Anthropic), `copilot` (OpenAI/GitHub), `gemini` (Google), or a custom alias defined in `~/.agent-runner/config.json` under `runner_aliases`. |
+| `--model NAME` | runner default | Model name to pass to the selected runner. Defaults to the runner's built-in default (`claude-haiku-4-5-20251001`, `gpt-5-mini`, or `gemini-2.5-flash`) when omitted. |
+| `--extra-context TEXT` | none | Free-form text appended verbatim to the intake agent's prompt. Useful for passing a reference PR URL, design notes, or other supplemental context. |
+| `--skip-lessons-optimizer` | off | Skip the lessons-optimizer stage at the end of the workflow. Saves time when you don't need the metacognitive improvement pass. |
+| `--skip-materialize` | off | Skip copying agent/skill source files into runner-specific directories before the workflow starts. Use only when assets are already up-to-date. |
+| `--calibration-fast-mode` | off | Use a cheaper single-iteration profile for every evaluator/optimizer loop. Intended for synthesis calibration runs where full loop quality is not required. |
+| `--headless` | off | Disable interactive human-in-the-loop prompts. Escalation requests from agents are auto-answered. Required for CI/eval environments. |
+| `--log-level LEVEL` | `warning` | Python logging verbosity: `debug`, `info`, `warning`, `error`, or `critical`. |
 
 ## Evaluation framework
 

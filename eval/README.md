@@ -112,20 +112,20 @@ Results are printed to the terminal and (by default) written to
 
 | Flag | Default | Description |
 |---|---|---|
-| `--runner` | `claude` | Agent runner (`claude`, `copilot`, `gemini`). Set via `EVAL_RUNNER` in `.env`. |
-| `--repo` | `EVAL_TARGET_REPO` | Target Git repo path or URL. |
-| `--sha` | `EVAL_TARGET_SHA` | Gold-master commit SHA. |
-| `--difficulty` | all | One or more of `easy`, `medium`, `hard`. |
-| `--benchmark` | all | Exact benchmark folder name(s); repeat for multiple. |
-| `--model` | runner default | Override the model. Set via `EVAL_MODEL` in `.env`. |
-| `--project-test-command` | none | Shell command run for project regression tests (e.g. `python3 -m pytest -q`). Set via `EVAL_PROJECT_TEST_COMMAND` in `.env`. |
-| `--workflow-timeout` | `10800` (3 h) | Max seconds for the workflow stage per benchmark. |
-| `--test-timeout` | `300` (5 min) | Max seconds for the test stages per benchmark. |
-| `--include-lessons` | off | Enable the lessons-optimizer stage (slower). |
-| `--keep-sandbox` | off | Preserve the sandbox directory after the run for debugging. |
-| `--no-write-report` | off | Skip writing `eval/reports/latest.json`. |
-| `--log-level` | `warning` | Log level passed to the workflow runner. |
-| `--benchmarks-dir` | `eval/benchmarks` | Alternative benchmarks root directory. |
+| `--repo PATH` | `EVAL_TARGET_REPO` env / `.env` | Target Git repo path or URL to clone and test against. Required; falls back to the `EVAL_TARGET_REPO` environment variable or `.env` file. |
+| `--sha SHA` | `EVAL_TARGET_SHA` env / `.env` | Gold-master commit SHA to check out before running the workflow. Required; falls back to `EVAL_TARGET_SHA`. |
+| `--runner NAME` | `EVAL_RUNNER` env / `claude` | Agent runner backend: `claude`, `copilot`, or `gemini`. Falls back to the `EVAL_RUNNER` environment variable or `.env`, then `claude`. |
+| `--model NAME` | runner default | Override the model for the selected runner. Falls back to `EVAL_MODEL` in `.env` when the override is compatible with the runner's allowed model list; otherwise uses the runner default. |
+| `--difficulty LEVEL [LEVEL …]` | all benchmarks | One or more difficulty levels to run: `easy`, `medium`, `hard`. When omitted, all benchmarks in `--benchmarks-dir` are run. |
+| `--benchmark NAME` | all benchmarks | Exact benchmark folder name(s) to run (e.g. `easy`). Repeat the flag for multiple names. Takes precedence over `--difficulty` when both are given. |
+| `--benchmarks-dir PATH` | `eval/benchmarks` | Root directory that contains benchmark sub-folders. Override to point at a custom benchmark tree. |
+| `--project-test-command CMD` | none | Shell command executed inside the sandbox after the workflow finishes, used to detect regressions (e.g. `python3 -m pytest -q`). Falls back to `EVAL_PROJECT_TEST_COMMAND` in `.env`. |
+| `--workflow-timeout SECS` | `10800` (3 h) | Maximum wall-clock seconds allowed for the workflow stage (`run.py`) per benchmark before it is killed. |
+| `--test-timeout SECS` | `300` (5 min) | Maximum seconds allowed for each test stage (project tests and hidden tests) per benchmark. |
+| `--include-lessons` | off | Include the lessons-optimizer stage in the workflow. Disabled by default to keep eval runs faster. |
+| `--keep-sandbox` | off | Preserve the temporary sandbox directory after the run completes. Useful for post-mortem debugging. |
+| `--write-report / --no-write-report` | on | Write a JSON report to `eval/reports/`. Pass `--no-write-report` to skip writing. |
+| `--log-level LEVEL` | `warning` | Logging verbosity passed through to `run.py`: `debug`, `info`, `warning`, `error`, or `critical`. |
 
 ---
 
@@ -157,7 +157,7 @@ Results are printed to the terminal and (by default) written to
 
 Each run writes two files to `eval/reports/`:
 
-- `eval-<timestamp>.json` — timestamped copy
+- `<YYYY-MM-DD-HHMMss>-<difficulty>.json` — timestamped copy, e.g. `2026-05-20-143022-easy.json`
 - `latest.json` — always overwritten with the most recent run
 
 ```json
