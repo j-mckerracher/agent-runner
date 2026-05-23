@@ -78,6 +78,9 @@ LLM:
 ```
 
 Bootstrap also writes the `.env` keys above automatically.
+Gold-master failure verification is enabled during benchmark generation by
+default. Pass `--no-verify-eval-gold-fails` only when debugging generator output
+without the target repo's local test runtime installed.
 
 ### Without bootstrap
 
@@ -85,9 +88,10 @@ Bootstrap also writes the `.env` keys above automatically.
 python3 eval/seed_benchmarks.py --force
 ```
 
-Add `--verify-gold-fails` when the target repo's test dependencies are already
-installed and you want the generator to reject hidden tests that pass against
-the gold-master commit (ensures tests are actually testing new behaviour).
+By default, the generator runs each generated `hidden_tests.py` against the
+gold-master commit and rejects tests that pass or fail for collection/runtime
+setup reasons instead of the intended behavioral reason. Use
+`--no-verify-gold-fails` only for local prompt debugging.
 
 ---
 
@@ -97,14 +101,24 @@ For each benchmark:
 
 1. A fresh temporary sandbox is created.
 2. The target repo is cloned and the gold-master SHA is checked out.
-3. `run.py --headless` is run against the sandbox using `story.json`.
-4. If `--project-test-command` is supplied, that command runs in the sandbox
+3. The hidden tests are first verified against gold master; they must fail
+   cleanly for the intended behavioral reason.
+4. `run.py --headless` is run against the sandbox using `story.json`.
+5. If `--project-test-command` is supplied, that command runs in the sandbox
    to check for regressions.
-5. `hidden_tests.py` is copied into the sandbox and run with pytest.
-6. The sandbox is cleaned up (regardless of outcome).
+6. `hidden_tests.py` is copied into the sandbox and run with pytest plus JUnit
+   XML output. Skipped hidden tests fail by default.
+7. The sandbox is cleaned up (regardless of outcome).
 
 Results are printed to the terminal and (by default) written to
-`eval/reports/latest.json`.
+`eval/reports/latest.json` with AC-level quality, reliability, efficiency, and
+optional baseline trend fields.
+
+The local Evaluate UI is benchmark-report first: it launches `/evaluate/benchmark-runs`
+through this runner, reads reports from `eval/reports`, and shows warnings when a
+baseline is missing, only one trial was run, hidden tests skipped, AC mapping is
+incomplete, or the selected baseline differs by runner/model, target SHA, or
+benchmark set.
 
 ---
 
@@ -126,6 +140,11 @@ Results are printed to the terminal and (by default) written to
 | `--keep-sandbox` | off | Preserve the temporary sandbox directory after the run completes. Useful for post-mortem debugging. |
 | `--write-report / --no-write-report` | on | Write a JSON report to `eval/reports/`. Pass `--no-write-report` to skip writing. |
 | `--log-level LEVEL` | `warning` | Logging verbosity passed through to `run.py`: `debug`, `info`, `warning`, `error`, or `critical`. |
+| `--runs N` | `1` | Number of trials to run per benchmark. |
+| `--allow-hidden-skips` | off | Allow skipped hidden tests. By default, hidden-test skips fail the benchmark. |
+| `--no-verify-gold-fails` | off | Skip gold-master hidden-test failure verification. Intended only for local debugging. |
+| `--compare-to PATH` | none | Baseline report JSON to compare against for trend classification. |
+| `--update-baseline` | off | Write the current report as the baseline report. |
 
 ---
 
@@ -148,12 +167,48 @@ Results are printed to the terminal and (by default) written to
 
 3. `hidden_tests.py` is a standard pytest file. It runs with the sandbox as
    the working directory and can import from the cloned repo via `PYTHONPATH`.
+   Generated hidden tests must define `AC_TEST_MAP`, use AC-prefixed test names
+   such as `test_ac1_handles_edge_case`, avoid skip/xfail behavior, and cover
+   each acceptance criterion through behavior rather than brittle source-text
+   checks whenever possible.
 
 4. Run `python3 eval/runner.py --benchmark easy` to verify it works end-to-end.
 
 ---
 
-## Reports
+## Reading the results
+
+### Terminal output
+
+The runner prints workflow progress in real time:
+
+```
+== easy (trial 1) ==
+Preparing sandbox
+Verifying hidden tests fail on gold master
+Running workflow
+Workflow progress: 14% — intake (stage 2/7)
+Workflow progress: 28% — task-generation (stage 3/7)
+...
+Workflow progress: 85% — execution (3/4 UoWs complete)
+Workflow progress: 100% — workflow complete
+Running project tests
+Running hidden tests
+PASS
+Finished easy in 420.1s
+```
+
+A final summary table follows:
+
+```
+Evaluation report
+-----------------
+easy                     trial 01 PASS
+medium                   trial 01 FAIL (hidden tests failed)
+hard                     trial 01 FAIL (timeout after 10800s)
+```
+
+### Report JSON structure
 
 Each run writes two files to `eval/reports/`:
 
@@ -167,9 +222,200 @@ Each run writes two files to `eval/reports/`:
   "sha": "abc123",
   "runner": "copilot",
   "model": null,
-  "results": [
-    { "name": "easy",   "status": "PASS", "error": "",                    "seconds": 420.1 },
-    { "name": "medium", "status": "FAIL", "error": "hidden tests failed", "seconds": 310.5 }
-  ]
+  "runs": 1,
+  "summary": { ... },
+  "results": [ ... ]
 }
 ```
+
+#### `results[]` — per-benchmark detail
+
+Each result object captures one trial of one benchmark:
+
+| Field | Description |
+|---|---|
+| `name` | Benchmark folder name (`easy`, `medium`, `hard`) |
+| `run_id` | Unique run identifier (`easy-t1-20260520-120000000000`) |
+| `status` | `"PASS"` or `"FAIL"` |
+| `error` | Failure reason when status is `"FAIL"`; empty on pass |
+| `score_weighted` | Quality weighted score (0.0–1.0), same as `quality.weighted_score` |
+| `trial_index` | 1-based trial number when `--runs > 1` |
+| `seconds` | Wall-clock seconds for the full benchmark trial |
+| `quality` | Acceptance-criterion quality model (see below) |
+| `metrics` | Wall time, token counts, per-agent breakdown |
+| `hidden_tests` | JUnit summary of hidden pytest results plus `ac_results` map |
+| `project_tests` | JUnit summary of project test command (when configured) |
+| `story` | Snapshot of the story.json used for the run |
+
+##### `quality` — AC-level quality model
+
+```json
+{
+  "weighted_score": 0.7500,
+  "ac_passed": 3,
+  "ac_total": 4,
+  "ac_failed_ids": ["AC4"],
+  "critical_ac_failed": 0,
+  "project_tests_passed": true,
+  "hidden_tests_passed": true,
+  "hidden_tests_skipped": 0
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `weighted_score` | `ac_passed / ac_total`. A single number between 0.0 and 1.0. 1.0 means every acceptance criterion was satisfied. |
+| `ac_passed` | How many acceptance criteria had all their mapped hidden tests pass. |
+| `ac_total` | Total number of acceptance criteria defined in story.json. |
+| `ac_failed_ids` | Which ACs failed (at least one mapped test did not pass). |
+| `critical_ac_failed` | How many of the failed ACs are marked `critical_acceptance_criteria` in the story metadata. |
+| `project_tests_passed` | Whether `--project-test-command` exited 0 (only meaningful when that flag is set). |
+| `hidden_tests_passed` | Whether all hidden tests passed with zero skips. |
+| `hidden_tests_skipped` | Count of skipped hidden tests. Non-zero only fails the benchmark if `--allow-hidden-skips` is off. |
+
+##### `metrics` — efficiency data
+
+```json
+{
+  "wall_seconds": 420.1,
+  "llm_session_seconds": 185.3,
+  "tokens_in": 45000,
+  "tokens_out": 12000,
+  "tokens_total": 57000,
+  "cost_usd": 0.0,
+  "agent_sessions": 12,
+  "by_agent": {
+    "software-engineer": { "calls": 4, "duration_ms": 45000, "tokens_in": 18000, "tokens_out": 5000 },
+    "task-generator":    { "calls": 1, "duration_ms": 12000, "tokens_in": 8000,  "tokens_out": 2000 }
+  }
+}
+```
+
+`cost_usd` is always 0.0 unless a cost model is configured. `by_agent` breaks down LLM usage per agent role.
+
+##### `hidden_tests.ac_results` — per-AC test mapping
+
+```json
+{
+  "AC1": {
+    "tests": ["test_ac1_truncate_export_symbol_exists", "test_ac1_truncate_long_string_default_ellipsis"],
+    "cases": [
+      { "name": "test_ac1_truncate_export_symbol_exists", "status": "passed", "time": 0.5 },
+      { "name": "test_ac1_truncate_long_string_default_ellipsis", "status": "passed", "time": 0.3 }
+    ],
+    "passed": true,
+    "missing_cases": false,
+    "failed": false,
+    "skipped": false
+  }
+}
+```
+
+This is the direct trace from acceptance criterion to test outcome. `missing_cases: true` means the `AC_TEST_MAP` referenced a test name that never executed (likely a naming mismatch or collection error).
+
+#### `summary` — aggregate over all benchmarks and trials
+
+```json
+{
+  "quality": {
+    "weighted_score": 0.7500,
+    "ac_passed": 9,
+    "ac_total": 12,
+    "critical_ac_failed": 0,
+    "hidden_tests_skipped": 0
+  },
+  "reliability": {
+    "runs": 3,
+    "passed": 2,
+    "pass_rate": 0.6667,
+    "weighted_score_mean": 0.7500,
+    "failure_categories": { "hidden tests failed": 1 }
+  },
+  "efficiency": {
+    "wall_seconds_mean": 350.2,
+    "tokens_total_mean": 52000.0,
+    "cost_usd_mean": 0.0
+  },
+  "warnings": ["Only one run; reliability unknown."],
+  "trend": "insufficient data"
+}
+```
+
+| Section | What it tells you |
+|---|---|
+| `quality` | Aggregate AC satisfaction across all benchmarks. High `weighted_score` with zero `critical_ac_failed` is the target. |
+| `reliability` | How consistently the workflow passes. `pass_rate` below 1.0 means flaky or broken behavior. `failure_categories` groups failures by root cause so you can spot patterns. |
+| `efficiency` | Average wall time and token consumption. Watch for regressions here when changing prompts or agent logic. |
+| `warnings` | Actionable flags: single-run (unreliable), baseline mismatch, hidden skips, incomplete AC mapping. |
+| `trend` | Only present when `--compare-to` is set. One of `"increased"`, `"decreased"`, `"same"`, or `"insufficient data"`. |
+
+### Interpreting trends
+
+Pass `--compare-to eval/reports/baseline.json` to classify the current run against a known-good baseline:
+
+| Trend | Meaning |
+|---|---|
+| `increased` | Quality improved by ≥ `--regression-quality-pp` (default 5pp), OR quality held steady while both wall time and tokens dropped by ≥ `--regression-efficiency-pct` (default 15%). |
+| `decreased` | Quality dropped by ≥ the quality threshold, OR quality held steady while time or tokens grew by ≥ the efficiency threshold. |
+| `same` | No statistically meaningful change in either direction. |
+| `insufficient data` | No baseline was provided or the baseline is empty. |
+
+Create a baseline after a known-good run:
+
+```bash
+python3 eval/runner.py --difficulty easy medium hard --runs 3 --update-baseline
+```
+
+This writes `eval/reports/baseline.json`. Subsequent runs can compare against it:
+
+```bash
+python3 eval/runner.py --compare-to eval/reports/baseline.json
+```
+
+### Common failure modes
+
+| Error message | What it means | What to check |
+|---|---|---|
+| `hidden tests unexpectedly passed on gold master` | Tests don't fail against the unmodified repo. The benchmark is misaligned with the gold-master SHA. | Regenerate the benchmark against the correct SHA, or verify the repo was checked out correctly. |
+| `hidden tests errored on gold master` | Tests crashed during gold-master verification (pytest exit code 2–5). Runtime or dependency missing. | Check the target repo's dependencies are installed. Tests must not require a runtime that isn't available locally. |
+| `hidden tests skipped on gold master` | Tests contained a skip condition that fired. | Regenerate or repair the benchmark. Hidden tests must not skip. |
+| `workflow failed` | `run.py` exited non-zero. | Check the workflow logs in `logs/<run_id>/`. Look for agent errors, timeouts, or model refusals. |
+| `project tests failed` | The `--project-test-command` exited non-zero after the workflow modified the sandbox. | The workflow introduced a regression. Inspect the sandbox diff. |
+| `hidden tests failed` | One or more hidden tests did not pass after the workflow. | Look at `hidden_tests.ac_results` to see which ACs failed. Check individual test case messages. |
+| `hidden tests skipped` | A hidden test skipped at runtime. | Regenerate the benchmark. Skips are banned unless `--allow-hidden-skips` is set. |
+| `AC_TEST_MAP entries did not execute` | A test name in `AC_TEST_MAP` has no matching JUnit case. Either the test was never collected or the name doesn't match. | Check for typos, parametrized test name mismatches, or collection errors. |
+| `timeout after Ns` | The workflow, project tests, or hidden tests exceeded their timeout. | Increase `--workflow-timeout` or `--test-timeout`, or investigate what hung. |
+
+### How many runs?
+
+A single run (`--runs 1`) tells you whether the workflow _can_ pass. It does not tell you whether it _reliably_ passes.
+
+- **1 run**: Quick smoke test during development.
+- **3 runs**: Minimum for a reliability signal. The report will warn about single runs.
+- **5+ runs**: Meaningful `pass_rate` and failure category distribution.
+
+For baseline creation, use at least 3 runs so the trend classifier has stable means to compare against.
+
+### Using the GUI
+
+The Evaluate panel in the local UI (http://127.0.0.1:8742) is benchmark-report first:
+
+1. Select a benchmark difficulty and runner/model.
+2. Click **Run Benchmarks** to launch `eval/runner.py` as a server job.
+3. The results panel loads the latest `eval/reports/latest.json` and displays:
+   - Per-benchmark pass/fail status with error messages
+   - Quality scores (weighted and AC-level)
+   - Efficiency metrics (wall time, tokens)
+   - Aggregate summary with warnings
+   - Trend comparison when a baseline exists
+
+Warnings are shown prominently when: no baseline is selected, only one trial was run, hidden tests skipped, AC mapping is incomplete, or the selected baseline differs in runner/model, target SHA, or benchmark set.
+
+---
+
+## Reports
+
+Each run writes two files to `eval/reports/`:
+
+- `<YYYY-MM-DD-HHMMss>-<difficulty>.json` — timestamped copy, e.g. `2026-05-20-143022-easy.json`
+- `latest.json` — always overwritten with the most recent run

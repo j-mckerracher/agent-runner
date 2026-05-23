@@ -25,7 +25,7 @@ Implementation and QA use evaluator/optimizer loops. A producer agent writes an 
 | **Synthetic + ADO intake** | Work offline with local JSON fixtures, or point the same workflow at a live Azure DevOps work item. |
 | **Traceable artifacts** | Every run writes canonical artifacts under `agent-context/<change-id>/`. |
 | **Opik integration** | Bootstrap can start a local Opik stack and the UI can deep-link runs and evaluation views into Opik. |
-| **Evaluation framework** | `eval/synthesize.py` generates predicted easy/medium/hard stories by default, and `eval/run_eval.py` runs suites with scoring and baseline comparison. |
+| **Evaluation framework** | `eval/runner.py` runs the official hidden-test benchmarks with AC-level scoring, repeated trials, baseline comparison, and structured reports. |
 | **Hermetic recordings** | Server-launched runs can record subprocess I/O into local cassettes. |
 
 ## Future planned features
@@ -96,6 +96,24 @@ That flow:
 
 Skip the prompt non-interactively with `--with-opik` or `--no-opik`. Enabling Opik requires Docker Desktop to be running.
 If Opik is skipped, not configured, or temporarily unreachable, workflow runs continue without Opik tracing.
+
+### Bootstrap CLI reference
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--host` | `127.0.0.1` | Server bind host. |
+| `--port` | `8742` | Server bind port. |
+| `--reload` | off | Start the FastAPI server with `--reload` for development. |
+| `--with-opik` | — | Enable the bundled local Opik stack (requires Docker). Skips the interactive prompt. |
+| `--no-opik` | — | Skip the bundled local Opik stack. Skips the interactive prompt. |
+| `--eval-target-repo` | — | Target repo path or Git URL used for generated workflow eval benchmarks. |
+| `--eval-target-sha` | — | Gold-master commit SHA for generated workflow eval benchmarks. |
+| `--generate-eval-benchmarks` | off | Use an LLM to generate `eval/benchmarks/{easy,medium,hard}` during bootstrap. |
+| `--skip-eval-benchmarks` | off | Do not prompt for or generate eval benchmarks during bootstrap. |
+| `--eval-runner` | configured runner | LLM CLI for benchmark generation: `claude`, `copilot`, `copilot-*` alias, or `gemini`. Can also be set via `EVAL_RUNNER` env var. |
+| `--eval-model` | runner default | Optional model override for benchmark generation. Can also be set via `EVAL_MODEL` env var. Valid values depend on the runner — see `core/runner_models.py`. |
+| `--force-eval-benchmarks` | off | Overwrite existing generated benchmark folders instead of skipping them. |
+| `--no-verify-eval-gold-fails` | off | Skip running generated hidden tests against the gold-master during benchmark generation. Intended for local debugging only. |
 
 ### Manual server startup
 
@@ -203,26 +221,25 @@ python3 run.py \
 
 ## Evaluation framework
 
-The evaluation framework lives under [`eval/`](eval/).
+The evaluation framework lives under [`eval/`](eval/) and is centered on the
+official hidden-test benchmark harness:
 
-- `eval/synthesize.py` generates repository-wide easy/medium/hard stories
-- default synthesis produces **predicted tiers** only
-- empirical calibration is **opt-in** with `--calibrate`
-- `eval/run_eval.py` runs suites or individual stories against a target repo
+- `eval/benchmarks/<difficulty>/story.json` defines each benchmark work item
+- `eval/benchmarks/<difficulty>/hidden_tests.py` defines AC-mapped pytest checks
+- `eval/runner.py` runs benchmarks against a target repo, parses hidden-test JUnit
+  output, reports AC-level quality, supports repeated trials, and compares to an
+  optional baseline report
+- `eval/seed_benchmarks.py` can generate or repair benchmark fixtures
 
 Quick example:
 
 ```bash
-python3 eval/synthesize.py \
-  --dataset eval/datasets/my-service.yaml \
-  --runner copilot \
-  --output eval/suites \
-  --stories-output eval/stories
-
-python3 eval/run_eval.py \
-  --suite eval/suites/hard \
+python3 eval/runner.py \
   --repo /absolute/path/to/target/repo \
-  --skip-opik
+  --sha <gold-master-commit-sha> \
+  --difficulty easy medium hard \
+  --runs 3 \
+  --compare-to eval/reports/baseline.json
 ```
 
 For the full evaluation workflow, artifacts, source types, calibration, plugins, baselines, and troubleshooting, see [`eval/README.md`](eval/README.md).
@@ -252,8 +269,6 @@ The current UI includes five views:
 └── opik/        # only present when Opik is enabled at bootstrap (--with-opik)
 ```
 
-The `eval/run_eval.py` CLI has its own `--skip-opik` flag (separate from the bootstrap-time toggle) to bypass Opik metric reporting on a per-run basis.
-
 Server event logs are written in the repo under:
 
 ```text
@@ -279,10 +294,11 @@ Submitting a run in **Hermetic** mode records subprocess invocations into `~/.ag
 | `POST` | `/runs/{job_id}/cancel` | Cancel a queued or running job |
 | `GET` | `/agents` | List materialized agents |
 | `GET` | `/agents/{name}` | Read the latest prompt + metadata for one agent |
-| `GET` | `/corpus` | List evaluation stories |
-| `GET` | `/corpus/{change_id}` | Read one evaluation story |
-| `GET` | `/evaluate/summary` | Aggregate evaluation summary |
-| `POST` | `/evaluate/runs` | Start an evaluation run |
+| `GET` | `/corpus` | List generated story corpus entries |
+| `GET` | `/corpus/{change_id}` | Read one generated story corpus entry |
+| `GET` | `/evaluate/summary` | Read the latest benchmark-report summary from `eval/reports` |
+| `GET` | `/evaluate/reports` | List benchmark reports available for comparison |
+| `POST` | `/evaluate/benchmark-runs` | Start a hidden-test benchmark run through `eval/runner.py` |
 | `GET` / `PUT` | `/settings` | Read/update `~/.agent-runner/config.json` |
 | `POST` | `/settings/opik/connect` | Resolve and save Opik workspace/project metadata |
 
@@ -398,7 +414,7 @@ When Opik tracing is active, each agent-call span is annotated with the same non
 ```bash
 python3 -m pytest -q tests/test_server_routes.py tests/test_server_events.py
 python3 -m pytest -q tests/test_workflow_inputs.py tests/test_runner_proc.py
-python3 -m pytest -q tests/test_eval_run_eval.py tests/test_eval_synthesize.py
+python3 -m pytest -q tests/test_eval_runner.py tests/test_eval_seed_benchmarks.py
 python3 -m pytest -q tests/
 ```
 

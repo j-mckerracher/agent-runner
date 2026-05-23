@@ -13,6 +13,7 @@ and finally runs the hidden pytest file against the modified sandbox.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 import shutil
@@ -20,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,6 +32,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core.runner_models import RUNNER_MODEL_CHOICES, is_copilot_runner
+from eval.result_schema import BenchmarkResult, EvalMetrics, TestSummary
+from eval.seed_benchmarks import (
+    acceptance_criterion_ids,
+    find_ac_test_map,
+    validate_ac_test_map,
+    validate_hidden_tests,
+)
 
 DEFAULT_BENCHMARKS = ROOT / "eval" / "benchmarks"
 DEFAULT_REPORTS = ROOT / "eval" / "reports"
@@ -45,6 +54,17 @@ WORKFLOW_STAGE_ORDER = (
     "qa",
     "lessons-optimizer",
 )
+
+
+def emit_event(event: dict[str, Any]) -> None:
+    path = os.environ.get("AGENT_RUNNER_EVENT_LOG")
+    if not path:
+        return
+    payload = {"ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), **event}
+    event_path = Path(path)
+    event_path.parent.mkdir(parents=True, exist_ok=True)
+    with event_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
 
 @dataclass
@@ -253,7 +273,7 @@ def _prepare_run_story(source: Path, dest: Path, run_id: str) -> Path:
     return dest
 
 
-def validate_benchmark(path: Path) -> None:
+def benchmark_story(path: Path) -> dict[str, Any]:
     story = path / "story.json"
     tests = path / "hidden_tests.py"
     if not story.is_file():
@@ -268,6 +288,18 @@ def validate_benchmark(path: Path) -> None:
         raise ValueError(f"{story} is missing: {', '.join(missing)}")
     if not isinstance(data["acceptance_criteria"], list) or not data["acceptance_criteria"]:
         raise ValueError(f"{story} acceptance_criteria must be a non-empty list")
+    return data
+
+
+def benchmark_ac_test_map(path: Path) -> dict[str, list[str]]:
+    tree = ast.parse((path / "hidden_tests.py").read_text(encoding="utf-8"), filename=str(path / "hidden_tests.py"))
+    return find_ac_test_map(tree)
+
+
+def validate_benchmark(path: Path) -> None:
+    story = benchmark_story(path)
+    hidden_tests = validate_hidden_tests((path / "hidden_tests.py").read_text(encoding="utf-8"))
+    validate_ac_test_map(story, hidden_tests)
 
 
 def discover_benchmarks(root: Path, names: list[str]) -> list[Path]:
@@ -406,19 +438,176 @@ def run_project_tests(command: str | None, workspace: Path, timeout: int) -> sub
     return run_cmd(command, cwd=workspace, timeout=timeout, env=workflow_env(), shell=True)
 
 
-def run_hidden_tests(path: Path, workspace: Path, timeout: int) -> subprocess.CompletedProcess[str]:
+def parse_junit(path: Path) -> TestSummary:
+    if not path.exists():
+        return TestSummary()
+    root = ET.parse(path).getroot()
+    suites = list(root.iter("testsuite"))
+    total = sum(int(suite.get("tests", 0) or 0) for suite in suites)
+    failed = sum(int(suite.get("failures", 0) or 0) for suite in suites)
+    errors = sum(int(suite.get("errors", 0) or 0) for suite in suites)
+    skipped = sum(int(suite.get("skipped", 0) or 0) for suite in suites)
+    cases: list[dict[str, Any]] = []
+    for case in root.iter("testcase"):
+        status = "passed"
+        message = ""
+        failure = case.find("failure")
+        error = case.find("error")
+        skipped_node = case.find("skipped")
+        if skipped_node is not None:
+            status = "skipped"
+            message = skipped_node.get("message") or (skipped_node.text or "")
+        elif failure is not None:
+            status = "failed"
+            message = failure.get("message") or (failure.text or "")
+        elif error is not None:
+            status = "skipped" if (error.get("type") or "").lower().endswith("skipped") else "error"
+            message = error.get("message") or (error.text or "")
+        cases.append(
+            {
+                "classname": case.get("classname") or "",
+                "name": case.get("name") or "",
+                "time": float(case.get("time", 0) or 0),
+                "status": status,
+                "message": tail(message, 1000),
+            }
+        )
+    if not total:
+        total = len(cases)
+        failed = sum(1 for case in cases if case["status"] == "failed")
+        errors = sum(1 for case in cases if case["status"] == "error")
+        skipped = sum(1 for case in cases if case["status"] == "skipped")
+    passed = max(total - failed - errors - skipped, 0)
+    return TestSummary(total=total, passed=passed, failed=failed, skipped=skipped, errors=errors, cases=cases)
+
+
+def _case_matches_test(case: dict[str, Any], test_name: str) -> bool:
+    name = str(case.get("name") or "")
+    classname = str(case.get("classname") or "")
+    return name == test_name or name.startswith(f"{test_name}[") or test_name in f"{classname}.{name}"
+
+
+def map_ac_results(summary: TestSummary, ac_map: dict[str, list[str]], *, required_ids: list[str]) -> dict[str, dict[str, Any]]:
+    results: dict[str, dict[str, Any]] = {}
+    for ac_id in required_ids:
+        mapped_tests = ac_map.get(ac_id, [])
+        cases = [case for test_name in mapped_tests for case in summary.cases if _case_matches_test(case, test_name)]
+        statuses = [case["status"] for case in cases]
+        passed = bool(cases) and all(status == "passed" for status in statuses)
+        results[ac_id] = {
+            "tests": mapped_tests,
+            "cases": cases,
+            "passed": passed,
+            "missing_cases": not cases,
+            "failed": any(status in {"failed", "error"} for status in statuses),
+            "skipped": any(status == "skipped" for status in statuses),
+        }
+    summary.ac_results = results
+    return results
+
+
+def run_hidden_tests(path: Path, workspace: Path, timeout: int) -> tuple[subprocess.CompletedProcess[str], TestSummary]:
     shutil.copy2(path / "hidden_tests.py", workspace / "hidden_tests.py")
+    junit_path = workspace / ".awb-hidden-tests.xml"
     env = workflow_env()
     env["PYTHONPATH"] = str(workspace) + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
-    return run_cmd(
-        [sys.executable, "-m", "pytest", "hidden_tests.py", "--disable-warnings", "-q"],
+    completed = run_cmd(
+        [sys.executable, "-m", "pytest", "hidden_tests.py", "--disable-warnings", "-q", "--junitxml", str(junit_path)],
         cwd=workspace,
         timeout=timeout,
         env=env,
     )
+    return completed, parse_junit(junit_path)
 
 
-def run_one(path: Path, args: argparse.Namespace) -> dict[str, Any]:
+def collect_session_metrics(run_id: str) -> dict[str, Any]:
+    roots = [ROOT / "logs" / run_id, ROOT / "eval" / "reports" / "analyze" / run_id]
+    sessions: list[Path] = []
+    for root in roots:
+        if root.is_dir():
+            sessions.extend(root.rglob("*_session.json"))
+    by_agent: dict[str, dict[str, Any]] = {}
+    total_duration_ms = 0
+    tokens_in = 0
+    tokens_out = 0
+    for path in sessions:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        agent = str(payload.get("agent") or "unknown")
+        duration_ms = int(payload.get("duration_ms") or 0)
+        prompt_tokens = int(payload.get("prompt_est_tokens") or payload.get("tokens_in") or 0)
+        response_tokens = int(payload.get("response_est_tokens") or payload.get("tokens_out") or 0)
+        total_duration_ms += duration_ms
+        tokens_in += prompt_tokens
+        tokens_out += response_tokens
+        bucket = by_agent.setdefault(agent, {"calls": 0, "duration_ms": 0, "tokens_in": 0, "tokens_out": 0})
+        bucket["calls"] += 1
+        bucket["duration_ms"] += duration_ms
+        bucket["tokens_in"] += prompt_tokens
+        bucket["tokens_out"] += response_tokens
+    return {
+        "agent_sessions": len(sessions),
+        "llm_session_seconds": round(total_duration_ms / 1000.0, 2),
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
+        "tokens_total": tokens_in + tokens_out,
+        "by_agent": by_agent,
+    }
+
+
+def _empty_quality(story: dict[str, Any]) -> dict[str, Any]:
+    ac_ids = acceptance_criterion_ids(story["acceptance_criteria"])
+    return {
+        "weighted_score": 0.0,
+        "ac_passed": 0,
+        "ac_total": len(ac_ids),
+        "ac_failed_ids": ac_ids,
+        "critical_ac_failed": len(ac_ids),
+        "project_tests_passed": False,
+        "hidden_tests_passed": False,
+        "hidden_tests_skipped": 0,
+    }
+
+
+def build_quality(
+    *,
+    story: dict[str, Any],
+    ac_results: dict[str, dict[str, Any]],
+    project_passed: bool,
+    hidden_passed: bool,
+    hidden_summary: TestSummary | None,
+) -> dict[str, Any]:
+    ac_ids = acceptance_criterion_ids(story["acceptance_criteria"])
+    passed_ids = [ac_id for ac_id in ac_ids if ac_results.get(ac_id, {}).get("passed")]
+    failed_ids = [ac_id for ac_id in ac_ids if ac_id not in passed_ids]
+    critical_ids = story.get("metadata", {}).get("critical_acceptance_criteria") or story.get("metadata", {}).get("critical_acs") or ac_ids
+    critical_failed = [ac_id for ac_id in failed_ids if ac_id in set(critical_ids)]
+    return {
+        "weighted_score": round(len(passed_ids) / len(ac_ids), 4) if ac_ids else 0.0,
+        "ac_passed": len(passed_ids),
+        "ac_total": len(ac_ids),
+        "ac_failed_ids": failed_ids,
+        "critical_ac_failed": len(critical_failed),
+        "project_tests_passed": project_passed,
+        "hidden_tests_passed": hidden_passed,
+        "hidden_tests_skipped": hidden_summary.skipped if hidden_summary else 0,
+    }
+
+
+def finalize_result(result: BenchmarkResult, start: float) -> dict[str, Any]:
+    elapsed = round(time.monotonic() - start, 2)
+    session_metrics = collect_session_metrics(result.run_id)
+    result.metrics = EvalMetrics(wall_seconds=elapsed, cost_usd=0.0, **session_metrics)
+    payload = result.to_dict()
+    payload["seconds"] = elapsed
+    emit_event({"type": "metrics", "tokens_in": result.metrics.tokens_in, "tokens_out": result.metrics.tokens_out, "cost_usd": result.metrics.cost_usd})
+    emit_event({"type": "job.end", "job_id": result.run_id, "status": "ok" if result.status == "PASS" else "error", "msg": result.error})
+    return payload
+
+
+def run_one(path: Path, args: argparse.Namespace, *, trial_index: int = 1) -> dict[str, Any]:
     start = time.monotonic()
     sandbox_obj: tempfile.TemporaryDirectory[str] | None = None
     if args.keep_sandbox:
@@ -431,56 +620,124 @@ def run_one(path: Path, args: argparse.Namespace) -> dict[str, Any]:
     # --- collision prevention --------------------------------------------------
     # Each eval run gets its own unique change_id so parallel runs of the same
     # benchmark don't clobber each other's agent-context/ artifacts.
-    run_id = _make_run_id(path.name)
+    run_id = _make_run_id(f"{path.name}-t{trial_index}")
     run_story = _prepare_run_story(path / "story.json", sandbox / "story.json", run_id)
     # --------------------------------------------------------------------------
 
-    print(f"\n== {path.name} ==")
-    result: dict[str, Any] = {"name": path.name, "status": "FAIL", "error": "", "seconds": None, "run_id": run_id}
+    story = benchmark_story(path)
+    ac_ids = acceptance_criterion_ids(story["acceptance_criteria"])
+    ac_map = benchmark_ac_test_map(path)
+    print(f"\n== {path.name} (trial {trial_index}) ==")
+    emit_event({"type": "job.start", "job_id": run_id, "msg": f"Starting benchmark {path.name} trial {trial_index}"})
+    result = BenchmarkResult(
+        name=path.name,
+        run_id=run_id,
+        status="FAIL",
+        error="",
+        score_weighted=0.0,
+        trial_index=trial_index,
+        project_tests=None,
+        hidden_tests=None,
+        quality=_empty_quality(story),
+        metrics=EvalMetrics(wall_seconds=0.0),
+        story={
+            "change_id": story.get("change_id"),
+            "title": story.get("title"),
+            "description": story.get("description"),
+            "acceptance_criteria": story.get("acceptance_criteria", []),
+            "metadata": story.get("metadata", {}),
+        },
+        artifacts={"story": str(run_story)},
+    )
     try:
         print("Preparing sandbox")
+        emit_event({"type": "log", "level": "info", "stage": "benchmark.clone", "msg": f"Preparing sandbox for {path.name}"})
         prepare_workspace(args.repo, args.sha, workspace)
 
+        if not args.no_verify_gold_fails:
+            print("Verifying hidden tests fail on gold master")
+            gold_hidden, gold_summary = run_hidden_tests(path, workspace, args.test_timeout)
+            if gold_hidden.returncode == 0:
+                result.error = "hidden tests unexpectedly passed on gold master"
+                return finalize_result(result, start)
+            if gold_hidden.returncode in {2, 3, 4, 5} or gold_summary.errors:
+                result.error = f"hidden tests errored on gold master: pytest exit {gold_hidden.returncode}"
+                return finalize_result(result, start)
+            if gold_summary.skipped and not args.allow_hidden_skips:
+                result.error = f"hidden tests skipped on gold master: {gold_summary.skipped}"
+                return finalize_result(result, start)
+
         print("Running workflow")
+        emit_event({"type": "log", "level": "info", "stage": "benchmark.workflow", "msg": f"Running workflow for {path.name}"})
         workflow = invoke_workflow(path, workspace, args, story_file=run_story)
         if workflow.returncode != 0:
             print(tail(workflow.stdout))
             print(tail(workflow.stderr), file=sys.stderr)
-            result["error"] = "workflow failed"
-            return result
+            result.error = "workflow failed"
+            return finalize_result(result, start)
 
         if args.project_test_command:
             print("Running project tests")
         project = run_project_tests(args.project_test_command, workspace, args.test_timeout)
+        project_passed = project is None or project.returncode == 0
         if project is not None:
+            project_summary = TestSummary(total=1, passed=1 if project.returncode == 0 else 0, failed=0 if project.returncode == 0 else 1)
+            result.project_tests = project_summary
             if project.returncode != 0:
                 print(tail(project.stdout))
                 print(tail(project.stderr), file=sys.stderr)
-                result["error"] = "project tests failed"
-                return result
+                result.error = "project tests failed"
+                result.quality = build_quality(
+                    story=story,
+                    ac_results={ac_id: {"passed": False, "tests": ac_map.get(ac_id, [])} for ac_id in ac_ids},
+                    project_passed=False,
+                    hidden_passed=False,
+                    hidden_summary=None,
+                )
+                return finalize_result(result, start)
 
         print("Running hidden tests")
-        hidden = run_hidden_tests(path, workspace, args.test_timeout)
+        emit_event({"type": "log", "level": "info", "stage": "benchmark.hidden_tests", "msg": f"Running hidden tests for {path.name}"})
+        hidden, hidden_summary = run_hidden_tests(path, workspace, args.test_timeout)
+        ac_results = map_ac_results(hidden_summary, ac_map, required_ids=ac_ids)
+        hidden_passed = hidden.returncode == 0 and (args.allow_hidden_skips or hidden_summary.skipped == 0)
+        result.hidden_tests = hidden_summary
+        result.quality = build_quality(
+            story=story,
+            ac_results=ac_results,
+            project_passed=project_passed,
+            hidden_passed=hidden_passed,
+            hidden_summary=hidden_summary,
+        )
+        result.score_weighted = result.quality["weighted_score"]
+        if hidden_summary.skipped and not args.allow_hidden_skips:
+            result.error = f"hidden tests skipped: {hidden_summary.skipped}"
+            print(result.error, file=sys.stderr)
+            return finalize_result(result, start)
+        missing_cases = [ac_id for ac_id, ac_result in ac_results.items() if ac_result.get("missing_cases")]
+        if missing_cases:
+            result.error = f"AC_TEST_MAP entries did not execute: {', '.join(missing_cases)}"
+            print(result.error, file=sys.stderr)
+            return finalize_result(result, start)
         if hidden.returncode != 0:
             print(tail(hidden.stdout))
             print(tail(hidden.stderr), file=sys.stderr)
-            result["error"] = "hidden tests failed"
-            return result
+            result.error = "hidden tests failed"
+            return finalize_result(result, start)
 
-        result["status"] = "PASS"
+        result.status = "PASS"
         print("PASS")
-        return result
+        return finalize_result(result, start)
     except subprocess.TimeoutExpired as exc:
-        result["error"] = f"timeout after {exc.timeout}s"
-        print(result["error"], file=sys.stderr)
-        return result
+        result.error = f"timeout after {exc.timeout}s"
+        print(result.error, file=sys.stderr)
+        return finalize_result(result, start)
     except Exception as exc:
-        result["error"] = f"{type(exc).__name__}: {exc}"
-        print(result["error"], file=sys.stderr)
-        return result
+        result.error = f"{type(exc).__name__}: {exc}"
+        print(result.error, file=sys.stderr)
+        return finalize_result(result, start)
     finally:
         elapsed = round(time.monotonic() - start, 2)
-        result["seconds"] = elapsed
         if args.keep_sandbox:
             print(f"Sandbox kept at {workspace}")
         elif sandbox_obj is not None:
@@ -509,17 +766,124 @@ def _difficulty_label(results: list[dict[str, Any]]) -> str:
     return "+".join(levels)
 
 
+def _mean(values: list[float]) -> float:
+    return round(sum(values) / len(values), 4) if values else 0.0
+
+
+def aggregate_results(results: list[dict[str, Any]]) -> dict[str, Any]:
+    quality_scores = [float(result.get("quality", {}).get("weighted_score") or 0.0) for result in results]
+    passed = sum(1 for result in results if result.get("status") == "PASS")
+    wall_times = [float(result.get("metrics", {}).get("wall_seconds") or result.get("seconds") or 0.0) for result in results]
+    tokens = [float(result.get("metrics", {}).get("tokens_total") or 0.0) for result in results]
+    cost = [float(result.get("metrics", {}).get("cost_usd") or 0.0) for result in results]
+    failure_categories: dict[str, int] = {}
+    for result in results:
+        if result.get("status") == "PASS":
+            continue
+        key = str(result.get("error") or "failed").split(":", 1)[0]
+        failure_categories[key] = failure_categories.get(key, 0) + 1
+    hidden_skipped = sum(int(result.get("quality", {}).get("hidden_tests_skipped") or 0) for result in results)
+    incomplete_ac_mapping = any(
+        ac_result.get("missing_cases")
+        for result in results
+        for ac_result in ((result.get("hidden_tests") or {}).get("ac_results") or {}).values()
+    )
+    warnings = []
+    if hidden_skipped:
+        warnings.append("Hidden tests skipped.")
+    if incomplete_ac_mapping:
+        warnings.append("Benchmark report/AC mapping is incomplete.")
+    return {
+        "quality": {
+            "weighted_score": _mean(quality_scores),
+            "ac_passed": sum(int(result.get("quality", {}).get("ac_passed") or 0) for result in results),
+            "ac_total": sum(int(result.get("quality", {}).get("ac_total") or 0) for result in results),
+            "critical_ac_failed": sum(int(result.get("quality", {}).get("critical_ac_failed") or 0) for result in results),
+            "hidden_tests_skipped": hidden_skipped,
+        },
+        "reliability": {
+            "runs": len(results),
+            "passed": passed,
+            "pass_rate": round(passed / len(results), 4) if results else 0.0,
+            "weighted_score_mean": _mean(quality_scores),
+            "failure_categories": failure_categories,
+        },
+        "efficiency": {
+            "wall_seconds_mean": _mean(wall_times),
+            "tokens_total_mean": _mean(tokens),
+            "cost_usd_mean": _mean(cost),
+        },
+        "warnings": warnings,
+    }
+
+
+def classify_trend(
+    current: dict[str, Any],
+    baseline: dict[str, Any],
+    *,
+    quality_pp: float = 5.0,
+    efficiency_pct: float = 15.0,
+) -> str:
+    q_delta = float(current.get("quality", {}).get("weighted_score") or 0.0) - float(baseline.get("quality", {}).get("weighted_score") or 0.0)
+    baseline_time = max(float(baseline.get("efficiency", {}).get("wall_seconds_mean") or 0.0), 1.0)
+    baseline_tokens = max(float(baseline.get("efficiency", {}).get("tokens_total_mean") or 0.0), 1.0)
+    time_delta_pct = 100.0 * (float(current.get("efficiency", {}).get("wall_seconds_mean") or 0.0) - baseline_time) / baseline_time
+    token_delta_pct = 100.0 * (float(current.get("efficiency", {}).get("tokens_total_mean") or 0.0) - baseline_tokens) / baseline_tokens
+    threshold = quality_pp / 100.0
+    if q_delta <= -threshold:
+        return "decreased"
+    if abs(q_delta) < threshold and (time_delta_pct > efficiency_pct or token_delta_pct > efficiency_pct):
+        return "decreased"
+    if q_delta >= threshold:
+        return "increased"
+    if abs(q_delta) < threshold and time_delta_pct < -efficiency_pct and token_delta_pct < -efficiency_pct:
+        return "increased"
+    return "same"
+
+
+def load_baseline(path: Path | None) -> dict[str, Any] | None:
+    if path is None:
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def write_report(results: list[dict[str, Any]], args: argparse.Namespace) -> None:
     if not args.write_report:
         return
     DEFAULT_REPORTS.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc)
+    summary = aggregate_results(results)
+    baseline_payload = load_baseline(args.compare_to)
+    baseline_summary = baseline_payload.get("summary") if baseline_payload else None
+    if baseline_summary:
+        summary["trend"] = classify_trend(
+            summary,
+            baseline_summary,
+            quality_pp=args.regression_quality_pp,
+            efficiency_pct=args.regression_efficiency_pct,
+        )
+        summary["baseline"] = baseline_summary
+        if baseline_payload.get("runner") != args.runner or baseline_payload.get("model") != args.model:
+            summary.setdefault("warnings", []).append("Current runner/model differs from baseline.")
+        if baseline_payload.get("sha") != args.sha:
+            summary.setdefault("warnings", []).append("Current target SHA differs from baseline.")
+        baseline_names = sorted({result.get("name") for result in baseline_payload.get("results", [])})
+        current_names = sorted({result.get("name") for result in results})
+        if baseline_names != current_names:
+            summary.setdefault("warnings", []).append("Current benchmark set differs from baseline.")
+    else:
+        summary["trend"] = "insufficient data"
+        summary.setdefault("warnings", []).append("No baseline selected.")
+    if args.runs <= 1:
+        summary.setdefault("warnings", []).append("Only one run; reliability unknown.")
     payload = {
         "created_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "repo": args.repo,
         "sha": args.sha,
         "runner": args.runner,
         "model": args.model,
+        "runs": args.runs,
+        "summary": summary,
         "results": results,
     }
     # Filename: YYYY-MM-DD-HHMMss-<difficulty>.json  e.g. 2026-05-20-143022-easy.json
@@ -529,6 +893,9 @@ def write_report(results: list[dict[str, Any]], args: argparse.Namespace) -> Non
     latest_path = DEFAULT_REPORTS / "latest.json"
     report_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     latest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    if args.update_baseline:
+        baseline_path = args.compare_to or (DEFAULT_REPORTS / "baseline.json")
+        baseline_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     print(f"Report written to {report_path}")
 
 
@@ -549,6 +916,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--keep-sandbox", action="store_true")
     parser.add_argument("--write-report", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--log-level", default="warning")
+    parser.add_argument("--runs", type=int, default=1, help="Number of trials to run per benchmark.")
+    parser.add_argument("--allow-hidden-skips", action="store_true", help="Allow skipped hidden tests without failing the benchmark.")
+    parser.add_argument("--no-verify-gold-fails", action="store_true", help="Do not require hidden tests to fail cleanly on gold master before running the workflow.")
+    parser.add_argument("--compare-to", type=Path, default=None, help="Baseline report JSON to compare against.")
+    parser.add_argument("--update-baseline", action="store_true", help="Write the current report as the baseline report.")
+    parser.add_argument("--regression-quality-pp", type=float, default=5.0)
+    parser.add_argument("--regression-efficiency-pct", type=float, default=15.0)
     return parser
 
 
@@ -574,13 +948,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"No benchmarks found in {args.benchmarks_dir}", file=sys.stderr)
         return 2
 
-    results = [run_one(path, args) for path in benchmarks]
+    if args.runs < 1:
+        print("--runs must be >= 1", file=sys.stderr)
+        return 2
+
+    results = []
+    for path in benchmarks:
+        for trial_index in range(1, args.runs + 1):
+            results.append(run_one(path, args, trial_index=trial_index))
 
     print("\nEvaluation report")
     print("-----------------")
     for result in results:
         suffix = f" ({result['error']})" if result.get("error") else ""
-        print(f"{result['name']:24} {result['status']}{suffix}")
+        print(f"{result['name']:24} trial {result.get('trial_index', 1):02d} {result['status']}{suffix}")
     write_report(results, args)
     return 0 if all(result["status"] == "PASS" for result in results) else 1
 

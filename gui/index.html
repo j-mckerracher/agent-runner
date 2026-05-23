@@ -422,7 +422,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .section-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
 .field{margin-bottom:8px}
 .field label{display:block;font-size:11px;color:var(--t2);margin-bottom:3px}
-.field select,.field input[type=text],.field textarea{width:100%;background:rgba(28,32,40,.85);border:1px solid var(--input-border);border-radius:4px;color:var(--t1);font-family:var(--font);font-size:12px;padding:5px 8px;outline:none}
+.field select,.field input[type=text],.field input[type=number],.field textarea{width:100%;background:rgba(28,32,40,.85);border:1px solid var(--input-border);border-radius:4px;color:var(--t1);font-family:var(--font);font-size:12px;padding:5px 8px;outline:none}
 .field textarea{font-family:var(--mono);min-height:54px;resize:vertical}
 .field select:focus,.field input:focus,.field textarea:focus{border-color:var(--acc);background:var(--s4)}
 .repo-input-row{display:flex;gap:6px;align-items:center}
@@ -546,13 +546,27 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .view[data-view="evaluate"] .eval-config,
 .view[data-view="evaluate"] .eval-bridge,
 .view[data-view="evaluate"] .cards,
+.view[data-view="evaluate"] #eval-warnings,
 .view[data-view="evaluate"] #eval-list,
+.view[data-view="evaluate"] #eval-detail,
 .view[data-view="evaluate"] .eval-run-panel{width:min(1100px,100%);margin-left:auto;margin-right:auto}
 .view[data-view="evaluate"] .eval-config{margin-top:0;margin-bottom:14px}
 .view[data-view="evaluate"] .eval-bridge{margin-top:0;margin-bottom:14px}
 .view[data-view="evaluate"] .cards{padding:14px 0}
 .view[data-view="evaluate"] #eval-list{flex:none;overflow:visible;padding:14px 0;margin-bottom:14px}
 .view[data-view="evaluate"] .eval-run-panel{margin-bottom:0}
+.eval-warnings{display:none;margin:0 auto 14px;padding:10px 14px;border:1px solid rgba(212,168,50,.22);border-left:3px solid var(--wa);border-radius:6px;background:rgba(212,168,50,.07);font-family:var(--mono);font-size:11px;color:#f0cc5e;line-height:1.55}
+.eval-warnings.show{display:block}
+.eval-detail{display:none;margin:0 auto 14px;padding:16px;border:1px solid var(--br);border-radius:8px;background:rgba(13,15,20,.58)}
+.eval-detail.show{display:block}
+.eval-detail h3{font-size:16px;margin-bottom:8px;color:var(--t1)}
+.eval-detail h4{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--acc);margin:14px 0 7px}
+.eval-detail p,.eval-detail li{color:var(--t2);line-height:1.55}
+.eval-detail ul{margin-left:18px}
+.eval-detail pre{white-space:pre-wrap;word-break:break-word;background:rgba(7,8,11,.65);border:1px solid var(--br);border-radius:5px;padding:8px 10px;color:var(--t1);font-family:var(--mono);font-size:11px}
+.eval-ac{margin:8px 0;padding:10px 12px;border:1px solid var(--br);border-radius:6px;background:rgba(20,23,32,.55)}
+.eval-ac.pass{border-color:rgba(82,201,123,.22)} .eval-ac.fail{border-color:rgba(224,90,70,.28)}
+.eval-ac-head{font-family:var(--mono);font-size:11px;color:var(--t1);margin-bottom:5px}
 @media (max-width:1320px){
   .workflow-title{font-size:16px}
 }
@@ -924,8 +938,8 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
     <nav class="nav" id="nav">
       <div class="nav-item active" data-view="runs">Runs</div>
       <div class="nav-item" data-view="agents">Agents</div>
-      <div class="nav-item" data-view="corpus">Evaluations</div>
-      <div class="nav-item" data-view="evaluate">Evaluate</div>
+      <div class="nav-item" data-view="evaluate">Run Evaluations</div>
+      <div class="nav-item" data-view="corpus">Evaluation Results</div>
       <div class="nav-item" data-view="settings">Settings</div>
     </nav>
     <div class="sidebar-workflow is-visible" id="sidebar-workflow">
@@ -1029,15 +1043,9 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
       </div>
     </section>
 
-    <!-- CORPUS -->
-    <section class="view" data-view="corpus">
-      <div class="view-header"><span class="view-title">Evaluations</span><span class="view-meta" id="corpus-meta"></span></div>
-      <div class="simple-list" id="corpus-list"></div>
-    </section>
-
     <!-- EVALUATE -->
     <section class="view" data-view="evaluate">
-      <div class="view-header"><span class="view-title">Evaluate</span><span class="view-meta" id="eval-meta"></span></div>
+      <div class="view-header"><span class="view-title">Run Evaluations</span><span class="view-meta" id="eval-meta"></span></div>
       <div class="eval-content">
         <div class="eval-config">
           <div class="section-label">Start evaluation run</div>
@@ -1052,15 +1060,21 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
               <button class="btn ghost repo-forget-btn" id="eval-repo-forget" type="button">Forget</button>
             </div>
           </div>
-          <div class="field"><label>Evaluation story</label><select id="eval-story"></select></div>
+          <div class="field">
+            <label for="eval-sha">Gold-master SHA</label>
+            <select id="eval-sha"></select>
+            <input type="text" id="eval-sha-custom" placeholder="enter a different commit SHA" autocomplete="off" spellcheck="false" style="margin-top:6px" hidden>
+          </div>
+          <div class="field"><label>Benchmarks</label><select id="eval-difficulty" multiple size="3"><option value="easy" selected>Easy</option><option value="medium" selected>Medium</option><option value="hard" selected>Hard</option></select></div>
           <div class="row2">
             <div class="field"><label>Runner</label><select id="eval-runner"><option value="claude">Claude</option><option value="copilot">Copilot</option><option value="gemini">Gemini</option></select></div>
             <div class="field"><label>Model</label><select id="eval-model"></select></div>
           </div>
           <div class="row2">
-            <div class="field"><label>Mode</label><select id="eval-mode"><option value="live">Live</option><option value="hermetic">Hermetic (record)</option></select></div>
+            <div class="field"><label>Runs per benchmark</label><input type="number" id="eval-runs" min="1" value="1"></div>
+            <div class="field"><label>Baseline report</label><select id="eval-baseline"><option value="">No baseline selected</option></select></div>
           </div>
-          <div class="field"><label>Extra context</label><textarea id="eval-extra" placeholder="Optional notes appended to the evaluation run prompt..."></textarea></div>
+          <div class="field"><label>Project test command</label><textarea id="eval-extra" placeholder="Optional command run before hidden tests, e.g. npm test -- --runInBand"></textarea></div>
           <button class="btn" id="eval-submit-btn">Start evaluation run</button>
         </div>
         <div class="eval-bridge">
@@ -1075,7 +1089,9 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
           </div>
         </div>
         <div class="cards" id="eval-cards"></div>
+        <div class="eval-warnings" id="eval-warnings"></div>
         <div class="simple-list" id="eval-list"></div>
+        <div class="eval-detail" id="eval-detail"></div>
         <div class="eval-run-panel">
           <div class="term-header">
             <span id="eval-term-title">No evaluation run selected</span>
@@ -1101,6 +1117,12 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
           <div class="metrics" id="eval-metrics"><span>tokens in <b id="eval-m-ti">—</b></span><span class="metrics-sep">|</span><span>tokens out <b id="eval-m-to">—</b></span><span class="metrics-sep">|</span><span>total <b id="eval-m-total">—</b></span><span class="metrics-sep">|</span><span>cost <b id="eval-m-cost">—</b></span><span class="cost-disclaimer">est. $3/$15 per Mtok</span><span class="metrics-sep">|</span><span>stage <b id="eval-m-stage">—</b></span></div>
         </div>
       </div>
+    </section>
+
+    <!-- CORPUS -->
+    <section class="view" data-view="corpus">
+      <div class="view-header"><span class="view-title">Evaluation Results</span><span class="view-meta" id="corpus-meta"></span></div>
+      <div class="simple-list" id="corpus-list"></div>
     </section>
 
     <!-- SETTINGS -->
@@ -1286,6 +1308,8 @@ let RUNNER_MODELS = {claude:[],copilot:[],gemini:[]};
 let REPO_PATH_OPTIONS = [];
 let REPO_CUSTOM_VALUES = [];
 let REPO_BASE_DIR = "";
+let EVAL_BOOTSTRAP_SHA = "";
+const EVAL_CUSTOM_SHA_OPTION = "__custom__";
 const REPO_PICKERS = [
   { input:"#f-repo", toggle:"#f-repo-toggle", menu:"#f-repo-menu" },
   { input:"#eval-repo", toggle:"#eval-repo-toggle", menu:"#eval-repo-menu" },
@@ -1762,14 +1786,24 @@ function runSurface(surface="runs"){
   };
 }
 function formatPercent(value){
-  const n = Number(value);
-  return Number.isFinite(n) ? `${Math.round(n)}%` : "—";
+  let n = Number(value);
+  if(!Number.isFinite(n)) return "—";
+  if(n >= 0 && n <= 1) n *= 100;
+  return `${Math.round(n)}%`;
 }
 function formatMoney(value){
   const n = Number(value);
   if(!Number.isFinite(n)) return "—";
   if(n > 0 && n < 0.0001) return "<$0.0001";
   return `$${n.toFixed(4)}`;
+}
+function formatSeconds(value){
+  const n = Number(value);
+  return Number.isFinite(n) ? `${Math.round(n)}s` : "—";
+}
+function formatNumber(value){
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.round(n).toLocaleString() : "—";
 }
 function setActiveSurfaceJob(surface="runs", job=null){
   const next = job ? {...job} : null;
@@ -3016,6 +3050,7 @@ async function loadCorpus(){
 // Evaluate
 function updateEvaluationStorySelect(rows){
   const sel = $("#eval-story");
+  if(!sel) return;
   const current = sel.value;
   sel.innerHTML = "";
   rows.forEach(t=>{
@@ -3025,7 +3060,6 @@ function updateEvaluationStorySelect(rows){
     sel.appendChild(o);
   });
   if(current && rows.some(t=>t.task===current)) sel.value = current;
-  $("#eval-submit-btn").disabled = !rows.length;
 }
 function updateEvaluateOpikLink(cfg){
   const link = $("#eval-opik-link");
@@ -3042,47 +3076,158 @@ function updateEvaluateOpikLink(cfg){
   link.style.display = "";
   missing.style.display = "none";
 }
+function currentEvalShaValue(){
+  const select = $("#eval-sha");
+  const custom = $("#eval-sha-custom");
+  if(!select) return "";
+  if(select.value === EVAL_CUSTOM_SHA_OPTION) return custom?.value.trim() || "";
+  return select.value.trim();
+}
+function syncEvalShaCustomInput(){
+  const select = $("#eval-sha");
+  const custom = $("#eval-sha-custom");
+  if(!select || !custom) return;
+  const useCustom = select.value === EVAL_CUSTOM_SHA_OPTION;
+  custom.hidden = !useCustom;
+  custom.disabled = !useCustom;
+  custom.required = useCustom;
+}
+function updateEvalShaOptions(bootstrapSha){
+  const select = $("#eval-sha");
+  const custom = $("#eval-sha-custom");
+  if(!select || !custom) return;
+  const current = currentEvalShaValue();
+  EVAL_BOOTSTRAP_SHA = (bootstrapSha || "").trim();
+  select.innerHTML = "";
+  if(EVAL_BOOTSTRAP_SHA){
+    const bootstrapOption = document.createElement("option");
+    bootstrapOption.value = EVAL_BOOTSTRAP_SHA;
+    bootstrapOption.textContent = `${EVAL_BOOTSTRAP_SHA} (bootstrap)`;
+    select.appendChild(bootstrapOption);
+  }
+  const customOption = document.createElement("option");
+  customOption.value = EVAL_CUSTOM_SHA_OPTION;
+  customOption.textContent = EVAL_BOOTSTRAP_SHA ? "Custom SHA…" : "Enter SHA manually…";
+  select.appendChild(customOption);
+  if(current){
+    if(EVAL_BOOTSTRAP_SHA && current === EVAL_BOOTSTRAP_SHA){
+      select.value = EVAL_BOOTSTRAP_SHA;
+    }else{
+      select.value = EVAL_CUSTOM_SHA_OPTION;
+      custom.value = current;
+    }
+  }else if(EVAL_BOOTSTRAP_SHA){
+    select.value = EVAL_BOOTSTRAP_SHA;
+  }else{
+    select.value = EVAL_CUSTOM_SHA_OPTION;
+  }
+  syncEvalShaCustomInput();
+}
 async function loadEvaluate(){
   const [r, cfg] = await Promise.all([api("/evaluate/summary"), api("/settings")]);
   updateEvaluateOpikLink(cfg);
+  updateEvalShaOptions(cfg.eval_bootstrap?.target_sha || "");
+  updateEvalBaselineSelect(r.reports || []);
   const cards = $("#eval-cards");
   const rows = r.rows || [];
-  updateEvaluationStorySelect(rows);
   cards.innerHTML = `
-    <div class="card"><div class="lbl">Pass rate</div><div class="val">${formatPercent(r.overall_pass_rate)}</div></div>
-    <div class="card"><div class="lbl">Total runs</div><div class="val">${r.total_runs||0}</div></div>
-    <div class="card"><div class="lbl">Regressions</div><div class="val">${r.regressions||0}</div></div>
-    <div class="card"><div class="lbl">Avg cost</div><div class="val">${formatMoney(r.avg_cost_usd)}</div></div>
+    <div class="card"><div class="lbl">Verdict</div><div class="val">${escapeHtml(r.verdict || "insufficient data")}</div></div>
+    <div class="card"><div class="lbl">Quality</div><div class="val">${formatPercent(r.quality_score)}</div></div>
+    <div class="card"><div class="lbl">Reliability</div><div class="val">${formatPercent(r.pass_rate)}</div></div>
+    <div class="card"><div class="lbl">Wall time</div><div class="val">${formatSeconds(r.wall_seconds_mean)}</div></div>
+    <div class="card"><div class="lbl">Tokens</div><div class="val">${formatNumber(r.tokens_total_mean)}</div></div>
   `;
+  const warningBox = $("#eval-warnings");
+  const warnings = r.warnings || [];
+  if(warnings.length){
+    warningBox.classList.add("show");
+    warningBox.innerHTML = warnings.map(w=>`<div>⚠ ${escapeHtml(w)}</div>`).join("");
+  }else{
+    warningBox.classList.remove("show");
+    warningBox.innerHTML = "";
+  }
   const list = $("#eval-list"); list.innerHTML="";
   if(!rows.length){
-    list.innerHTML = '<div class="empty">No evaluation stories found yet.</div>';
+    list.innerHTML = '<div class="empty">No benchmark reports found yet.</div>';
+    $("#eval-detail").classList.remove("show");
+    $("#eval-detail").innerHTML = "";
   }
-  rows.forEach(t=>{
+  rows.forEach((t, idx)=>{
     const d = document.createElement("div"); d.className="item";
     const cur = formatPercent(t.current);
-    const base = formatPercent(t.baseline);
-    const delta = t.delta==null ? "—" : `${t.delta > 0 ? "+" : ""}${t.delta}%`;
-    const status = t.status === "regression" ? ` · <span style="color:var(--er)">REGRESSION</span>` : ` · ${escapeHtml(t.status || "unknown")}`;
-    d.innerHTML = `<h3>${escapeHtml(t.task)}</h3><div class="meta">${escapeHtml(t.title || "")} · current ${cur} · baseline ${base} · delta ${delta} · runs ${t.runs}${status}</div>`;
+    const reliability = formatPercent(t.pass_rate);
+    const status = t.status === "failed" ? ` · <span style="color:var(--er)">FAILED</span>` : ` · ${escapeHtml(t.status || "unknown")}`;
+    const warnings = (t.warnings || []).length ? ` · ${escapeHtml((t.warnings || []).join("; "))}` : "";
+    d.innerHTML = `<h3>${escapeHtml(t.task)}</h3><div class="meta">${escapeHtml(t.title || "")} · AC score ${cur} · reliability ${reliability} · runs ${t.runs} · wall ${formatSeconds(t.wall_seconds_mean)} · tokens ${formatNumber(t.tokens_total_mean)}${status}${warnings}</div>`;
+    d.addEventListener("click", ()=>renderEvalDetail(t));
     list.appendChild(d);
+    if(idx===0) renderEvalDetail(t);
   });
-  $("#eval-meta").textContent = `${rows.length} stor${rows.length===1?"y":"ies"}`;
+  $("#eval-meta").textContent = `${rows.length} benchmark${rows.length===1?"":"s"}`;
+}
+function updateEvalBaselineSelect(reports){
+  const sel = $("#eval-baseline");
+  if(!sel) return;
+  const current = sel.value;
+  sel.innerHTML = '<option value="">No baseline selected</option>';
+  reports.forEach(report=>{
+    const opt = document.createElement("option");
+    opt.value = report.path || "";
+    const score = formatPercent(report.summary?.quality?.weighted_score);
+    opt.textContent = `${report.name || "report"} · ${report.runner || "runner"}${report.model ? "/" + report.model : ""} · ${score}`;
+    sel.appendChild(opt);
+  });
+  if(Array.from(sel.options).some(o=>o.value===current)) sel.value = current;
+}
+function renderEvalDetail(row){
+  const detail = $("#eval-detail");
+  const story = row.story || {};
+  const trials = row.details || [];
+  const criteria = story.acceptance_criteria || [];
+  const artifacts = trials.flatMap(t=>Object.entries(t.artifacts || {}).map(([k,v])=>`${k}: ${v}`));
+  const acBlocks = criteria.map(ac=>{
+    const id = (String(ac).match(/^(AC\d+)/) || ["","AC?"])[1];
+    const perTrial = trials.map(t=>{
+      const acResult = t.hidden_tests?.ac_results?.[id] || {};
+      const cases = acResult.cases || [];
+      const status = acResult.passed ? "pass" : "fail";
+      const messages = cases.filter(c=>c.message).map(c=>`${c.name}: ${c.message}`);
+      const skipped = cases.filter(c=>c.status==="skipped").map(c=>c.name);
+      return `<div class="eval-ac ${status}">
+        <div class="eval-ac-head">${escapeHtml(id)} · trial ${escapeHtml(String(t.trial_index || 1))} · ${acResult.passed ? "passed" : "failed"}</div>
+        <div class="meta">tests: ${escapeHtml((acResult.tests || []).join(", ") || "none")}</div>
+        ${messages.length ? `<pre>${escapeHtml(messages.join("\n\n"))}</pre>` : ""}
+        ${skipped.length ? `<div class="meta">skipped: ${escapeHtml(skipped.join(", "))}</div>` : ""}
+      </div>`;
+    }).join("");
+    return `<h4>${escapeHtml(id)}</h4><p>${escapeHtml(String(ac))}</p>${perTrial}`;
+  }).join("");
+  detail.innerHTML = `
+    <h3>${escapeHtml(row.task || "Benchmark")}: ${escapeHtml(row.title || "")}</h3>
+    <p>${escapeHtml(story.description || "No story description recorded in this report.")}</p>
+    <h4>Acceptance criteria and tests</h4>
+    ${acBlocks || "<p>No AC-level detail recorded.</p>"}
+    <h4>Artifacts</h4>
+    ${artifacts.length ? `<pre>${escapeHtml(artifacts.join("\n"))}</pre>` : "<p>No artifact links recorded.</p>"}
+  `;
+  detail.classList.add("show");
 }
 $("#eval-submit-btn").addEventListener("click", async ()=>{
   const body = {
     repo: $("#eval-repo").value.trim(),
-    story_id: $("#eval-story").value,
+    sha: currentEvalShaValue(),
     runner: $("#eval-runner").value,
     model: $("#eval-model").value || null,
-    extra_context: $("#eval-extra").value || null,
-    mode: $("#eval-mode").value,
+    difficulties: Array.from($("#eval-difficulty").selectedOptions).map(o=>o.value),
+    runs: Number($("#eval-runs").value || 1),
+    project_test_command: $("#eval-extra").value || null,
+    compare_to: $("#eval-baseline").value || null,
   };
-  if(!body.repo || !body.story_id){ toast("repo and evaluation story are required", true); return; }
+  if(!body.repo || !body.sha){ toast("repo and gold-master SHA are required", true); return; }
   const btn = $("#eval-submit-btn");
   btn.disabled = true;
   try{
-    const r = await api("/evaluate/runs", {method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(body)});
+    const r = await api("/evaluate/benchmark-runs", {method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(body)});
     try{
       await rememberRepoPath(body.repo);
       toast("Submitted evaluation "+r.job_id);
@@ -3094,6 +3239,7 @@ $("#eval-submit-btn").addEventListener("click", async ()=>{
   }catch(e){ toast(e.message, true); }
   finally{ btn.disabled = false; }
 });
+$("#eval-sha").addEventListener("change", syncEvalShaCustomInput);
 </script>
 
 <script type="importmap">

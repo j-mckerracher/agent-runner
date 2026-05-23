@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import signal
@@ -94,6 +95,29 @@ class JobProcess:
 
     def _build_cmd(self) -> list[str]:
         py = sys.executable or "python3"
+        if self.job.get("run_kind") == "benchmark_evaluation":
+            args = json.loads(self.job.get("eval_runner_args") or "{}")
+            cmd = [
+                py,
+                str(RUNNER_ROOT / "eval" / "runner.py"),
+                "--repo",
+                args["repo"],
+                "--sha",
+                args["sha"],
+                "--runner",
+                args.get("runner") or self.job["runner"],
+            ]
+            if args.get("model"):
+                cmd += ["--model", args["model"]]
+            difficulties = args.get("difficulties") or ["easy", "medium", "hard"]
+            cmd += ["--difficulty", *difficulties]
+            cmd += ["--runs", str(args.get("runs") or 1)]
+            if args.get("project_test_command"):
+                cmd += ["--project-test-command", args["project_test_command"]]
+            if args.get("compare_to"):
+                cmd += ["--compare-to", args["compare_to"]]
+            logger.debug("JobProcess._build_cmd: benchmark job_id=%s cmd=%s", self.id, cmd)
+            return cmd
         cmd = [py, str(RUNNER_ROOT / "run.py")]
         cmd += ["--repo", self.job["repo"]]
         cmd += ["--change-id", self.job["change_id"]]

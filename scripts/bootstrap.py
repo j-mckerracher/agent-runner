@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Iterable
 from urllib.parse import unquote, urlparse
 
+from core.env_file import read_env_file
+
 RUNNER_ROOT = Path(__file__).resolve().parent.parent
 VENV_DIR = RUNNER_ROOT / ".venv"
 ENV_FILE = RUNNER_ROOT / ".env"
@@ -475,19 +477,7 @@ def _prompt_user_config() -> None:
 
 
 def _read_env_file(path: Path = ENV_FILE) -> dict[str, str]:
-    values: dict[str, str] = {}
-    if not path.exists():
-        return values
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-            value = value[1:-1]
-        values[key.strip()] = value
-    return values
+    return read_env_file(path)
 
 
 def _quote_env_value(value: str) -> str:
@@ -670,8 +660,8 @@ def _generate_eval_benchmarks(config: dict[str, str | bool], args: argparse.Name
         cmd.extend(["--model", str(config["model"])])
     if args.force_eval_benchmarks:
         cmd.append("--force")
-    if args.verify_eval_gold_fails:
-        cmd.append("--verify-gold-fails")
+    if getattr(args, "no_verify_eval_gold_fails", False):
+        cmd.append("--no-verify-gold-fails")
     _run(cmd, cwd=RUNNER_ROOT)
 
 
@@ -784,7 +774,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eval-runner", default=None, help="LLM CLI for benchmark generation: claude, copilot, copilot-* alias, or gemini. Defaults to configured runner.")
     parser.add_argument("--eval-model", default=None, help="Optional model override for benchmark generation.")
     parser.add_argument("--force-eval-benchmarks", action="store_true", help="Overwrite existing generated benchmark folders.")
-    parser.add_argument("--verify-eval-gold-fails", action="store_true", help="After generation, run hidden tests against gold-master and require normal pytest failures.")
+    parser.add_argument(
+        "--no-verify-eval-gold-fails",
+        action="store_true",
+        help="Do not run generated hidden tests against gold-master during benchmark generation. Intended only for local debugging.",
+    )
+    parser.add_argument("--verify-eval-gold-fails", action="store_true", help=argparse.SUPPRESS)
     return parser.parse_args()
 
 

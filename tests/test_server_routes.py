@@ -8,6 +8,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 class ServerRoutesTests(unittest.TestCase):
@@ -53,6 +54,11 @@ class ServerRoutesTests(unittest.TestCase):
         self.assertIn('id="eval-repo"', r.text)
         self.assertIn('id="eval-repo-toggle"', r.text)
         self.assertIn('id="eval-repo-menu"', r.text)
+        self.assertIn('id="eval-sha"', r.text)
+        self.assertIn('id="eval-sha-custom"', r.text)
+        self.assertIn('id="eval-baseline"', r.text)
+        self.assertIn('id="eval-detail"', r.text)
+        self.assertIn('id="eval-warnings"', r.text)
         self.assertIn('id="s-repo-base-dir"', r.text)
 
     def test_medium__settings_returns_runner_models_and_efforts(self):
@@ -64,6 +70,18 @@ class ServerRoutesTests(unittest.TestCase):
         self.assertIn("dashboard_url", s["opik"])
         self.assertIn("repo_paths", s)
         self.assertIn("repo_path_options", s)
+        self.assertIn("eval_bootstrap", s)
+        self.assertIn("target_sha", s["eval_bootstrap"])
+
+    def test_medium__settings_reads_bootstrap_eval_target_sha_from_repo_env(self):
+        root = Path(self.tmpdir) / "runner-root"
+        root.mkdir(parents=True, exist_ok=True)
+        (root / ".env").write_text('EVAL_TARGET_SHA="abc123"\n', encoding="utf-8")
+
+        with patch("server.routes.settings.RUNNER_ROOT", root):
+            s = self.client.get("/settings").json()
+
+        self.assertEqual(s["eval_bootstrap"]["target_sha"], "abc123")
 
     def test_medium__settings_put_partial_merges_and_persists(self):
         r = self.client.put("/settings", json={"concurrency": {"max_running_jobs": 4}})
@@ -198,7 +216,8 @@ class ServerRoutesTests(unittest.TestCase):
         payload = r.json()
         self.assertEqual(payload["name"], "intake")
         self.assertTrue(payload["version"].startswith("v"))
-        self.assertTrue(payload["prompt_file"].endswith("agent-definition-source/intake/v1/prompt.md"))
+        self.assertIn("agent-definition-source/intake/", payload["prompt_file"])
+        self.assertTrue(payload["prompt_file"].endswith("/prompt.md"))
         self.assertIn("Intake Agent Prompt", payload["prompt_text"])
         self.assertIn("tags", payload)
 
@@ -287,175 +306,94 @@ class ServerRoutesTests(unittest.TestCase):
         r = self.client.get("/evaluate/summary")
         self.assertEqual(r.status_code, 200)
         payload = r.json()
+        self.assertEqual(payload["source"], "benchmark_reports")
         self.assertIn("overall_pass_rate", payload)
-        self.assertIn("regressions", payload)
-        self.assertIn("total_runs", payload)
-        self.assertIn("avg_cost_usd", payload)
         self.assertIn("rows", payload)
+        self.assertIn("warnings", payload)
 
-    def test_medium__evaluate_summary_counts_only_evaluation_jobs(self):
-        from server import db
+    def test_medium__evaluate_summary_is_benchmark_report_first(self):
+        from server import db, evaluate
 
-        before = self.client.get("/evaluate/summary").json()["total_runs"]
-        submitted_at = db.now_iso()
-        db.insert_job({
-            "id": "job_regular_eval_filter",
-            "change_id": "EVAL-002",
-            "status": "succeeded",
-            "run_kind": "regular",
-            "mode": "live",
-            "runner": "claude",
-            "repo": "/tmp/none",
-            "submitted_at": submitted_at,
-        })
-        after_regular = self.client.get("/evaluate/summary").json()["total_runs"]
-        self.assertEqual(after_regular, before)
-
-        db.insert_job({
-            "id": "job_evaluation_eval_filter",
-            "change_id": "EVAL-002",
-            "status": "succeeded",
-            "run_kind": "evaluation",
-            "mode": "live",
-            "runner": "claude",
-            "repo": "/tmp/none",
-            "submitted_at": submitted_at,
-        })
-        after_evaluation = self.client.get("/evaluate/summary").json()["total_runs"]
-        self.assertEqual(after_evaluation, before + 1)
-
-    def test_medium__evaluate_summary_uses_persisted_weighted_score_when_present(self):
-        from server import corpus, db
-
-        original_root = corpus.EVAL_STORIES_ROOT
-        stories_root = Path(self.tmpdir) / "scored-corpus" / "stories"
-        stories_root.mkdir(parents=True, exist_ok=True)
-        (stories_root / "EVAL-SCORED.json").write_text(
-            json.dumps({
-                "change_id": "EVAL-SCORED",
-                "title": "Scored story",
-                "description": "Story with future persisted metric column.",
-                "acceptance_criteria": ["Check score"],
-            }),
+        original_reports = evaluate.DEFAULT_REPORTS
+        reports_root = Path(self.tmpdir) / "eval-reports"
+        reports_root.mkdir(parents=True, exist_ok=True)
+        (reports_root / "2026-05-22-120000-medium.json").write_text(
+            json.dumps(
+                {
+                    "created_at": "2026-05-22T12:00:00Z",
+                    "repo": "/repo",
+                    "sha": "abc123",
+                    "runner": "claude",
+                    "model": "claude-sonnet-4-6",
+                    "runs": 1,
+                    "summary": {
+                        "trend": "insufficient data",
+                        "quality": {"weighted_score": 0.5},
+                        "reliability": {"runs": 1, "pass_rate": 0.0},
+                        "efficiency": {"wall_seconds_mean": 12.5, "tokens_total_mean": 1234},
+                        "warnings": ["No baseline selected.", "Only one run; reliability unknown."],
+                    },
+                    "results": [
+                        {
+                            "name": "medium",
+                            "run_id": "medium-t1",
+                            "trial_index": 1,
+                            "status": "FAIL",
+                            "error": "hidden tests failed",
+                            "quality": {"weighted_score": 0.5, "hidden_tests_skipped": 0},
+                            "metrics": {"wall_seconds": 12.5, "tokens_total": 1234},
+                            "story": {
+                                "title": "Medium benchmark",
+                                "description": "Story detail.",
+                                "acceptance_criteria": ["AC1: First.", "AC2: Second."],
+                            },
+                            "hidden_tests": {
+                                "skipped": 0,
+                                "ac_results": {
+                                    "AC1": {
+                                        "tests": ["test_ac1_first"],
+                                        "passed": True,
+                                        "cases": [{"name": "test_ac1_first", "status": "passed", "message": ""}],
+                                    },
+                                    "AC2": {
+                                        "tests": ["test_ac2_second"],
+                                        "passed": False,
+                                        "cases": [{"name": "test_ac2_second", "status": "failed", "message": "bad"}],
+                                    },
+                                },
+                            },
+                            "artifacts": {"story": "/tmp/story.json"},
+                        }
+                    ],
+                }
+            ),
             encoding="utf-8",
         )
         try:
-            corpus.EVAL_STORIES_ROOT = stories_root
-            with db.cursor() as cur:
-                try:
-                    cur.execute("ALTER TABLE jobs ADD COLUMN score_weighted_composite REAL")
-                except sqlite3.OperationalError as exc:
-                    self.assertIn("duplicate column", str(exc).lower())
-            submitted_at = db.now_iso()
+            evaluate.DEFAULT_REPORTS = reports_root
             db.insert_job({
-                "id": "job_eval_scored",
-                "change_id": "EVAL-SCORED",
-                "status": "failed",
+                "id": "job_eval_ignored_by_summary",
+                "change_id": "EVAL-LEGACY",
+                "status": "succeeded",
                 "run_kind": "evaluation",
                 "mode": "live",
                 "runner": "claude",
                 "repo": str(Path.cwd()),
-                "submitted_at": submitted_at,
+                "submitted_at": db.now_iso(),
             })
-            db.update_job("job_eval_scored", score_weighted_composite=0.75)
-
             summary = self.client.get("/evaluate/summary").json()
-            row = next(item for item in summary["rows"] if item["task"] == "EVAL-SCORED")
-            self.assertEqual(row["current"], 75)
-            self.assertEqual(row["baseline"], 75)
-            self.assertEqual(row["score_source"], "score_weighted_composite")
+            self.assertEqual(summary["source"], "benchmark_reports")
+            self.assertEqual(summary["total_runs"], 1)
+            self.assertEqual(summary["overall_pass_rate"], 0)
+            self.assertEqual(summary["quality_score"], 0.5)
+            self.assertIn("No baseline selected.", summary["warnings"])
+            row = summary["rows"][0]
+            self.assertEqual(row["task"], "medium")
+            self.assertEqual(row["score_source"], "benchmark_report")
+            self.assertEqual(row["story"]["description"], "Story detail.")
+            self.assertEqual(row["details"][0]["hidden_tests"]["ac_results"]["AC2"]["cases"][0]["message"], "bad")
         finally:
-            corpus.EVAL_STORIES_ROOT = original_root
-
-    def test_medium__evaluate_summary_does_not_mix_scores_with_status_baseline(self):
-        from server import corpus, db
-
-        original_root = corpus.EVAL_STORIES_ROOT
-        stories_root = Path(self.tmpdir) / "mixed-score-corpus" / "stories"
-        stories_root.mkdir(parents=True, exist_ok=True)
-        (stories_root / "EVAL-MIXED.json").write_text(
-            json.dumps({
-                "change_id": "EVAL-MIXED",
-                "title": "Mixed metric story",
-                "description": "Story with scores only on newer runs.",
-                "acceptance_criteria": ["Check metric fallback"],
-            }),
-            encoding="utf-8",
-        )
-        try:
-            corpus.EVAL_STORIES_ROOT = stories_root
-            with db.cursor() as cur:
-                try:
-                    cur.execute("ALTER TABLE jobs ADD COLUMN score_weighted_composite REAL")
-                except sqlite3.OperationalError as exc:
-                    self.assertIn("duplicate column", str(exc).lower())
-            for index, status in enumerate(("succeeded", "succeeded", "failed", "failed"), start=1):
-                job_id = f"job_eval_mixed_{index}"
-                db.insert_job({
-                    "id": job_id,
-                    "change_id": "EVAL-MIXED",
-                    "status": status,
-                    "run_kind": "evaluation",
-                    "mode": "live",
-                    "runner": "claude",
-                    "repo": str(Path.cwd()),
-                    "submitted_at": f"2026-01-01T00:00:0{index}Z",
-                })
-                if index >= 3:
-                    db.update_job(job_id, score_weighted_composite=0.86)
-
-            summary = self.client.get("/evaluate/summary").json()
-            row = next(item for item in summary["rows"] if item["task"] == "EVAL-MIXED")
-            self.assertEqual(row["current"], 50)
-            self.assertEqual(row["baseline"], 100)
-            self.assertEqual(row["score_source"], "job_status")
-        finally:
-            corpus.EVAL_STORIES_ROOT = original_root
-
-    def test_medium__evaluate_summary_uses_status_when_some_short_history_scores_missing(self):
-        from server import corpus, db
-
-        original_root = corpus.EVAL_STORIES_ROOT
-        stories_root = Path(self.tmpdir) / "partial-score-corpus" / "stories"
-        stories_root.mkdir(parents=True, exist_ok=True)
-        (stories_root / "EVAL-PARTIAL.json").write_text(
-            json.dumps({
-                "change_id": "EVAL-PARTIAL",
-                "title": "Partial score story",
-                "description": "Story with scores missing from a short run history.",
-                "acceptance_criteria": ["Check short-history metric fallback"],
-            }),
-            encoding="utf-8",
-        )
-        try:
-            corpus.EVAL_STORIES_ROOT = stories_root
-            with db.cursor() as cur:
-                try:
-                    cur.execute("ALTER TABLE jobs ADD COLUMN score_weighted_composite REAL")
-                except sqlite3.OperationalError as exc:
-                    self.assertIn("duplicate column", str(exc).lower())
-            for index, status in enumerate(("succeeded", "succeeded", "failed"), start=1):
-                job_id = f"job_eval_partial_{index}"
-                db.insert_job({
-                    "id": job_id,
-                    "change_id": "EVAL-PARTIAL",
-                    "status": status,
-                    "run_kind": "evaluation",
-                    "mode": "live",
-                    "runner": "claude",
-                    "repo": str(Path.cwd()),
-                    "submitted_at": f"2026-01-01T00:01:0{index}Z",
-                })
-                if index >= 2:
-                    db.update_job(job_id, score_weighted_composite=0.70)
-
-            summary = self.client.get("/evaluate/summary").json()
-            row = next(item for item in summary["rows"] if item["task"] == "EVAL-PARTIAL")
-            self.assertEqual(row["current"], 67)
-            self.assertEqual(row["baseline"], 67)
-            self.assertEqual(row["score_source"], "job_status")
-        finally:
-            corpus.EVAL_STORIES_ROOT = original_root
+            evaluate.DEFAULT_REPORTS = original_reports
 
     def test_medium__submit_run_inserts_queued_job(self):
         from server import db
@@ -488,66 +426,43 @@ class ServerRoutesTests(unittest.TestCase):
         self.assertIn("--log-level", cmd)
         self.assertEqual(cmd[cmd.index("--log-level") + 1], "info")
 
-    def test_medium__submit_evaluation_run_queues_evaluation_job_hidden_from_runs(self):
+    def test_medium__legacy_evaluation_run_route_is_removed(self):
         r = self.client.post(
             "/evaluate/runs",
             json={"repo": self.tmpdir, "story_id": "EVAL-001", "runner": "claude", "mode": "live"},
         )
+        self.assertEqual(r.status_code, 404)
+
+    def test_medium__submit_benchmark_evaluation_run_queues_eval_runner_job(self):
+        from server import db
+        from server.events import EventBus
+        from server.runner_proc import JobProcess
+
+        r = self.client.post(
+            "/evaluate/benchmark-runs",
+            json={
+                "repo": self.tmpdir,
+                "sha": "abc123",
+                "runner": "claude",
+                "difficulties": ["easy"],
+                "runs": 2,
+                "project_test_command": "python3 -m pytest -q",
+                "compare_to": "/tmp/baseline.json",
+            },
+        )
         self.assertEqual(r.status_code, 200)
         jid = r.json()["job_id"]
         detail = self.client.get(f"/runs/{jid}").json()
-        self.assertEqual(detail["change_id"], "EVAL-001")
-        self.assertEqual(detail["run_kind"], "evaluation")
-        self.assertTrue(detail["story_file"].endswith("eval/stories/EVAL-001.json"))
-        listing = self.client.get("/runs").json()
-        self.assertNotIn(jid, [item["id"] for item in listing["items"]])
-        eval_listing = self.client.get("/runs?run_kind=evaluation").json()
-        self.assertIn(jid, [item["id"] for item in eval_listing["items"]])
-
-    def test_medium__submit_generated_evaluation_story_queues_job_hidden_from_regular_runs(self):
-        from server import corpus
-
-        original_root = corpus.EVAL_STORIES_ROOT
-        stories_root = Path(self.tmpdir) / "generated-run-corpus" / "stories"
-        stories_root.mkdir(parents=True, exist_ok=True)
-        (stories_root / "generated_story_easy.json").write_text(
-            json.dumps({
-                "change_id": "generated_story_easy",
-                "title": "Generated easy story",
-                "description": "A workflow-compatible generated evaluation story.",
-                "acceptance_criteria": ["Generated check"],
-                "metadata": {
-                    "eval_story_id": "generated-story",
-                    "suite_tier": "easy",
-                    "dataset_id": "dataset-beta",
-                },
-                "raw_metadata": {
-                    "suite_yaml": "suites/easy/generated_story_easy.yaml",
-                    "raw_story_id": "generated-story",
-                    "tier": "easy",
-                    "dataset_id": "dataset-beta",
-                },
-            }),
-            encoding="utf-8",
-        )
-        try:
-            corpus.EVAL_STORIES_ROOT = stories_root
-            r = self.client.post(
-                "/evaluate/runs",
-                json={"repo": str(Path.cwd()), "story_id": "generated_story_easy", "runner": "claude", "mode": "live"},
-            )
-            self.assertEqual(r.status_code, 200)
-            jid = r.json()["job_id"]
-            detail = self.client.get(f"/runs/{jid}").json()
-            self.assertEqual(detail["change_id"], "generated_story_easy")
-            self.assertEqual(detail["run_kind"], "evaluation")
-            self.assertTrue(detail["story_file"].endswith("generated_story_easy.json"))
-            regular_listing = self.client.get("/runs").json()
-            self.assertNotIn(jid, [item["id"] for item in regular_listing["items"]])
-            eval_listing = self.client.get("/runs?run_kind=evaluation").json()
-            self.assertIn(jid, [item["id"] for item in eval_listing["items"]])
-        finally:
-            corpus.EVAL_STORIES_ROOT = original_root
+        self.assertEqual(detail["run_kind"], "benchmark_evaluation")
+        job = db.get_job(jid)
+        cmd = JobProcess(job, EventBus(), None)._build_cmd()
+        self.assertIn(str(Path.cwd() / "eval" / "runner.py"), cmd)
+        self.assertIn("--difficulty", cmd)
+        self.assertIn("easy", cmd)
+        self.assertIn("--runs", cmd)
+        self.assertIn("2", cmd)
+        self.assertIn("--compare-to", cmd)
+        self.assertEqual(cmd[cmd.index("--compare-to") + 1], "/tmp/baseline.json")
 
     def test_medium__submit_run_rejects_invalid_runner(self):
         r = self.client.post(
@@ -596,7 +511,7 @@ class ServerRoutesTests(unittest.TestCase):
         )
         self.assertEqual(r.status_code, 400)
 
-    def test_medium__submit_evaluation_run_rejects_unknown_story_without_queueing(self):
+    def test_medium__legacy_evaluate_runs_route_does_not_queue_jobs(self):
         from server import db
 
         before = len(db.list_jobs(run_kind="evaluation", limit=500))

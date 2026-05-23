@@ -10,7 +10,9 @@ from urllib.error import URLError, HTTPError
 
 from fastapi import APIRouter, HTTPException
 
+from core.env_file import read_env_file
 from ..config import load_config, save_config, validate_config
+from ..paths import RUNNER_ROOT
 from ..runner_models_facade import runner_choices
 
 logger = logging.getLogger(__name__)
@@ -115,6 +117,18 @@ def _repo_path_options(cfg: dict[str, Any]) -> list[str]:
     return sorted(options)
 
 
+def _eval_bootstrap_settings() -> dict[str, str]:
+    env_path = RUNNER_ROOT / ".env"
+    try:
+        values = read_env_file(env_path)
+    except OSError as exc:
+        logger.warning("get_settings: could not read bootstrap env file %s: %s", env_path, exc)
+        return {"target_sha": ""}
+    return {
+        "target_sha": (values.get("EVAL_TARGET_SHA") or "").strip(),
+    }
+
+
 @router.get("")
 async def get_settings() -> dict[str, Any]:
     logger.debug("get_settings: loading config and runner choices")
@@ -126,6 +140,7 @@ async def get_settings() -> dict[str, Any]:
         "runner_models": rc["models"],
         "runner_defaults": rc["defaults"],
         "repo_path_options": _repo_path_options(cfg),
+        "eval_bootstrap": _eval_bootstrap_settings(),
     }
 
 

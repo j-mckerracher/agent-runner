@@ -11,5 +11,5 @@ __pycache__/
 /logs/
 
 .env
-eval/benchmarks/
-eval/reports/
+/eval/reports/
+/eval/benchmarks/

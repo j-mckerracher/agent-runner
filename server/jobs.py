@@ -73,6 +73,7 @@ class JobManager:
             "ado_url": payload.get("ado_url"),
             "story_file": payload.get("story_file"),
             "extra_context": payload.get("extra_context"),
+            "eval_runner_args": payload.get("eval_runner_args"),
             "submitted_at": db.now_iso(),
             "events_path": events_path,
             "cassette_path": cassette_path,

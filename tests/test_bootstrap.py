@@ -243,7 +243,20 @@ class BootstrapServerStartupTests(unittest.TestCase):
 
 class BootstrapMainFlowTests(unittest.TestCase):
     def test_medium__main_defaults_to_prompt_flow_when_opik_flags_are_missing(self):
-        args = SimpleNamespace(host="127.0.0.1", port=8742, reload=False)
+        args = SimpleNamespace(
+            host="127.0.0.1",
+            port=8742,
+            reload=False,
+            generate_eval_benchmarks=False,
+            skip_eval_benchmarks=False,
+            eval_target_repo=None,
+            eval_target_sha=None,
+            eval_runner=None,
+            eval_model=None,
+            force_eval_benchmarks=False,
+            no_verify_eval_gold_fails=False,
+            verify_eval_gold_fails=False,
+        )
 
         with (
             patch.object(bootstrap, "parse_args", return_value=args),
@@ -275,6 +288,25 @@ class BootstrapMainFlowTests(unittest.TestCase):
             reload=False,
             opik_settings=None,
         )
+
+    def test_medium__generate_eval_benchmarks_passes_gold_verification_opt_out(self):
+        config = {
+            "generate": True,
+            "repo": "/tmp/target",
+            "sha": "abc123",
+            "runner": "claude",
+            "model": "",
+        }
+        args = SimpleNamespace(force_eval_benchmarks=False, no_verify_eval_gold_fails=True)
+
+        with (
+            patch.object(bootstrap, "_echo_step"),
+            patch.object(bootstrap, "_run") as run_mock,
+        ):
+            bootstrap._generate_eval_benchmarks(config, args)
+
+        command = run_mock.call_args.args[0]
+        self.assertIn("--no-verify-gold-fails", command)
 
 
 class BootstrapWrapperTests(unittest.TestCase):

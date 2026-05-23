@@ -1,11 +1,12 @@
-"""Aggregate metrics for the Evaluate view."""
+"""Benchmark report aggregation for the Evaluate view."""
 from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import Any
 
-from . import db, corpus
+from eval.runner import DEFAULT_REPORTS
 
 logger = logging.getLogger(__name__)
 
@@ -22,143 +23,139 @@ def _score_to_percent(value: Any) -> int | None:
     return round(min(score, 100.0))
 
 
-def _extract_weighted_score(row: dict[str, Any]) -> int | None:
-    """Return persisted weighted eval score when a future DB row exposes one.
-
-    The current jobs table does not persist eval scoring metrics; it only stores
-    job status/cost/token fields. These lookups are intentionally optional so
-    /evaluate/summary keeps its status-based fallback until score columns or
-    JSON metric fields are added by a future migration.
-    """
-
-    direct = _score_to_percent(row.get("score_weighted_composite"))
-    if direct is not None:
-        return direct
-    for field_name in ("metrics", "eval_metrics", "score_metrics"):
-        raw = row.get(field_name)
-        if not raw:
+def list_eval_reports(root: Path | None = None) -> list[dict[str, Any]]:
+    root = root or DEFAULT_REPORTS
+    reports: list[dict[str, Any]] = []
+    if not root.is_dir():
+        return reports
+    for path in sorted(root.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True):
+        if path.name == "latest.json":
             continue
-        payload: Any
-        if isinstance(raw, str):
-            try:
-                payload = json.loads(raw)
-            except json.JSONDecodeError:
-                continue
-        else:
-            payload = raw
-        if isinstance(payload, dict):
-            nested = _score_to_percent(payload.get("score_weighted_composite"))
-            if nested is not None:
-                return nested
-            expected = payload.get("expected_output")
-            if isinstance(expected, dict):
-                nested = _score_to_percent(expected.get("score_weighted_composite"))
-                if nested is not None:
-                    return nested
-    return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        reports.append(
+            {
+                "path": str(path),
+                "name": path.name,
+                "created_at": payload.get("created_at"),
+                "repo": payload.get("repo"),
+                "sha": payload.get("sha"),
+                "runner": payload.get("runner"),
+                "model": payload.get("model"),
+                "runs": payload.get("runs"),
+                "summary": payload.get("summary") or {},
+                "results": payload.get("results", []),
+            }
+        )
+    return reports
 
 
-def _score_average(rows: list[dict[str, Any]], *, require_complete: bool = False) -> int | None:
-    scores = [_extract_weighted_score(row) for row in rows]
-    available = [score for score in scores if score is not None]
-    if require_complete and len(available) != len(rows):
-        return None
-    if not available:
-        return None
-    return round(sum(available) / len(available))
+def _mean(values: list[float]) -> float | None:
+    return round(sum(values) / len(values), 4) if values else None
 
 
-def _status_pass_rate(rows: list[dict[str, Any]]) -> int:
-    if not rows:
-        return 0
-    succ = sum(1 for r in rows if r["status"] == "succeeded")
-    return round(100.0 * succ / len(rows))
+def _result_warnings(result: dict[str, Any]) -> list[str]:
+    warnings: list[str] = []
+    hidden = result.get("hidden_tests") or {}
+    if int(hidden.get("skipped") or 0):
+        warnings.append("Hidden tests skipped.")
+    ac_results = hidden.get("ac_results") or {}
+    if any(ac.get("missing_cases") for ac in ac_results.values()):
+        warnings.append("Benchmark report/AC mapping is incomplete.")
+    story_acs = (result.get("story") or {}).get("acceptance_criteria") or []
+    if story_acs and len(ac_results) < len(story_acs):
+        warnings.append("Benchmark report/AC mapping is incomplete.")
+    return warnings
+
+
+def _group_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for result in report.get("results") or []:
+        grouped.setdefault(str(result.get("name") or "unknown"), []).append(result)
+
+    rows: list[dict[str, Any]] = []
+    report_warnings = (report.get("summary") or {}).get("warnings") or []
+    for name, results in sorted(grouped.items()):
+        scores = [float((result.get("quality") or {}).get("weighted_score") or 0.0) for result in results]
+        wall_times = [float((result.get("metrics") or {}).get("wall_seconds") or result.get("seconds") or 0.0) for result in results]
+        tokens = [float((result.get("metrics") or {}).get("tokens_total") or 0.0) for result in results]
+        passes = sum(1 for result in results if result.get("status") == "PASS")
+        story = results[0].get("story") or {}
+        warnings = list(dict.fromkeys([*report_warnings, *[warning for result in results for warning in _result_warnings(result)]]))
+        rows.append(
+            {
+                "task": name,
+                "title": story.get("title") or "Benchmark report",
+                "current": _mean(scores),
+                "baseline": None,
+                "delta": None,
+                "runs": len(results),
+                "status": "pass" if passes == len(results) else "failed",
+                "score_source": "benchmark_report",
+                "pass_rate": round(passes / len(results), 4) if results else 0.0,
+                "wall_seconds_mean": _mean(wall_times),
+                "tokens_total_mean": _mean(tokens),
+                "warnings": warnings,
+                "story": story,
+                "details": results,
+                "report": {
+                    "name": report.get("name"),
+                    "path": report.get("path"),
+                    "created_at": report.get("created_at"),
+                    "runner": report.get("runner"),
+                    "model": report.get("model"),
+                    "sha": report.get("sha"),
+                },
+            }
+        )
+    return rows
 
 
 def summary() -> dict[str, Any]:
-    logger.debug("evaluate.summary: starting computation")
-    stories = corpus.list_stories()
-    logger.debug("evaluate.summary: %d story(ies) to evaluate", len(stories))
-    rows: list[dict[str, Any]] = []
-    total_runs = 0
-    pass_rates: list[float] = []
-    regressions = 0
-    cost_total = 0.0
-    cost_n = 0
+    reports = list_eval_reports()
+    if not reports:
+        return {
+            "source": "benchmark_reports",
+            "overall_pass_rate": None,
+            "regressions": 0,
+            "total_runs": 0,
+            "avg_cost_usd": None,
+            "rows": [],
+            "reports": [],
+            "verdict": "insufficient data",
+            "quality_score": None,
+            "pass_rate": None,
+            "wall_seconds_mean": None,
+            "tokens_total_mean": None,
+            "warnings": ["No benchmark reports found.", "No baseline selected."],
+        }
 
-    for s in stories:
-        all_runs = db.list_jobs(change_id=s["id"], run_kind="evaluation", limit=500)
-        total_runs += len(all_runs)
-        if not all_runs:
-            logger.debug("evaluate.summary: %s has no runs", s["id"])
-            rows.append({
-                "task": s["id"],
-                "title": s["title"],
-                "baseline": None,
-                "current": None,
-                "delta": None,
-                "runs": 0,
-                "status": "no-data",
-            })
-            continue
-        # Baseline = pass rate over the older half of runs (oldest first).
-        ordered = sorted(all_runs, key=lambda r: r["submitted_at"])
-        if len(ordered) >= 4:
-            half = len(ordered) // 2
-            baseline_score = _score_average(ordered[:half], require_complete=True)
-            current_score = _score_average(all_runs, require_complete=True)
-            if baseline_score is not None and current_score is not None:
-                baseline = baseline_score
-                current = current_score
-                score_source = "score_weighted_composite"
-            else:
-                baseline = _status_pass_rate(ordered[:half])
-                current = _status_pass_rate(all_runs)
-                score_source = "job_status"
-        else:
-            current = _score_average(all_runs, require_complete=True)
-            score_source = "score_weighted_composite" if current is not None else "job_status"
-            if current is None:
-                current = _status_pass_rate(all_runs)
-            baseline = current
-        delta = current - baseline
-        if delta <= -10:
-            status = "regression"
-            regressions += 1
-            logger.warning("evaluate.summary: REGRESSION detected for %s (delta=%d%%)", s["id"], delta)
-        elif delta < 0:
-            status = "marginal"
-            logger.debug("evaluate.summary: marginal result for %s (delta=%d%%)", s["id"], delta)
-        else:
-            status = "pass"
-            logger.debug("evaluate.summary: pass for %s (current=%d%% delta=%d%%)", s["id"], current, delta)
-        pass_rates.append(current)
-        rows.append({
-            "task": s["id"],
-            "title": s["title"],
-            "baseline": baseline,
-            "current": current,
-            "delta": delta,
-            "runs": len(all_runs),
-            "status": status,
-            "score_source": score_source,
-        })
-        # Cost aggregation
-        for r in all_runs:
-            if r.get("cost_usd"):
-                cost_total += float(r["cost_usd"] or 0.0)
-                cost_n += 1
-
-    overall = round(sum(pass_rates) / len(pass_rates)) if pass_rates else None
-    avg_cost = round(cost_total / cost_n, 4) if cost_n else None
-    logger.info(
-        "evaluate.summary: overall_pass_rate=%s regressions=%d total_runs=%d avg_cost=%s",
-        overall, regressions, total_runs, avg_cost,
-    )
+    latest = reports[0]
+    latest_summary = latest.get("summary") or {}
+    quality = latest_summary.get("quality") or {}
+    reliability = latest_summary.get("reliability") or {}
+    efficiency = latest_summary.get("efficiency") or {}
+    rows = _group_rows(latest)
+    warnings = list(latest_summary.get("warnings") or [])
+    if not warnings:
+        warnings = []
+    if any(row.get("score_source") != "benchmark_report" for row in rows):
+        warnings.append("Results are based on legacy job status instead of benchmark report scoring.")
+    warnings = list(dict.fromkeys(warnings))
     return {
-        "overall_pass_rate": overall,
-        "regressions": regressions,
-        "total_runs": total_runs,
-        "avg_cost_usd": avg_cost,
+        "source": "benchmark_reports",
+        "overall_pass_rate": _score_to_percent(reliability.get("pass_rate")),
+        "regressions": 1 if latest_summary.get("trend") == "decreased" else 0,
+        "total_runs": reliability.get("runs") or 0,
+        "avg_cost_usd": efficiency.get("cost_usd_mean"),
         "rows": rows,
+        "reports": reports,
+        "verdict": latest_summary.get("trend") or "insufficient data",
+        "quality_score": quality.get("weighted_score"),
+        "pass_rate": reliability.get("pass_rate"),
+        "wall_seconds_mean": efficiency.get("wall_seconds_mean"),
+        "tokens_total_mean": efficiency.get("tokens_total_mean"),
+        "warnings": warnings,
     }

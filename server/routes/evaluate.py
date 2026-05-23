@@ -1,13 +1,11 @@
 import logging
+import json
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from core.workflow_inputs import resolve_workflow_input
-
 from .. import evaluate
-from .. import corpus
 from ..jobs import manager
 from core.runner_models import KNOWN_RUNNERS
 
@@ -16,14 +14,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/evaluate", tags=["evaluate"])
 
 
-class EvaluationRunSubmit(BaseModel):
+class BenchmarkRunSubmit(BaseModel):
     repo: str
-    story_id: Optional[str] = None
-    change_id: Optional[str] = None
+    sha: str
     runner: str = "claude"
     model: Optional[str] = None
-    mode: str = Field("live", pattern="^(live|hermetic)$")
-    extra_context: Optional[str] = None
+    difficulties: list[str] = Field(default_factory=lambda: ["easy", "medium", "hard"])
+    runs: int = Field(1, ge=1)
+    project_test_command: Optional[str] = None
+    compare_to: Optional[str] = None
 
 
 @router.get("/summary")
@@ -37,48 +36,37 @@ async def get_summary() -> dict:
     return result
 
 
-@router.post("/runs")
-async def submit_evaluation_run(payload: EvaluationRunSubmit) -> dict:
-    story_id = (payload.story_id or payload.change_id or "").strip()
-    logger.info("submit_evaluation_run: story_id=%s runner=%s mode=%s", story_id, payload.runner, payload.mode)
-    if not story_id:
-        raise HTTPException(400, "story_id is required")
-    if payload.story_id and payload.change_id and payload.story_id != payload.change_id:
-        raise HTTPException(400, "story_id and change_id must match when both are provided")
+@router.get("/reports")
+async def get_eval_reports() -> dict:
+    reports = evaluate.list_eval_reports()
+    return {"count": len(reports), "items": reports}
+
+
+@router.post("/benchmark-runs")
+async def submit_benchmark_run(payload: BenchmarkRunSubmit) -> dict:
     from ..config import load_config
+
     cfg = load_config()
     valid_runners = set(KNOWN_RUNNERS) | set((cfg.get("runner_aliases") or {}).keys())
     if payload.runner not in valid_runners:
-        logger.warning("submit_evaluation_run: invalid runner=%s", payload.runner)
+        logger.warning("submit_benchmark_run: invalid runner=%s", payload.runner)
         raise HTTPException(400, f"runner must be one of: {', '.join(sorted(valid_runners))}")
-
-    story = corpus.get_story(story_id)
-    story_path = corpus.story_path_for(story_id)
-    if story is None or story_path is None:
-        logger.warning("submit_evaluation_run: story_id=%s not found", story_id)
-        raise HTTPException(404, "evaluation story not found")
-
-    try:
-        resolve_workflow_input(
-            repo=payload.repo,
-            change_id=story["id"],
-            story_file=str(story_path),
-        )
-        logger.debug("submit_evaluation_run: workflow input resolved successfully for story_id=%s", story_id)
-    except (FileNotFoundError, ValueError) as exc:
-        logger.warning("submit_evaluation_run: resolve_workflow_input failed: %s", exc)
-        raise HTTPException(400, str(exc)) from exc
-
-    job_id = await manager().submit({
-        "repo": payload.repo,
-        "change_id": story["id"],
-        "runner": payload.runner,
-        "model": payload.model,
-        "mode": payload.mode,
-        "ado_url": None,
-        "story_file": str(story_path),
-        "extra_context": payload.extra_context,
-        "run_kind": "evaluation",
-    })
-    logger.info("submit_evaluation_run: job submitted job_id=%s story_id=%s", job_id, story_id)
-    return {"job_id": job_id, "story_id": story["id"]}
+    difficulties = payload.difficulties or ["easy", "medium", "hard"]
+    invalid = [item for item in difficulties if item not in {"easy", "medium", "hard"}]
+    if invalid:
+        raise HTTPException(400, f"invalid benchmark difficulties: {', '.join(invalid)}")
+    args = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
+    args["difficulties"] = difficulties
+    job_id = await manager().submit(
+        {
+            "repo": payload.repo,
+            "change_id": "eval-benchmark",
+            "runner": payload.runner,
+            "model": payload.model,
+            "mode": "live",
+            "run_kind": "benchmark_evaluation",
+            "eval_runner_args": json.dumps(args),
+        }
+    )
+    logger.info("submit_benchmark_run: job submitted job_id=%s", job_id)
+    return {"job_id": job_id, "run_kind": "benchmark_evaluation"}

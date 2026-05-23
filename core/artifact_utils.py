@@ -190,7 +190,7 @@ def validate_impl_report_alignment(
     warnings: list[str] = []
     if spec_terms and not matched_terms:
         sample_terms = ", ".join(sorted(spec_terms)[:12])
-        warnings.append(
+        errors.append(
             "impl_report domain does not match uow_spec.yaml; "
             f"none of the extracted spec terms appear in the report ({sample_terms})"
         )
