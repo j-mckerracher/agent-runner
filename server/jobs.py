@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import secrets
 import time
@@ -10,6 +11,7 @@ from typing import Any
 from . import db
 from .config import load_config
 from .events import EventBus
+from .paths import manual_story_file_path_for
 from .runner_proc import JobProcess, prepare_job_paths
 
 logger = logging.getLogger(__name__)
@@ -59,6 +61,12 @@ class JobManager:
         mode = payload.get("mode", "live")
         logger.info("JobManager.submit: job_id=%s change_id=%s runner=%s mode=%s", job_id, change_id, payload.get("runner"), mode)
         events_path, cassette_path = prepare_job_paths(change_id, mode, job_id=job_id)
+        manual_story_file = payload.get("manual_story_file")
+        manual_story_payload = payload.get("manual_story_payload")
+        if manual_story_payload is not None:
+            manual_story_path = manual_story_file_path_for(job_id)
+            manual_story_path.write_text(json.dumps(manual_story_payload, indent=2), encoding="utf-8")
+            manual_story_file = str(manual_story_path)
         record = {
             "id": job_id,
             "change_id": change_id,
@@ -72,8 +80,10 @@ class JobManager:
             "repo": payload["repo"],
             "ado_url": payload.get("ado_url"),
             "story_file": payload.get("story_file"),
+            "manual_story_file": manual_story_file,
             "extra_context": payload.get("extra_context"),
             "eval_runner_args": payload.get("eval_runner_args"),
+            "story_source": payload.get("story_source"),
             "submitted_at": db.now_iso(),
             "events_path": events_path,
             "cassette_path": cassette_path,

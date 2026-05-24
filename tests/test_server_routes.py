@@ -69,11 +69,18 @@ class ServerRoutesTests(unittest.TestCase):
         self.assertIn("claude", s["runner_models"])
         self.assertIn("api", s)
         self.assertIn("opik", s)
+        self.assertIn("azure_devops", s)
         self.assertIn("dashboard_url", s["opik"])
         self.assertIn("repo_paths", s)
         self.assertIn("repo_path_options", s)
         self.assertIn("eval_bootstrap", s)
         self.assertIn("target_sha", s["eval_bootstrap"])
+
+    def test_medium__azure_devops_status_reports_manual_availability(self):
+        status = self.client.get("/integrations/azure-devops/status").json()
+        self.assertTrue(status["manual"]["available"])
+        self.assertIn("cli", status)
+        self.assertIn("mcp", status)
 
     def test_medium__settings_reads_bootstrap_eval_target_sha_from_repo_env(self):
         root = Path(self.tmpdir) / "runner-root"
@@ -554,6 +561,41 @@ class ServerRoutesTests(unittest.TestCase):
         self.assertIn("does not match", r.text)
         after = self.client.get("/runs").json()["count"]
         self.assertEqual(after, before)
+
+    def test_medium__submit_run_accepts_manual_story_and_persists_manual_story_file(self):
+        from server import db
+        from server.events import EventBus
+        from server.runner_proc import JobProcess
+
+        r = self.client.post(
+            "/runs",
+            json={
+                "repo": self.tmpdir,
+                "runner": "claude",
+                "mode": "live",
+                "manual_story": {
+                    "work_item_id": "123456",
+                    "title": "Manual story",
+                    "description": "desc",
+                    "acceptance_criteria": "- first\n- second",
+                },
+            },
+        )
+        self.assertEqual(r.status_code, 200)
+        jid = r.json()["job_id"]
+        detail = self.client.get(f"/runs/{jid}").json()
+        self.assertEqual(detail["change_id"], "WI-123456")
+        self.assertEqual(detail["story_source"], "manual")
+
+        job = db.get_job(jid)
+        self.assertIsNotNone(job)
+        manual_story_file = Path(job["manual_story_file"]).resolve()
+        self.assertTrue(str(manual_story_file).startswith(str((Path(self.tmpdir) / "job-inputs").resolve())))
+        self.assertTrue(manual_story_file.is_file())
+        cmd = JobProcess(job, EventBus(), None)._build_cmd()
+        self.assertIn("--manual-story-file", cmd)
+        self.assertNotIn("--story-file", cmd)
+        self.assertNotIn("--ado-url", cmd)
 
     def test_medium__legacy_jobs_db_migrates_run_kind_before_runs_query(self):
         from server import db

@@ -13,7 +13,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from core.cli_logging import normalize_log_level
-from core.workflow_inputs import resolve_workflow_input
+from core.story_inputs import infer_manual_change_id, validate_manual_story
+from core.workflow_inputs import normalize_repo_path, resolve_workflow_input
 
 from .. import db
 from ..config import load_config
@@ -67,7 +68,7 @@ def _build_opik_context(row: dict[str, Any]) -> dict[str, Any]:
 
 class RunSubmit(BaseModel):
     repo: str
-    change_id: str
+    change_id: Optional[str] = None
     runner: str = "claude"
     model: Optional[str] = None
     log_level: str = "warning"
@@ -77,6 +78,7 @@ class RunSubmit(BaseModel):
     story_file: Optional[str] = None
     extra_context: Optional[str] = None
     parent_job_id: Optional[str] = None
+    manual_story: Optional[dict[str, Any]] = None
 
     @field_validator("log_level", mode="before")
     @classmethod
@@ -91,7 +93,7 @@ class RunSubmit(BaseModel):
 
 @router.post("")
 async def submit_run(payload: RunSubmit) -> dict[str, Any]:
-    logger.info("submit_run: change_id=%s runner=%s mode=%s", payload.change_id, payload.runner, payload.mode)
+    logger.info("submit_run: requested_change_id=%s runner=%s mode=%s", payload.change_id, payload.runner, payload.mode)
     cfg = load_config()
     valid_runners = set(KNOWN_RUNNERS) | set((cfg.get("runner_aliases") or {}).keys())
     if payload.runner not in valid_runners:
@@ -109,24 +111,51 @@ async def submit_run(payload: RunSubmit) -> dict[str, Any]:
     if payload.run_kind and payload.run_kind != "regular":
         logger.warning("submit_run: invalid run_kind=%s", payload.run_kind)
         raise HTTPException(400, "regular runs must be submitted through /runs")
-    if payload.ado_url and payload.story_file:
-        logger.warning("submit_run: both ado_url and story_file provided")
-        raise HTTPException(400, "provide ado_url OR story_file, not both")
+    provided_sources = [name for name, value in (
+        ("manual_story", payload.manual_story),
+        ("ado_url", payload.ado_url),
+        ("story_file", payload.story_file),
+    ) if value]
+    if len(provided_sources) > 1:
+        logger.warning("submit_run: multiple sources provided: %s", provided_sources)
+        raise HTTPException(400, "provide only one of manual_story, ado_url, or story_file")
+
+    resolved_change_id = payload.change_id
+    story_source = None
+    manual_story_payload: dict[str, Any] | None = None
     try:
-        resolve_workflow_input(
-            repo=payload.repo,
-            change_id=payload.change_id,
-            ado_url=payload.ado_url,
-            story_file=payload.story_file,
-        )
-        logger.debug("submit_run: workflow input resolved successfully for change_id=%s", payload.change_id)
+        if payload.manual_story is not None:
+            normalize_repo_path(payload.repo)
+            manual_story_payload = validate_manual_story(payload.manual_story)
+            resolved_change_id = infer_manual_change_id(manual_story_payload, explicit_change_id=payload.change_id)
+            story_source = "manual"
+        else:
+            workflow_input = resolve_workflow_input(
+                repo=payload.repo,
+                change_id=payload.change_id,
+                ado_url=payload.ado_url,
+                story_file=payload.story_file,
+            )
+            resolved_change_id = workflow_input.change_id
+            story_source = "story_file" if workflow_input.intake_mode == "synthetic" else "ado"
+        logger.debug("submit_run: workflow input resolved successfully for change_id=%s", resolved_change_id)
     except (FileNotFoundError, ValueError) as exc:
         logger.warning("submit_run: resolve_workflow_input failed: %s", exc)
         raise HTTPException(400, str(exc)) from exc
-    submit_payload = payload.model_dump()
+    if not resolved_change_id:
+        raise HTTPException(422, "change_id could not be resolved")
+
+    submit_payload = payload.model_dump(exclude={"manual_story"}, exclude_none=True)
+    submit_payload["change_id"] = resolved_change_id
     submit_payload["run_kind"] = "regular"
+    submit_payload["story_source"] = story_source
+    if manual_story_payload is not None:
+        submit_payload["manual_story_payload"] = manual_story_payload
+        manual_extra_context = manual_story_payload.get("extra_context")
+        if manual_extra_context and not submit_payload.get("extra_context"):
+            submit_payload["extra_context"] = manual_extra_context
     job_id = await manager().submit(submit_payload)
-    logger.info("submit_run: job submitted job_id=%s change_id=%s", job_id, payload.change_id)
+    logger.info("submit_run: job submitted job_id=%s change_id=%s story_source=%s", job_id, resolved_change_id, story_source)
     return {"job_id": job_id}
 
 

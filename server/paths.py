@@ -68,6 +68,16 @@ def events_path_for_job(job_id: str) -> Path:
     return p / "events.jsonl"
 
 
+def job_inputs_dir(job_id: str) -> Path:
+    p = data_dir() / "job-inputs" / safe_id(job_id)
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def manual_story_file_path_for(job_id: str) -> Path:
+    return job_inputs_dir(job_id) / "manual_story.json"
+
+
 def legacy_events_path_for(change_id: str) -> Path:
     p = AGENT_CONTEXT_ROOT / change_id
     p.mkdir(parents=True, exist_ok=True)

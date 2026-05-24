@@ -156,6 +156,14 @@ def _warn_if_no_ai_backend() -> None:
     )
 
 
+def _announce_optional_azure_devops() -> None:
+    print(
+        "[bootstrap] Azure DevOps integration is optional. You can use Agent Workbench manually by "
+        "pasting story details in the UI, then enable Azure DevOps CLI or MCP later in Settings if needed.",
+        flush=True,
+    )
+
+
 def _register_rtk_global_permission() -> None:
     """Add Bash(rtk *) to ~/.claude/settings.json permissions.allow if not already present."""
     import json as _json
@@ -788,6 +796,7 @@ def main() -> int:
     try:
         _ensure_virtualenv()
         _warn_if_no_ai_backend()
+        _announce_optional_azure_devops()
         _check_rtk()
         _install_requirements()
         _materialize_agents()

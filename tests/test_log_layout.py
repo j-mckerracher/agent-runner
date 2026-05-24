@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import run
 import yaml
-from server.paths import RUNNER_ROOT, events_path_for
+from server.paths import RUNNER_ROOT, events_path_for, manual_story_file_path_for
 from server.runner_proc import prepare_job_paths
 
 
@@ -54,6 +54,30 @@ class LogLayoutTests(unittest.TestCase):
             self.assertFalse((agent_context_root / "TEST-LOG-003-RUN-01").exists())
             self.assertFalse((logs_root / "TEST-LOG-003").exists())
             self.assertFalse((logs_root / "TEST-LOG-003-RUN-01").exists())
+
+    def test_medium__clean_workspace_preserves_manual_job_inputs_outside_workspace_roots(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_root = Path(tmpdir)
+            agent_context_root = tmp_root / "agent-context"
+            logs_root = tmp_root / "logs"
+            manual_root = tmp_root / "job-inputs"
+            manual_path = manual_root / "job_test" / "manual_story.json"
+            manual_path.parent.mkdir(parents=True, exist_ok=True)
+            manual_path.write_text("{}", encoding="utf-8")
+            (agent_context_root / "TEST-LOG-003").mkdir(parents=True, exist_ok=True)
+            (logs_root / "TEST-LOG-003").mkdir(parents=True, exist_ok=True)
+
+            with patch.object(run, "AGENT_CONTEXT_ROOT", agent_context_root), patch.object(run, "LOGS_ROOT", logs_root):
+                run.clean_workspace("TEST-LOG-003")
+
+            self.assertTrue(manual_path.exists())
+
+    def test_easy__manual_story_file_path_for_routes_to_data_dir_job_inputs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("server.paths.data_dir", return_value=Path(tmpdir)):
+                path = manual_story_file_path_for("job_test")
+
+        self.assertEqual(path, Path(tmpdir) / "job-inputs" / "job_test" / "manual_story.json")
 
     def test_medium__init_session_log_writes_to_top_level_logs_sibling_of_agent_context(self):
         module = self._load_script_module("agent-script-source/init-session-log.py", "init_session_log_test")

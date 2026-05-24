@@ -75,7 +75,7 @@ Follow the **artifact-io** skill protocol. This agent's specific paths:
 7. If issues are fixed, re-run full validation, update evidence references, close resolved issues, and re-assess regression risk.
 8. Ensure quality gates are satisfied.
 9. Produce required outputs, update the release notes section, synthesize the final knowledge summary, and report QA insights back to the librarian.
-10. **Conditionally update the ADO work item** using the **azure-devops-cli** skill when `intake/story.yaml` contains explicit ADO metadata (`ado_provenance.work_item_id` or `raw_input.ado_work_item_id`). Extract `{work_item_id}` from that metadata:
+10. **Conditionally update the ADO work item** using the **azure-devops-cli** skill only when `intake/story.yaml` contains explicit connector-backed ADO metadata (`ado_provenance.work_item_id` or `raw_input.ado_work_item_id`) **and** the workflow context explicitly marks ADO write-back as enabled. Extract `{work_item_id}` from that metadata:
     - If `final_recommendation: approve` or `approve_with_conditions`:
       ```bash
       az boards work-item update --id {work_item_id} \
@@ -86,6 +86,7 @@ Follow the **artifact-io** skill protocol. This agent's specific paths:
       az boards work-item update --id {work_item_id} \
         --discussion "QA failed. Blocking issues: {issue_count} found. {issue_summary}"
       ```
+    - If the story is manual or synthetic/local, if only reference metadata exists, or if write-back enablement is absent, skip this step entirely.
     For synthetic/local stories with no ADO metadata, skip this step entirely. Log a warning and continue if the command fails — do not alter the QA report or exit code.
 
 ## Validation & Evidence Standards

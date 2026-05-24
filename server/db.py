@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   repo TEXT NOT NULL,
   ado_url TEXT,
   story_file TEXT,
+  manual_story_file TEXT,
   extra_context TEXT,
   eval_runner_args TEXT,
   submitted_at TEXT NOT NULL,
@@ -105,6 +106,9 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     if "story_source" not in columns:
         logger.info("_ensure_schema: adding jobs.story_source column")
         conn.execute("ALTER TABLE jobs ADD COLUMN story_source TEXT")
+    if "manual_story_file" not in columns:
+        logger.info("_ensure_schema: adding jobs.manual_story_file column")
+        conn.execute("ALTER TABLE jobs ADD COLUMN manual_story_file TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_run_kind ON jobs(run_kind)")
     conn.executescript(
         """
@@ -396,7 +400,7 @@ def backfill_telemetry_events_for_jobs(jobs: list[dict]) -> int:
 
 _INSERTABLE = (
     "id", "change_id", "parent_job_id", "status", "run_kind", "mode", "runner", "model", "log_level",
-    "repo", "ado_url", "story_file", "extra_context", "eval_runner_args",
+    "repo", "ado_url", "story_file", "manual_story_file", "extra_context", "eval_runner_args",
     "submitted_at", "events_path", "cassette_path", "original_ac_count", "normalized_ac_count", "story_source",
 )
 

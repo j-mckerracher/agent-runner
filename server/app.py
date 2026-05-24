@@ -17,6 +17,7 @@ from .paths import GUI_ROOT
 from .routes import agents as agents_routes
 from .routes import corpus as corpus_routes
 from .routes import evaluate as evaluate_routes
+from .routes import integrations as integrations_routes
 from .routes import runs as runs_routes
 from .routes import settings as settings_routes
 from .routes import telemetry as telemetry_routes
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(agents_routes.router)
     app.include_router(corpus_routes.router)
     app.include_router(evaluate_routes.router)
+    app.include_router(integrations_routes.router)
     app.include_router(settings_routes.router)
     app.include_router(telemetry_routes.router)
     logger.debug("All routers included")

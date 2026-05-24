@@ -41,6 +41,24 @@ class RunMainArgParseTests(unittest.TestCase):
         self.assertEqual(metadata["story_file"], str(story_path))
         self.assertEqual(metadata["original_ac_count"], 2)
 
+    def test_easy__manual_story_source_metadata_counts_original_acceptance_criteria(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            story_path = Path(td) / "manual_story.json"
+            story_path.write_text(
+                json.dumps({
+                    "title": "Story",
+                    "description": "Desc",
+                    "acceptance_criteria": "- One\n- Two",
+                }),
+                encoding="utf-8",
+            )
+
+            metadata = run._story_source_metadata(intake_mode="manual", intake_source=str(story_path))
+
+        self.assertEqual(metadata["source"], "manual")
+        self.assertEqual(metadata["manual_story_file"], str(story_path))
+        self.assertEqual(metadata["original_ac_count"], 2)
+
 
 class RunMainStagePlumbingTests(unittest.TestCase):
     def _config(self, **overrides):

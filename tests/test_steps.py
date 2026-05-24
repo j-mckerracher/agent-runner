@@ -158,6 +158,73 @@ class StepIntakeSyntheticModeTests(unittest.TestCase):
                     )
 
 
+class StepIntakeManualModeTests(unittest.TestCase):
+    def test_easy__manual_mode_bypasses_llm_runner(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            story_path = root / "manual_story.json"
+            _write_fixture(
+                story_path,
+                {
+                    "work_item_id": "123456",
+                    "title": "Manual intake writer",
+                    "description": "Verify step_intake uses deterministic manual artifact generation.",
+                    "acceptance_criteria": "- Create the intake artifacts.\n- Preserve the original payload.",
+                },
+            )
+
+            with (
+                patch("core.steps.AGENT_CONTEXT_ROOT", root / "agent-context"),
+                patch("core.steps.run_agent_cmd") as run_agent_cmd,
+            ):
+                result = step_intake(
+                    intake_source=str(story_path),
+                    repo="/tmp/target-repo",
+                    change_id="WI-123456",
+                    intake_mode="manual",
+                    runner="copilot",
+                    runner_model="gpt-5-mini",
+                )
+
+            run_agent_cmd.assert_not_called()
+            self.assertIn("Created manual intake artifacts", result)
+            story_yaml = root / "agent-context" / "WI-123456" / "intake" / "story.yaml"
+            self.assertTrue(story_yaml.is_file())
+            with story_yaml.open("r", encoding="utf-8") as handle:
+                story = yaml.safe_load(handle)
+            self.assertEqual(story["raw_input"]["source_type"], "manual_paste")
+            self.assertIsNone(story["ado_provenance"])
+            self.assertEqual(story["acceptance_criteria"]["AC1"], "Create the intake artifacts.")
+
+    def test_easy__manual_mode_skips_acceptance_criteria_confirmation(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            story_path = root / "manual_story.json"
+            _write_fixture(
+                story_path,
+                {
+                    "title": "Manual intake writer",
+                    "description": "Verify confirmation is skipped.",
+                    "acceptance_criteria": "- Create the intake artifacts.",
+                },
+            )
+
+            with (
+                patch("core.steps.AGENT_CONTEXT_ROOT", root / "agent-context"),
+                patch("core.user_escalation.request_user_input") as request_user_input,
+            ):
+                step_intake(
+                    intake_source=str(story_path),
+                    repo="/tmp/target-repo",
+                    change_id="manual-test",
+                    intake_mode="manual",
+                    runner="copilot",
+                    runner_model="gpt-5-mini",
+                )
+
+            request_user_input.assert_not_called()
+
+
 class CopilotPlanningFallbackTests(unittest.TestCase):
     def test_medium__task_gen_producer_writes_fallback_tasks_when_copilot_returns_no_artifact(self):
         with tempfile.TemporaryDirectory() as tmpdir:

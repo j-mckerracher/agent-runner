@@ -83,12 +83,12 @@ Write logs to `logs/{CHANGE-ID}/software_engineer/`, including the `UOW-ID` in f
 This is the standard implementation loop. It runs on every attempt (including the first).
 
 1. Read the UoW specification and Definition of Done from `{CHANGE-ID}/execution/{UOW-ID}/uow_spec.yaml`
-2. **Conditionally update the ADO work item state to `Active`** using the **azure-devops-cli** skill when `intake/story.yaml` contains explicit ADO metadata (`ado_provenance.work_item_id` or `raw_input.ado_work_item_id`):
+2. **Conditionally update the ADO work item state to `Active`** using the **azure-devops-cli** skill only when `intake/story.yaml` contains explicit connector-backed ADO metadata (`ado_provenance.work_item_id` or `raw_input.ado_work_item_id`) **and** the workflow context explicitly marks ADO write-back as enabled:
    ```bash
    az boards work-item update --id {work_item_id} --state "Active" \
      --discussion "Agent starting implementation of UoW {UOW-ID}: {uow_title}"
    ```
-   Extract `{work_item_id}` from the explicit ADO metadata when present. If the story is synthetic/local and no ADO metadata exists, skip this step entirely. Log a warning and continue if the command fails — do not block implementation.
+   Extract `{work_item_id}` from the explicit ADO metadata when present. If the story is manual or synthetic/local, if only reference metadata exists, or if write-back enablement is absent, skip this step entirely. Log a warning and continue if the command fails — do not block implementation.
 3. Query the Reference Librarian for patterns, prior learnings, and scoped applicable lessons
 4. Check the `### Self-Evolved Rules` and `### Optimizer-Injected Rules` sub-sections at the bottom of this file for any evolved heuristics that apply to this task
 5. Implement code changes following the Documentation-First Requirement and Scope Control Guidelines

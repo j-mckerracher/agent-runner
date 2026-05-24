@@ -84,7 +84,7 @@ Do **not** perform broad codebase exploration as part of intake.
 Follow the **artifact-io** skill protocol. This agent's specific paths:
 
 - **Inputs**: runner-supplied workflow context, optional planning doc paths referenced in that context
-- **Inputs** may describe either a live Azure DevOps story or a local synthetic story fixture used for workflow testing
+- **Inputs** may describe a manually pasted story, a live Azure DevOps story, or a local synthetic story fixture used for workflow testing
 - **Outputs**: `{CHANGE-ID}/intake/story.yaml`, `{CHANGE-ID}/intake/config.yaml`, `{CHANGE-ID}/intake/constraints.md`
 - **Logs**: `logs/intake/`
 
@@ -134,6 +134,12 @@ Create or refresh `intake/config.yaml` with:
 - Only populate `ado_provenance` or other ADO-specific config sections when the fixture explicitly provides ADO metadata.
 - Prefer non-blocking documentation over user questioning when the run is clearly synthetic or otherwise non-interactive.
 - Record that the source was synthetic/local in `metacognitive_context` or `constraints.md` when useful for downstream clarity.
+
+### Manual story handling
+
+- When the runner provides a manual/pasted story, treat it as the primary source of truth and normalize it deterministically without attempting Azure DevOps access.
+- Preserve any pasted work item ID or URL as reference-only metadata unless the provided context explicitly includes connector-backed `ado_provenance`.
+- Do not infer `ado_provenance`, fetch from Azure DevOps, or invoke Azure DevOps skills merely because `raw_input` contains a work item ID or URL.
 
 ### 3. Capture constraints and open questions
 
@@ -208,5 +214,4 @@ Return a concise status summary that states:
 5. whether any open questions or assumptions remain
 
 </agent>
-
 

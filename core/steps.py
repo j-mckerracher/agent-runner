@@ -13,6 +13,7 @@ from .repo_prep import build_feature_branch_name
 from .run_cmds import run_claude_cmd, run_agent_cmd
 from .opik_integration import call_evaluator_sdk
 from .runner_models import DEFAULT_GEMINI_MODEL, resolve_agent_model
+from .story_inputs import load_manual_story, normalize_acceptance_criteria
 from .ui_trace_bridge import track_with_ui
 
 logger = logging.getLogger(__name__)
@@ -89,18 +90,7 @@ def _utc_timestamp() -> str:
 
 
 def _normalize_acceptance_criteria(acceptance_criteria: object) -> dict[str, str]:
-    normalized: dict[str, str] = {}
-    if isinstance(acceptance_criteria, list):
-        values = acceptance_criteria
-    elif isinstance(acceptance_criteria, dict):
-        values = list(acceptance_criteria.values())
-    else:
-        values = []
-
-    for index, value in enumerate(values, start=1):
-        if isinstance(value, str) and value.strip():
-            normalized[f"AC{index}"] = value.strip()
-    return normalized
+    return normalize_acceptance_criteria(acceptance_criteria)
 
 
 def _build_synthetic_story_artifact(*, fixture: dict, fixture_path: Path, change_id: str) -> dict:
@@ -208,6 +198,116 @@ def _build_synthetic_constraints_markdown(
     )
 
 
+def _build_manual_story_artifact(*, manual_story: dict, manual_story_path: Path, change_id: str) -> dict:
+    ado_reference = {
+        key: manual_story[key]
+        for key in ("work_item_id", "work_item_url")
+        if manual_story.get(key)
+    } or None
+    return {
+        "change_id": change_id,
+        "title": manual_story.get("title", change_id),
+        "description": manual_story.get("description", ""),
+        "acceptance_criteria": _normalize_acceptance_criteria(manual_story.get("acceptance_criteria")),
+        "examples": ["user-provided manual story input"],
+        "constraints": [
+            "Preserve the original manual payload under raw_input.",
+            "Treat work item IDs and URLs as reference metadata unless explicit ADO provenance is supplied.",
+            "Keep the intake artifact contract compatible with downstream workflow stages.",
+        ],
+        "non_functional_requirements": [
+            "deterministic manual story normalization",
+        ],
+        "raw_input": {
+            "source_type": "manual_paste",
+            "manual_story_file": str(manual_story_path),
+            "original_manual_story": json.dumps(manual_story, indent=2),
+            "ado_reference": ado_reference,
+        },
+        "metacognitive_context": {
+            "normalization_source": "manual_paste",
+            "scenario": "manual story submission",
+            "notes": [
+                "Manual story content was normalized deterministically without using Azure DevOps tooling.",
+                "Reference metadata does not imply connector-backed provenance or write-back capability.",
+            ],
+        },
+        "ado_provenance": None,
+    }
+
+
+def _build_manual_config_artifact(
+    *,
+    change_id: str,
+    repo: str,
+    manual_story: dict,
+    created_at: str,
+) -> dict:
+    return {
+        "change_id": change_id,
+        "code_repo": repo,
+        "project_type": "manual-story",
+        "planning_docs_root": None,
+        "planning_docs_paths": [],
+        "created_at": created_at,
+        "intake_mode": "manual",
+        "model_assignments": {},
+        "iteration_limits": {
+            "task_plan": 3,
+            "assignment": 2,
+            "implementation": 3,
+            "qa": 2,
+        },
+        "run_metadata": {
+            "status": "intake_complete",
+            "current_stage": "intake",
+            "started_at": created_at,
+            "feature_branch": build_feature_branch_name(change_id, manual_story.get("title")),
+        },
+    }
+
+
+def _build_manual_constraints_markdown(
+    *,
+    change_id: str,
+    repo: str,
+    manual_story_path: Path,
+    feature_branch: str,
+) -> str:
+    return "\n".join(
+        [
+            f"# Intake constraints for {change_id}",
+            "",
+            "## Technical context",
+            "",
+            "- Source type: manual story submission from the Runs UI or API.",
+            f"- Manual story file: `{manual_story_path}`.",
+            f"- Target code repository: `{repo}`.",
+            f"- Feature branch recorded for downstream stages: `{feature_branch}`.",
+            "- Any work item ID or URL in the manual payload is reference metadata only unless explicit ADO provenance is later supplied.",
+            "",
+            "## Examples",
+            "",
+            "- User-pasted story normalized into canonical workflow intake artifacts.",
+            "",
+            "## Non-functional requirements",
+            "",
+            "- Preserve the original manual payload under `raw_input.original_manual_story`.",
+            "- Keep the workflow self-contained and deterministic for manual runs.",
+            "- Do not trigger Azure DevOps behavior from reference metadata alone.",
+            "",
+            "## Planning docs",
+            "",
+            "- None referenced in the supplied context.",
+            "",
+            "## Open questions",
+            "",
+            "- None.",
+            "",
+        ]
+    )
+
+
 def _write_yaml_artifact(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
@@ -259,16 +359,58 @@ def _write_synthetic_intake_artifacts(*, intake_source: str, repo: str, change_i
     )
 
 
+def _write_manual_intake_artifacts(*, intake_source: str, repo: str, change_id: str) -> str:
+    manual_story_path = Path(intake_source).expanduser().resolve()
+    manual_story = load_manual_story(str(manual_story_path))
+
+    created_at = _utc_timestamp()
+    story_payload = _build_manual_story_artifact(
+        manual_story=manual_story,
+        manual_story_path=manual_story_path,
+        change_id=change_id,
+    )
+    config_payload = _build_manual_config_artifact(
+        change_id=change_id,
+        repo=repo,
+        manual_story=manual_story,
+        created_at=created_at,
+    )
+    constraints_text = _build_manual_constraints_markdown(
+        change_id=change_id,
+        repo=repo,
+        manual_story_path=manual_story_path,
+        feature_branch=config_payload["run_metadata"]["feature_branch"],
+    )
+
+    _write_yaml_artifact(_intake_story_path(change_id), story_payload)
+    _write_yaml_artifact(_intake_config_path(change_id), config_payload)
+    constraints_path = _intake_constraints_path(change_id)
+    constraints_path.parent.mkdir(parents=True, exist_ok=True)
+    constraints_path.write_text(constraints_text, encoding="utf-8")
+
+    normalized_count = len(story_payload["acceptance_criteria"])
+    logger.info(
+        "_write_manual_intake_artifacts: wrote intake artifacts for change_id=%s ac_count=%d",
+        change_id,
+        normalized_count,
+    )
+    return (
+        "Created manual intake artifacts "
+        f"(story.yaml, config.yaml, constraints.md); normalized {normalized_count} acceptance criteria; "
+        f"feature branch {config_payload['run_metadata']['feature_branch']}."
+    )
+
+
 def _confirm_acceptance_criteria(change_id: str, intake_mode: str) -> None:
     """Block until the user confirms (or amends) the normalized acceptance criteria.
 
     Skips silently when:
-    - intake_mode is 'synthetic' (non-interactive fixture run)
+    - intake_mode is 'synthetic' or 'manual' (non-interactive deterministic run)
     - no interactive channel is available (no GUI, no TTY)
     - story.yaml is missing or contains no acceptance criteria
     """
-    if intake_mode == "synthetic":
-        logger.info("_confirm_acceptance_criteria: skipping — synthetic mode change_id=%s", change_id)
+    if intake_mode in {"synthetic", "manual"}:
+        logger.info("_confirm_acceptance_criteria: skipping — %s mode change_id=%s", intake_mode, change_id)
         return
 
     story_path = _intake_story_path(change_id)
@@ -1001,6 +1143,15 @@ def step_intake(
             change_id=change_id,
         )
         logger.info("step_intake: synthetic artifacts written change_id=%s", change_id)
+        _confirm_acceptance_criteria(change_id, intake_mode)
+        return result
+    if intake_mode == "manual":
+        result = _write_manual_intake_artifacts(
+            intake_source=intake_source,
+            repo=repo,
+            change_id=change_id,
+        )
+        logger.info("step_intake: manual artifacts written change_id=%s", change_id)
         _confirm_acceptance_criteria(change_id, intake_mode)
         return result
 

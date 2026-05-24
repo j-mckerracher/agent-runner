@@ -452,6 +452,19 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .repo-forget-btn{display:none;padding:5px 8px;font-size:11px;white-space:nowrap}
 .row2{display:flex;gap:8px}
 .row2 .field{flex:1}
+.story-source-intro{margin:0 0 10px;color:var(--t2);font-size:12px;line-height:1.5}
+.story-source-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.story-source-tab{
+  border:1px solid var(--brb);background:transparent;color:var(--t1);border-radius:999px;
+  padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer
+}
+.story-source-tab.active{background:var(--acc);border-color:var(--acc);color:#07080b}
+.story-source-panel{display:none;padding:10px;border:1px solid var(--br);border-radius:8px;background:rgba(255,255,255,.02);margin-bottom:10px}
+.story-source-panel.active{display:block}
+.story-source-note,.story-source-status{margin:0 0 10px;color:var(--t2);font-size:11px;line-height:1.5}
+.story-source-status strong{color:var(--t1)}
+.story-source-panel .btn{margin-top:4px}
+.field-help{display:block;margin-top:4px;color:var(--t3);font-size:10px;line-height:1.45}
 .checkbox{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2);margin-bottom:8px;cursor:pointer}
 .btn{display:inline-block;background:var(--acc);color:#07080b;border:none;border-radius:4px;padding:7px 14px;font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer}
 .btn:disabled{opacity:.5;cursor:not-allowed}
@@ -1019,8 +1032,46 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
                 <button class="btn ghost repo-forget-btn" id="f-repo-forget" type="button">Forget</button>
               </div>
             </div>
-            <div class="field"><label>Change ID</label><input type="text" id="f-change" placeholder="WI-12345"></div>
-            <div class="field"><label>ADO Work Item URL</label><input type="text" id="f-ado"></div>
+            <div class="section-label" style="margin-top:12px">Story input</div>
+            <p class="story-source-intro">You can use Agent Workbench manually by pasting story details below. Azure DevOps integration is optional and only needed when you want to fetch from or write back to Azure DevOps.</p>
+            <div class="story-source-tabs" id="story-source-tabs">
+              <button type="button" class="story-source-tab active" data-story-source="manual">Paste story manually</button>
+              <button type="button" class="story-source-tab" data-story-source="ado">Fetch from Azure DevOps</button>
+              <button type="button" class="story-source-tab" data-story-source="story_file">Use local fixture</button>
+            </div>
+            <div class="story-source-panel active" id="story-source-manual">
+              <p class="story-source-note">Use this option when you do not have Azure DevOps CLI or MCP installed, or when you simply want to paste or edit the story yourself.</p>
+              <div class="row2">
+                <div class="field">
+                  <label for="f-manual-work-item-id">Work item ID / number</label>
+                  <input type="text" id="f-manual-work-item-id" placeholder="Optional">
+                </div>
+                <div class="field">
+                  <label for="f-manual-work-item-url">Work item URL</label>
+                  <input type="text" id="f-manual-work-item-url" placeholder="Optional reference URL">
+                </div>
+              </div>
+              <div class="field-help">Adding a work item ID or URL here will not connect to Azure DevOps. It is saved only as reference metadata unless you explicitly enable Azure DevOps write-back.</div>
+              <div class="field"><label for="f-manual-title">Story title</label><input type="text" id="f-manual-title" placeholder="Required"></div>
+              <div class="field"><label for="f-manual-description">Description</label><textarea id="f-manual-description" placeholder="Required"></textarea></div>
+              <div class="field"><label for="f-manual-ac">Acceptance criteria</label><textarea id="f-manual-ac" placeholder="- Criterion one&#10;- Criterion two"></textarea></div>
+            </div>
+            <div class="story-source-panel" id="story-source-ado">
+              <p class="story-source-note">Use this option only if Azure DevOps CLI or MCP is available on this machine. If you want to review or edit the story first, switch back to manual paste.</p>
+              <p class="story-source-status" id="f-ado-status"><strong>Manual story entry is available.</strong> Azure DevOps integration is optional.</p>
+              <div class="field"><label for="f-ado">ADO Work Item URL</label><input type="text" id="f-ado" placeholder="https://dev.azure.com/.../_workitems/edit/12345"></div>
+              <button type="button" class="btn ghost" id="f-ado-manual-btn">Paste story manually</button>
+            </div>
+            <div class="story-source-panel" id="story-source-story_file">
+              <p class="story-source-note">Use a local JSON story fixture for offline or repeatable test runs.</p>
+              <div class="field"><label for="f-story-file">Story fixture path</label><input type="text" id="f-story-file" placeholder="/path/to/story.json"></div>
+            </div>
+            <div class="field"><label for="f-extra">Extra context</label><textarea id="f-extra" placeholder="Optional notes appended to the agent prompt..."></textarea></div>
+            <div class="field">
+              <label for="f-change">Change ID</label>
+              <input type="text" id="f-change" placeholder="Optional for manual stories; inferred if omitted">
+              <span class="field-help">Manual runs infer a change ID from the work item ID or title when you leave this blank.</span>
+            </div>
             <div class="row2">
               <div class="field"><label>Runner</label><select id="f-runner"><option value="claude">Claude</option><option value="copilot">Copilot</option><option value="gemini">Gemini</option></select></div>
               <div class="field"><label>Model</label><select id="f-model"></select></div>
@@ -1029,7 +1080,6 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
               <div class="field"><label>Mode</label><select id="f-mode"><option value="live">Live</option><option value="hermetic">Hermetic (record)</option></select></div>
               <div class="field"><label>Log level</label><select id="f-log-level"><option value="debug">Debug</option><option value="info">Info</option><option value="warning" selected>Warning</option><option value="error">Error</option><option value="critical">Critical</option></select></div>
             </div>
-            <div class="field"><label>Extra context</label><textarea id="f-extra" placeholder="Optional notes appended to the agent prompt..."></textarea></div>
             <button class="btn" id="submit-btn">Submit run</button>
           </div>
           <div class="history-header">Past Runs</div>
@@ -1056,7 +1106,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
             </div>
             <div class="trace-timeline" id="trace-timeline"></div>
           </div>
-          <div class="term" id="term"><div class="empty">No run selected.</div></div>
+          <div class="term" id="term"><div class="empty">Start by pasting a story manually. Azure DevOps integration is optional.</div></div>
           <div class="metrics" id="metrics"><span>tokens in <b id="m-ti">—</b></span><span class="metrics-sep">|</span><span>tokens out <b id="m-to">—</b></span><span class="metrics-sep">|</span><span>total <b id="m-total">—</b></span><span class="metrics-sep">|</span><span>cost <b id="m-cost">—</b></span><span class="cost-disclaimer">est. $3/$15 per Mtok</span><span class="metrics-sep">|</span><span>stage <b id="m-stage">—</b></span></div>
         </div>
       </div>
@@ -1420,6 +1470,63 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
           </div>
         </div>
 
+        <!-- Azure DevOps -->
+        <div class="set-section">
+          <div class="set-section-header">
+            <span class="set-section-label">Azure DevOps integration</span>
+            <div class="set-section-line"></div>
+          </div>
+          <p class="set-hint">Manual usage is always available. Azure DevOps CLI and MCP are optional accelerators for fetching work items or enabling explicit write-back later.</p>
+          <div class="set-card">
+            <div class="set-list">
+              <div class="set-list-row">
+                <div class="set-list-label">Manual usage</div>
+                <div class="set-list-value" id="s-ado-manual-status">Status: Always available</div>
+              </div>
+              <div class="set-list-row">
+                <div class="set-list-label">Azure DevOps CLI</div>
+                <div class="set-list-value" id="s-ado-cli-status">Status: Not detected</div>
+              </div>
+              <div class="set-list-row">
+                <div class="set-list-label">Azure DevOps MCP</div>
+                <div class="set-list-value" id="s-ado-mcp-status">Status: Not configured</div>
+              </div>
+              <div class="set-list-row">
+                <div class="set-list-label">Write-back</div>
+                <div class="set-list-value" id="s-ado-writeback-status">Status: Disabled</div>
+              </div>
+            </div>
+            <div class="set-field-grid">
+              <div class="set-field">
+                <label class="set-field-label" for="s-ado-cli-enabled">Azure DevOps CLI</label>
+                <select id="s-ado-cli-enabled">
+                  <option value="false">Disabled</option>
+                  <option value="true">Enabled</option>
+                </select>
+              </div>
+              <div class="set-field">
+                <label class="set-field-label" for="s-ado-mcp-enabled">Azure DevOps MCP</label>
+                <select id="s-ado-mcp-enabled">
+                  <option value="false">Disabled</option>
+                  <option value="true">Enabled</option>
+                </select>
+              </div>
+              <div class="set-field full">
+                <label class="set-field-label" for="s-ado-mcp-url">Azure DevOps MCP Server URL</label>
+                <input type="text" id="s-ado-mcp-url" placeholder="http://localhost:3000 (optional)">
+              </div>
+              <div class="set-field full last-row">
+                <label class="set-field-label" for="s-ado-writeback-enabled">Azure DevOps write-back</label>
+                <select id="s-ado-writeback-enabled">
+                  <option value="false">Disabled</option>
+                  <option value="true">Enabled explicitly</option>
+                </select>
+              </div>
+            </div>
+            <p class="set-hint">A work item ID or URL in manual mode remains reference-only until you explicitly enable write-back and a connector is available.</p>
+          </div>
+        </div>
+
         <!-- Agent Model Defaults -->
         <div class="set-section">
           <div class="set-section-header">
@@ -1447,6 +1554,8 @@ let RUNNER_MODELS = {claude:[],copilot:[],gemini:[],"openai-compat":[]};
 let REPO_PATH_OPTIONS = [];
 let REPO_CUSTOM_VALUES = [];
 let REPO_BASE_DIR = "";
+let ACTIVE_STORY_SOURCE = "manual";
+let AZURE_DEVOPS_STATUS = null;
 let EVAL_BOOTSTRAP_SHA = "";
 const EVAL_CUSTOM_SHA_OPTION = "__custom__";
 const REPO_PICKERS = [
@@ -2860,6 +2969,64 @@ function updateOpikSettingsStatus(opik){
     : `Opik configured for ${opik.workspace_name}/${opik.project_name}. Workflow traces will fail fast if this endpoint cannot be reached.`;
 }
 
+function setStorySource(next){
+  ACTIVE_STORY_SOURCE = next || "manual";
+  $$(".story-source-tab").forEach(btn => {
+    const active = btn.dataset.storySource === ACTIVE_STORY_SOURCE;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  $$(".story-source-panel").forEach(panel => {
+    panel.classList.toggle("active", panel.id === `story-source-${ACTIVE_STORY_SOURCE}`);
+  });
+}
+
+function formatAzureDevOpsCliStatus(status){
+  if(!status?.detected) return "Status: Not detected";
+  if(!status.extension_installed) return status.enabled ? "Status: Azure CLI detected, extension missing, enabled in settings" : "Status: Azure CLI detected, extension missing";
+  return status.enabled ? "Status: Detected and enabled" : "Status: Detected but disabled in settings";
+}
+
+function formatAzureDevOpsMcpStatus(status){
+  if(!status?.configured) return status?.enabled ? "Status: Enabled, but no server URL configured" : "Status: Not configured";
+  return status.enabled ? "Status: Configured and enabled" : "Status: Configured but disabled in settings";
+}
+
+function updateAzureDevOpsStatus(status){
+  AZURE_DEVOPS_STATUS = status || null;
+  const adoStatus = $("#f-ado-status");
+  const manualStatus = $("#s-ado-manual-status");
+  const cliStatus = $("#s-ado-cli-status");
+  const mcpStatus = $("#s-ado-mcp-status");
+  const writebackStatus = $("#s-ado-writeback-status");
+  if(manualStatus) manualStatus.textContent = "Status: Always available";
+  if(!status){
+    if(adoStatus) adoStatus.innerHTML = "<strong>Manual story entry is available.</strong> Azure DevOps integration status could not be loaded.";
+    if(cliStatus) cliStatus.textContent = "Status: Unavailable";
+    if(mcpStatus) mcpStatus.textContent = "Status: Unavailable";
+    if(writebackStatus) writebackStatus.textContent = "Status: Unknown";
+    return;
+  }
+  const hasReadConnector = Boolean(status.cli?.can_read || status.mcp?.can_read);
+  if(adoStatus){
+    adoStatus.innerHTML = hasReadConnector
+      ? "<strong>Azure DevOps integration is configured.</strong> You can still switch back to manual story entry at any time."
+      : "<strong>Azure DevOps integration is not configured.</strong> You can still use Agent Workbench manually by pasting the story title, description, and acceptance criteria.";
+  }
+  if(cliStatus) cliStatus.textContent = formatAzureDevOpsCliStatus(status.cli);
+  if(mcpStatus) mcpStatus.textContent = formatAzureDevOpsMcpStatus(status.mcp);
+  if(writebackStatus) writebackStatus.textContent = status.write_back_enabled ? "Status: Enabled explicitly" : "Status: Disabled";
+}
+
+async function loadAzureDevOpsStatus(){
+  try{
+    const status = await api("/integrations/azure-devops/status");
+    updateAzureDevOpsStatus(status);
+  }catch(e){
+    updateAzureDevOpsStatus(null);
+  }
+}
+
 async function loadSettings(){
   const cfg = await api("/settings");
   RUNNER_MODELS = cfg.runner_models || RUNNER_MODELS;
@@ -2906,6 +3073,11 @@ async function loadSettings(){
   $("#s-opik-project-id").value = cfg.opik?.project_id || "";
   $("#s-opik-project-name").value = cfg.opik?.project_name || "";
   updateOpikSettingsStatus(cfg.opik || {});
+  $("#s-ado-cli-enabled").value = String(Boolean(cfg.azure_devops?.cli?.enabled));
+  $("#s-ado-mcp-enabled").value = String(Boolean(cfg.azure_devops?.mcp?.enabled));
+  $("#s-ado-mcp-url").value = cfg.azure_devops?.mcp?.server_url || "";
+  $("#s-ado-writeback-enabled").value = String(Boolean(cfg.azure_devops?.write_back_enabled));
+  await loadAzureDevOpsStatus();
   buildAgentDefaultsUI(cfg.agent_model_defaults || {});
   renderRunnerAliases(cfg.runner_aliases || {});
   syncRunConfigSelects();
@@ -3033,6 +3205,14 @@ $("#settings-save").addEventListener("click", async ()=>{
       concurrency:{max_running_jobs:parseInt($("#s-conc").value,10)},
       paths:{data_dir:$("#s-data").value},
       repo_paths:{base_dir:$("#s-repo-base-dir").value.trim(), custom_values:REPO_CUSTOM_VALUES},
+      azure_devops:{
+        write_back_enabled: $("#s-ado-writeback-enabled").value === "true",
+        cli:{enabled: $("#s-ado-cli-enabled").value === "true"},
+        mcp:{
+          enabled: $("#s-ado-mcp-enabled").value === "true",
+          server_url: $("#s-ado-mcp-url").value.trim(),
+        },
+      },
       opik:{
         dashboard_url:$("#s-opik-url").value.trim(),
         workspace_name:$("#s-opik-workspace").value.trim(),
@@ -3218,17 +3398,47 @@ setInterval(loadHistory, 3000); loadHistory();
 
 // Submit
 $("#submit-btn").addEventListener("click", async ()=>{
+  const source = ACTIVE_STORY_SOURCE || "manual";
+  const extraContext = $("#f-extra").value.trim();
   const body = {
     repo: $("#f-repo").value.trim(),
-    change_id: $("#f-change").value.trim(),
-    ado_url: $("#f-ado").value.trim() || null,
+    change_id: $("#f-change").value.trim() || null,
     runner: $("#f-runner").value,
     model: $("#f-model").value || null,
     log_level: $("#f-log-level").value,
-    extra_context: $("#f-extra").value || null,
+    extra_context: extraContext || null,
     mode: $("#f-mode").value,
   };
-  if(!body.repo || !body.change_id){ toast("repo and change_id are required", true); return; }
+  if(!body.repo){ toast("repo is required", true); return; }
+  if(source === "manual"){
+    const title = $("#f-manual-title").value.trim();
+    const description = $("#f-manual-description").value.trim();
+    const acceptanceCriteria = $("#f-manual-ac").value.trim();
+    if(!title || !description || !acceptanceCriteria){
+      toast("manual story title, description, and acceptance criteria are required", true);
+      return;
+    }
+    body.manual_story = {
+      work_item_id: $("#f-manual-work-item-id").value.trim() || null,
+      work_item_url: $("#f-manual-work-item-url").value.trim() || null,
+      title,
+      description,
+      acceptance_criteria: acceptanceCriteria,
+      extra_context: extraContext || null,
+    };
+  }else if(source === "ado"){
+    body.ado_url = $("#f-ado").value.trim() || null;
+    if(!body.ado_url){
+      toast("ADO Work Item URL is required for Azure DevOps runs", true);
+      return;
+    }
+  }else{
+    body.story_file = $("#f-story-file").value.trim() || null;
+    if(!body.story_file){
+      toast("story fixture path is required for local fixture runs", true);
+      return;
+    }
+  }
   try{
     const r = await api("/runs", {method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(body)});
     try{
@@ -3254,6 +3464,11 @@ $("#cancel-btn").addEventListener("click", ()=>{
 $("#eval-cancel-btn").addEventListener("click", ()=>{
   if(confirm("Cancel this evaluation run?")) requestCancel();
 });
+$$("#story-source-tabs .story-source-tab").forEach(btn => {
+  btn.addEventListener("click", ()=>setStorySource(btn.dataset.storySource));
+});
+$("#f-ado-manual-btn").addEventListener("click", ()=>setStorySource("manual"));
+setStorySource("manual");
 
 // Job selection / SSE
 function showRunAlert(title, message, meta=[], surface="runs"){

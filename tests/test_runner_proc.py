@@ -64,6 +64,23 @@ class RunnerProcBuildCmdTests(unittest.TestCase):
         self.assertIn("--log-level", cmd)
         self.assertEqual(cmd[cmd.index("--log-level") + 1], "debug")
 
+    def test_easy__prefers_manual_story_file_when_present(self):
+        job = {
+            "id": "job_test",
+            "repo": "/tmp/repo",
+            "change_id": "WI-123456",
+            "runner": "claude",
+            "manual_story_file": "/tmp/job-inputs/manual_story.json",
+            "events_path": "/tmp/events.jsonl",
+        }
+
+        cmd = JobProcess(job, EventBus(), None)._build_cmd()
+
+        self.assertIn("--manual-story-file", cmd)
+        self.assertEqual(cmd[cmd.index("--manual-story-file") + 1], "/tmp/job-inputs/manual_story.json")
+        self.assertNotIn("--story-file", cmd)
+        self.assertNotIn("--ado-url", cmd)
+
     def test_medium__start_precleans_before_creating_event_log(self):
         job = {
             "id": "job_test",

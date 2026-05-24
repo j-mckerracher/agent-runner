@@ -337,5 +337,39 @@ class ResolveWorkflowInputAdoModeTests(unittest.TestCase):
         self.assertIsNone(self.workflow_input.branch_description_source)
 
 
+class ResolveWorkflowInputManualModeTests(unittest.TestCase):
+    def setUp(self):
+        self._repo = _make_repo_dir()
+        self.addCleanup(self._repo.cleanup)
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.manual_story_path = Path(self._tmp.name) / "manual_story.json"
+        _write_fixture(
+            self.manual_story_path,
+            {
+                "work_item_id": "123456",
+                "title": "Manual story input",
+                "description": "User pasted the story manually.",
+                "acceptance_criteria": "- first\n- second",
+            },
+        )
+        self.workflow_input = resolve_workflow_input(
+            repo=self._repo.name,
+            manual_story_file=str(self.manual_story_path),
+        )
+
+    def test_easy__manual_mode_intake_mode_field_is_manual(self):
+        self.assertEqual(self.workflow_input.intake_mode, "manual")
+
+    def test_easy__manual_mode_change_id_infers_from_work_item_id(self):
+        self.assertEqual(self.workflow_input.change_id, "WI-123456")
+
+    def test_easy__manual_mode_intake_source_uses_manual_story_file(self):
+        self.assertEqual(Path(self.workflow_input.intake_source), self.manual_story_path.resolve())
+
+    def test_easy__manual_mode_branch_description_source_uses_story_title(self):
+        self.assertEqual(self.workflow_input.branch_description_source, "Manual story input")
+
+
 if __name__ == "__main__":
     unittest.main()

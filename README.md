@@ -1,6 +1,6 @@
 # agent-workbench
 
-**Agent Workbench is a local UI for AI-assisted software delivery.** It turns a synthetic story or Azure DevOps work item into a traceable multi-agent workflow you can launch, monitor, inspect, and evaluate locally.
+**Agent Workbench is a local UI for AI-assisted software delivery.** It turns a manually pasted story, a local synthetic story fixture, or an Azure DevOps work item into a traceable multi-agent workflow you can launch, monitor, inspect, and evaluate locally.
 
 The current runner executes a six-stage workflow:
 
@@ -22,7 +22,7 @@ Implementation and QA use evaluator/optimizer loops. A producer agent writes an 
 | Capability | What it means |
 |---|---|
 | **Browser UI for workflow runs** | Submit runs, choose a runner/model, watch live events, cancel jobs, respond to clarification prompts, and inspect history at `http://127.0.0.1:8742`. |
-| **Synthetic + ADO intake** | Work offline with local JSON fixtures, or point the same workflow at a live Azure DevOps work item. |
+| **Manual-first story intake** | Paste a story manually by default, use local JSON fixtures for offline testing, or optionally point the same workflow at a live Azure DevOps work item. |
 | **Traceable artifacts** | Every run writes canonical artifacts under `agent-context/<change-id>/`. |
 | **Opik integration** | Bootstrap can start a local Opik stack and the UI can deep-link runs and evaluation views into Opik. |
 | **Evaluation framework** | `eval/runner.py` runs the official hidden-test benchmarks with AC-level scoring, repeated trials, baseline comparison, and structured reports. |
@@ -63,7 +63,7 @@ The current platform is intentionally local-first and workflow-centric. The next
 | `git` | Yes      | bootstrap and normal repo workflows | Used for the repo itself and for syncing the local Opik checkout. |
 | Docker Desktop | No       | bundled local Opik stack | Required only if you opt in to the bundled local Opik stack at bootstrap time (the bootstrap script will prompt you). Skip-able by default or via `--no-opik`. |
 | One AI backend CLI | Yes      | actual workflow execution | Install and authenticate at least one of `claude`, `copilot`, or `gemini`. |
-| Azure CLI + `azure-devops` extension | Yes      | live ADO intake mode | Not required for local synthetic stories. |
+| Azure CLI + `azure-devops` extension | No       | optional live ADO intake mode | Manual story entry and local synthetic stories do not require Azure DevOps tooling. |
 
 ### Optional tooling
 
@@ -90,6 +90,7 @@ That flow:
 - creates or reuses `.venv/`
 - installs `requirements.txt`
 - materializes agents, skills, and helper scripts
+- keeps manual story entry available by default; Azure DevOps integration can be enabled later in Settings if you install/configure it
 - prompts you (y/N) whether to enable the bundled local [Opik](https://github.com/comet-ml/opik/blob/main/README.md) observability stack — answer "n" (default) to skip Docker entirely
 - if enabled: clones / updates `~/.agent-runner/opik`, starts the stack, persists Opik metadata into `~/.agent-runner/config.json`
 - starts the local API + GUI on `http://127.0.0.1:8742`
@@ -141,11 +142,12 @@ python3 server_main.py --host 127.0.0.1 --port 8742
 
 ### From the browser
 
-Open `http://127.0.0.1:8742`, fill in the **Runs** form, and submit a job. The UI exposes:
+Open `http://127.0.0.1:8742`, fill in the **Runs** form, and submit a job. Manual story entry is the default path; Azure DevOps is optional. The UI exposes:
 
 - repo path
-- change ID
-- optional Azure DevOps work item URL
+- story source selection (`Paste story manually`, `Fetch from Azure DevOps`, `Use local fixture`)
+- pasted story title, description, acceptance criteria, and optional reference-only work item metadata
+- optional change ID
 - runner + model
 - mode (`live` or `hermetic`)
 - extra context appended to intake
@@ -174,6 +176,14 @@ Run against Azure DevOps:
 python3 run.py \
   --repo /absolute/path/to/target/repo \
   --ado-url 'https://dev.azure.com/<org>/<project>/_workitems/edit/123456'
+```
+
+Run with a manual story file:
+
+```bash
+python3 run.py \
+  --repo /absolute/path/to/target/repo \
+  --manual-story-file /absolute/path/to/manual_story.json
 ```
 
 Choose a runner explicitly:
@@ -209,8 +219,9 @@ python3 run.py \
 |---|---|---|
 | `--repo PATH` | current working directory | Absolute path to the target repository the workflow will operate on. |
 | `--change-id ID` | derived from input | Stable identifier for this workflow run. Derived automatically from the story fixture or ADO item when omitted; only required when you need to override the value embedded in the input. |
-| `--ado-url URL` | none | Azure DevOps work item URL (`https://dev.azure.com/<org>/<project>/_workitems/edit/<id>`). Triggers live ADO intake mode. Mutually exclusive with `--story-file`. |
-| `--story-file PATH` | `workflow-fixtures/synthetic_story.json` | Path to a local synthetic story fixture JSON file. Used for offline / test runs. Falls back to the bundled `TEST-AC-001` fixture when neither `--ado-url` nor `--story-file` is provided. |
+| `--ado-url URL` | none | Azure DevOps work item URL (`https://dev.azure.com/<org>/<project>/_workitems/edit/<id>`). Triggers live ADO intake mode. Mutually exclusive with `--story-file` and `--manual-story-file`. |
+| `--story-file PATH` | `workflow-fixtures/synthetic_story.json` | Path to a local synthetic story fixture JSON file. Used for offline / test runs. Falls back to the bundled `TEST-AC-001` fixture when no explicit story source is provided. |
+| `--manual-story-file PATH` | none | Path to a JSON file containing manually pasted story fields (`title`, `description`, `acceptance_criteria`, optional work item reference fields, optional extra context). Treats work item IDs and URLs as reference-only metadata unless explicit write-back is enabled later. |
 | `--runner NAME` | `claude` | LLM backend to use: `claude` (Anthropic), `copilot` (OpenAI/GitHub), `gemini` (Google), `openai-compat` (any OpenAI-compatible endpoint), or a custom alias defined in `~/.agent-runner/config.json` under `runner_aliases`. |
 | `--model NAME` | runner default | Model name to pass to the selected runner. Defaults to the runner's built-in default when omitted. For `openai-compat`, any model name is accepted; `claude`/`copilot`/`gemini` require a known model from their allowlists. |
 | `--extra-context TEXT` | none | Free-form text appended verbatim to the intake agent's prompt. Useful for passing a reference PR URL, design notes, or other supplemental context. |
@@ -317,14 +328,14 @@ curl -X POST http://127.0.0.1:8742/runs \
   }'
 ```
 
-## Synthetic mode vs. ADO mode
+## Story input modes
 
-| | Synthetic | ADO |
-|---|---|---|
-| Credentials needed | None | Azure CLI |
-| Network required | No | Yes |
-| Input source | Local JSON fixture | Live Azure DevOps work item |
-| Selected by | `--story-file` or default fixture | `--ado-url` |
+| | Manual | Synthetic | ADO |
+|---|---|---|---|
+| Credentials needed | None | None | Azure CLI |
+| Network required | No | No | Yes |
+| Input source | Pasted/manual story JSON | Local JSON fixture | Live Azure DevOps work item |
+| Selected by | Runs UI default or `--manual-story-file` | `--story-file` or default fixture | `--ado-url` |
 
 ## Synthetic fixture format
 
@@ -354,6 +365,19 @@ Bundled fixture:
 | File | Change ID | Purpose |
 |---|---|---|
 | `workflow-fixtures/synthetic_story.json` | `TEST-AC-001` | Default smoke-test fixture used when neither `--story-file` nor `--ado-url` is provided |
+
+## Manual story file format
+
+Manual story files are JSON objects with these required fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| `title` | string | One-line title |
+| `description` | string | Narrative description |
+| `acceptance_criteria` | string, list, or object | Must contain at least one non-empty item; free-form text is normalized into `AC1`, `AC2`, ... |
+| `work_item_id` | string | Optional reference-only metadata |
+| `work_item_url` | string | Optional reference-only metadata |
+| `extra_context` | string | Optional extra notes preserved in intake |
 
 ## Artifact layout
 

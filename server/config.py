@@ -25,6 +25,19 @@ def _default_opik_config() -> dict[str, str]:
     }
 
 
+def _default_azure_devops_config() -> dict[str, Any]:
+    return {
+        "write_back_enabled": False,
+        "cli": {
+            "enabled": False,
+        },
+        "mcp": {
+            "enabled": False,
+            "server_url": "",
+        },
+    }
+
+
 DEFAULTS: dict[str, Any] = {
     "api": {"host": "127.0.0.1", "port": 8742},
     "defaults": {
@@ -41,6 +54,7 @@ DEFAULTS: dict[str, Any] = {
     },
     "concurrency": {"max_running_jobs": 2},
     "opik": _default_opik_config(),
+    "azure_devops": _default_azure_devops_config(),
     "repo_paths": {
         "base_dir": "",
         "custom_values": [],
@@ -116,6 +130,31 @@ def validate_config(cfg: dict) -> list[str]:
         parsed = urlparse(dashboard_url)
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
             errors.append("opik.dashboard_url must be an absolute http(s) URL")
+
+    azure_devops = cfg.get("azure_devops")
+    if azure_devops is not None and not isinstance(azure_devops, dict):
+        errors.append("azure_devops must be a dict")
+    else:
+        azure_devops = azure_devops or {}
+        write_back_enabled = azure_devops.get("write_back_enabled", False)
+        if not isinstance(write_back_enabled, bool):
+            errors.append("azure_devops.write_back_enabled must be a boolean")
+        for connector_name in ("cli", "mcp"):
+            connector = azure_devops.get(connector_name, {})
+            if not isinstance(connector, dict):
+                errors.append(f"azure_devops.{connector_name} must be a dict")
+                continue
+            enabled = connector.get("enabled", False)
+            if not isinstance(enabled, bool):
+                errors.append(f"azure_devops.{connector_name}.enabled must be a boolean")
+            server_url = connector.get("server_url", "")
+            if connector_name == "mcp":
+                if server_url is not None and not isinstance(server_url, str):
+                    errors.append("azure_devops.mcp.server_url must be a string")
+                elif isinstance(server_url, str) and server_url.strip():
+                    parsed = urlparse(server_url.strip())
+                    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                        errors.append("azure_devops.mcp.server_url must be an absolute http(s) URL")
 
     repo_paths = cfg.get("repo_paths")
     if not isinstance(repo_paths, dict):

@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .story_inputs import infer_manual_change_id, load_manual_story
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_TEST_STORY_FILE = (
@@ -24,7 +26,7 @@ class WorkflowInput:
     branch_description_source: str | None = None
 
 
-def _normalize_repo(repo: str | None) -> str:
+def normalize_repo_path(repo: str | None) -> str:
     resolved_repo = Path(repo or os.getcwd()).expanduser().resolve()
     if not resolved_repo.exists():
         raise FileNotFoundError(f"Repository path not found: {resolved_repo}")
@@ -148,17 +150,47 @@ def resolve_workflow_input(
     change_id: str | None = None,
     ado_url: str | None = None,
     story_file: str | None = None,
+    manual_story_file: str | None = None,
 ) -> WorkflowInput:
-    logger.debug("resolve_workflow_input: repo=%s change_id=%s ado_url=%s story_file=%s", repo, change_id, ado_url, story_file)
-    if ado_url and story_file:
-        raise ValueError("Provide either ado_url or story_file, not both.")
+    logger.debug(
+        "resolve_workflow_input: repo=%s change_id=%s ado_url=%s story_file=%s manual_story_file=%s",
+        repo,
+        change_id,
+        ado_url,
+        story_file,
+        manual_story_file,
+    )
+    provided_sources = [name for name, value in (
+        ("ado_url", ado_url),
+        ("story_file", story_file),
+        ("manual_story_file", manual_story_file),
+    ) if value]
+    if len(provided_sources) > 1:
+        raise ValueError("Provide only one of ado_url, story_file, or manual_story_file.")
 
-    if not ado_url and not story_file:
+    if not ado_url and not story_file and not manual_story_file:
         story_file = str(DEFAULT_TEST_STORY_FILE)
         logger.info("resolve_workflow_input: no source provided; defaulting to %s", story_file)
 
-    resolved_repo = _normalize_repo(repo)
+    resolved_repo = normalize_repo_path(repo)
     logger.debug("resolve_workflow_input: resolved_repo=%s", resolved_repo)
+
+    if manual_story_file:
+        manual_story_path = str(Path(manual_story_file).expanduser().resolve())
+        manual_story = load_manual_story(manual_story_path)
+        resolved_change_id = infer_manual_change_id(manual_story, explicit_change_id=change_id)
+        logger.info(
+            "resolve_workflow_input: manual mode change_id=%s repo=%s",
+            resolved_change_id,
+            resolved_repo,
+        )
+        return WorkflowInput(
+            repo=resolved_repo,
+            change_id=resolved_change_id,
+            intake_mode="manual",
+            intake_source=manual_story_path,
+            branch_description_source=manual_story.get("title"),
+        )
 
     if story_file:
         fixture_path = str(Path(story_file).expanduser().resolve())

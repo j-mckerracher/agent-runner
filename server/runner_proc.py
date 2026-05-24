@@ -121,7 +121,9 @@ class JobProcess:
         cmd = [py, str(RUNNER_ROOT / "run.py")]
         cmd += ["--repo", self.job["repo"]]
         cmd += ["--change-id", self.job["change_id"]]
-        if self.job.get("ado_url"):
+        if self.job.get("manual_story_file"):
+            cmd += ["--manual-story-file", self.job["manual_story_file"]]
+        elif self.job.get("ado_url"):
             cmd += ["--ado-url", self.job["ado_url"]]
         elif self.job.get("story_file"):
             cmd += ["--story-file", self.job["story_file"]]

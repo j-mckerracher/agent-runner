@@ -21,6 +21,7 @@ from core.runner_models import (
     RUNNER_MODEL_CHOICES,
     resolve_runner_llm_config,
 )
+from core.story_inputs import count_acceptance_criteria
 from core.workflow_inputs import DEFAULT_TEST_STORY_FILE, resolve_workflow_input
 
 configure_system_ssl()
@@ -116,12 +117,20 @@ def _story_payload_from_path(path: str | Path) -> dict | None:
 
 
 def _story_source_metadata(*, intake_mode: str, intake_source: str) -> dict:
-    payload = _story_payload_from_path(intake_source) if intake_mode == "synthetic" else None
-    source = "story_file" if intake_mode == "synthetic" else ("ado" if intake_mode == "ado" else "unknown")
+    payload = _story_payload_from_path(intake_source) if intake_mode in {"synthetic", "manual"} else None
+    if intake_mode == "synthetic":
+        source = "story_file"
+    elif intake_mode == "manual":
+        source = "manual"
+    elif intake_mode == "ado":
+        source = "ado"
+    else:
+        source = "unknown"
     return {
         "source": source,
         "story_file": intake_source if intake_mode == "synthetic" else None,
-        "original_ac_count": _acceptance_criteria_count(payload.get("acceptance_criteria")) if payload else None,
+        "manual_story_file": intake_source if intake_mode == "manual" else None,
+        "original_ac_count": count_acceptance_criteria(payload.get("acceptance_criteria")) if payload else None,
     }
 
 
@@ -676,6 +685,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--manual-story-file",
+        default=None,
+        help="Path to a JSON file containing a manually entered story payload.",
+    )
+    parser.add_argument(
         "--runner",
         default="claude",
         metavar="RUNNER",
@@ -739,6 +753,7 @@ def main(
     change_id: str | None = None,
     ado_url: str | None = None,
     story_file: str | None = None,
+    manual_story_file: str | None = None,
     runner: str = "claude",
     model: str | None = None,
     extra_context: str | None = None,
@@ -771,6 +786,7 @@ def main(
             change_id=change_id,
             ado_url=ado_url,
             story_file=story_file,
+            manual_story_file=manual_story_file,
         )
         use_runner_root()
         resolved_repo = workflow_input.repo
@@ -857,6 +873,7 @@ def main(
             stage="intake",
             source=story_source_metadata.get("source"),
             story_file=story_source_metadata.get("story_file"),
+            manual_story_file=story_source_metadata.get("manual_story_file"),
             original_ac_count=story_source_metadata.get("original_ac_count"),
         )
         _record_current_job_metadata(
@@ -1243,6 +1260,7 @@ if __name__ == "__main__":
             change_id=args.change_id,
             ado_url=args.ado_url,
             story_file=args.story_file,
+            manual_story_file=args.manual_story_file,
             runner=args.runner,
             model=args.model,
             extra_context=args.extra_context,
