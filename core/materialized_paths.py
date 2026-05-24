@@ -25,6 +25,7 @@ RUNNER_OUTPUT_ROOTS: dict[str, Path] = {
     "claude": RUNNER_ROOT / ".claude",
     "copilot": RUNNER_ROOT / ".github",
     "gemini": RUNNER_ROOT / ".gemini",
+    "openai-compat": RUNNER_ROOT / ".openai-compat",
 }
 
 RUNNER_AGENT_DIRS: dict[str, Path] = {

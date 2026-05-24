@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import os
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -51,6 +52,8 @@ def _mirror_trace_events(
 ) -> Iterator[None]:
     compact_metadata = _compact_metadata(metadata)
     depth = _TRACE_DEPTH.get()
+    stage = os.environ.get("AGENT_RUNNER_CURRENT_STAGE")
+    stage_field = {"stage": stage} if stage else {}
     emit(
         "opik.start",
         name=name,
@@ -58,6 +61,7 @@ def _mirror_trace_events(
         trace_type=trace_type,
         depth=depth,
         metadata=compact_metadata,
+        **stage_field,
     )
     token = _TRACE_DEPTH.set(depth + 1)
     started = time.perf_counter()
@@ -74,6 +78,7 @@ def _mirror_trace_events(
             duration_ms=int((time.perf_counter() - started) * 1000),
             error=f"{type(exc).__name__}: {exc}",
             metadata=compact_metadata,
+            **stage_field,
         )
         raise
     else:
@@ -86,6 +91,7 @@ def _mirror_trace_events(
             status="ok",
             duration_ms=int((time.perf_counter() - started) * 1000),
             metadata=compact_metadata,
+            **stage_field,
         )
     finally:
         _TRACE_DEPTH.reset(token)

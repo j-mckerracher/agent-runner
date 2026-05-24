@@ -50,7 +50,7 @@ class UiTraceBridgeTests(unittest.TestCase):
         from server.events import read_all
         from core.ui_trace_bridge import set_opik_tracing_enabled, track_with_ui
 
-        with patch("core.ui_trace_bridge.opik.track", side_effect=_fake_track):
+        with patch("core.ui_trace_bridge.opik.track", side_effect=_fake_track), patch.dict(os.environ, {"AGENT_RUNNER_CURRENT_STAGE": "intake"}, clear=False):
             set_opik_tracing_enabled(True)
 
             @track_with_ui(
@@ -68,6 +68,8 @@ class UiTraceBridgeTests(unittest.TestCase):
         self.assertEqual([event["type"] for event in events], ["opik.start", "opik.end"])
         self.assertEqual(events[0]["name"], "stage:intake")
         self.assertEqual(events[0]["kind"], "trace")
+        self.assertEqual(events[0]["stage"], "intake")
+        self.assertEqual(events[1]["stage"], "intake")
         self.assertEqual(events[0]["metadata"]["change_id"], "WI-123")
         self.assertEqual(events[1]["status"], "ok")
 

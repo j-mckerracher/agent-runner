@@ -15,7 +15,7 @@ from typing import Any
 from core.workspace_cleanup import clean_change_workspace
 from . import db
 from .events import EventBus, FileTailer, aggregate, read_all
-from .paths import AGENT_CONTEXT_ROOT, LOGS_ROOT, RUNNER_ROOT, cassettes_dir, events_path_for
+from .paths import AGENT_CONTEXT_ROOT, LOGS_ROOT, RUNNER_ROOT, cassettes_dir, events_path_for, events_path_for_job
 
 logger = logging.getLogger(__name__)
 
@@ -304,10 +304,10 @@ class JobProcess:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def prepare_job_paths(change_id: str, mode: str) -> tuple[str, str | None]:
+def prepare_job_paths(change_id: str, mode: str, job_id: str | None = None) -> tuple[str, str | None]:
     """Return (events_path, cassette_path_or_none) for a new job."""
-    logger.debug("prepare_job_paths: change_id=%s mode=%s", change_id, mode)
-    events = str(events_path_for(change_id))
+    logger.debug("prepare_job_paths: change_id=%s mode=%s job_id=%s", change_id, mode, job_id)
+    events = str(events_path_for_job(job_id) if job_id else events_path_for(change_id))
     cassette: str | None = None
     if mode == "hermetic":
         cassette = str(cassettes_dir() / f"{change_id}.jsonl")

@@ -100,6 +100,12 @@ async def submit_run(payload: RunSubmit) -> dict[str, Any]:
             400,
             f"runner must be one of: {', '.join(sorted(valid_runners))}"
         )
+    if payload.model:
+        try:
+            resolve_runner_model(payload.runner, payload.model, cfg)
+        except ValueError as exc:
+            logger.warning("submit_run: invalid model=%s for runner=%s: %s", payload.model, payload.runner, exc)
+            raise HTTPException(400, str(exc))
     if payload.run_kind and payload.run_kind != "regular":
         logger.warning("submit_run: invalid run_kind=%s", payload.run_kind)
         raise HTTPException(400, "regular runs must be submitted through /runs")
@@ -162,7 +168,12 @@ async def get_run_events(job_id: str) -> list[dict[str, Any]]:
     if not row:
         logger.warning("get_run_events: job_id=%s not found", job_id)
         raise HTTPException(404, "job not found")
-    events = read_all(row["events_path"]) if row.get("events_path") else []
+    events = db.list_telemetry_events([job_id])
+    if not events:
+        db.backfill_telemetry_events_for_job(row)
+        events = db.list_telemetry_events([job_id])
+    if not events:
+        events = read_all(row["events_path"]) if row.get("events_path") else []
     logger.debug("get_run_events: job_id=%s returning %d event(s)", job_id, len(events))
     return events
 

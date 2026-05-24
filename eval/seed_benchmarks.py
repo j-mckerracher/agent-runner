@@ -74,6 +74,8 @@ def resolve_model_override(
     if not inherited_model:
         return None
 
+    if runner == "openai-compat":
+        return inherited_model
     allowed = builtin_model_choices_for_runner(runner)
     if allowed is None or inherited_model in allowed:
         return inherited_model
@@ -404,9 +406,19 @@ def invoke_llm(
         cmd = [cli_cmd, "-p", prompt, "-s", "--yolo"]
         if runner == "copilot" and model:
             cmd += ["--model", model]
+    elif runner == "openai-compat":
+        from core.run_cmds import run_openai_compat_text
+        effective_model = model or "gemma4:31b-cloud"
+        print(f"[openai-compat] Invoking benchmark generation with model={effective_model}")
+        openai_result = run_openai_compat_text(
+            prompt=prompt,
+            model=effective_model,
+            runner="openai-compat",
+        )
+        return openai_result.strip()
     else:
         raise BenchmarkGenerationError(
-            f"Unsupported benchmark generator runner {runner!r}. Use claude, copilot, a copilot-* alias, or gemini."
+            f"Unsupported benchmark generator runner {runner!r}. Use claude, copilot, a copilot-* alias, gemini, or openai-compat."
         )
 
     result = run_cmd(cmd, cwd=cwd, timeout=timeout, env=env)
@@ -682,7 +694,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Seed eval/benchmarks/{easy,medium,hard} with LLM-generated stories and hidden tests.")
     parser.add_argument("--repo", default=default("EVAL_TARGET_REPO", env_file), help="Target Git repo path or URL. Defaults to EVAL_TARGET_REPO.")
     parser.add_argument("--sha", default=default("EVAL_TARGET_SHA", env_file), help="Gold-master commit SHA. Defaults to EVAL_TARGET_SHA.")
-    parser.add_argument("--runner", default=default("EVAL_RUNNER", env_file, "claude"), help="LLM CLI to use: claude, copilot, copilot-* alias, or gemini.")
+    parser.add_argument("--runner", default=default("EVAL_RUNNER", env_file, "claude"), help="LLM to use: claude, copilot, copilot-* alias, gemini, or openai-compat.")
     parser.add_argument("--model", default=None, help="Optional model override for the selected runner.")
     parser.add_argument("--output-dir", type=Path, default=BENCHMARKS_DIR)
     parser.add_argument("--difficulty", action="append", choices=DIFFICULTIES, default=[], help="Difficulty to generate; repeatable. Defaults to easy, medium, hard.")

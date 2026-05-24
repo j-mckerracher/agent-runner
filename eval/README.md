@@ -32,31 +32,34 @@ These can also be passed directly as flags (see [All flags](#all-flags)).
 
 ### 2. Run evaluations
 
-**All difficulties (default):**
+**Minimal invocation (hidden tests only):**
 ```bash
-python3 eval/runner.py \
-  --runner copilot \
+python3 eval/runner.py --runner copilot
+```
+
+This is the simplest form. It runs all benchmarks using only the hidden
+tests that ship with each benchmark. No additional test command is needed.
+
+**With a project test command (optional):**
+```bash
+python3 eval/runner.py --runner copilot \
   --project-test-command "python3 -m pytest -q"
 ```
 
-**One difficulty level:**
-```bash
-python3 eval/runner.py --difficulty easy \
-  --runner copilot \
-  --project-test-command "python3 -m pytest -q"
-```
+`--project-test-command` runs an arbitrary shell command inside the sandbox
+after the workflow finishes. It is meant to catch regressions in the workflow's
+own output — for example, running the generated code's test suite. See
+[Project test command](#project-test-command) for details.
 
-**Multiple difficulty levels:**
+**Filter by difficulty:**
 ```bash
-python3 eval/runner.py --difficulty easy medium \
-  --runner copilot \
-  --project-test-command "python3 -m pytest -q"
+python3 eval/runner.py --difficulty easy
+python3 eval/runner.py --difficulty easy medium
 ```
 
 **A specific named benchmark:**
 ```bash
-python3 eval/runner.py --benchmark easy \
-  --runner copilot
+python3 eval/runner.py --benchmark easy
 ```
 
 ---
@@ -122,14 +125,74 @@ benchmark set.
 
 ---
 
+## Project test command
+
+`--project-test-command` is an **optional** shell command that runs inside the
+sandbox after the workflow completes (step 5 of the runner flow). Its purpose is
+to catch regressions: if the workflow modified the repo and the repo has its own
+test suite, this command verifies those tests still pass.
+
+### What it actually does
+
+The command executes with `shell=True` in the **cloned target repo root** (the
+sandbox workspace), not in the agent-workbench repo. The working directory is
+the checkout of `EVAL_TARGET_REPO` at `EVAL_TARGET_SHA`, after the workflow has
+modified it.
+
+If the command exits non-zero, the benchmark fails with `"project tests failed"`.
+
+### When to use it
+
+Use `--project-test-command` when the **target repo** has a test suite the
+workflow could break. Examples:
+
+| Target repo type | Example command |
+|---|---|
+| Python project | `python3 -m pytest -q` |
+| Python project (specific dir) | `python3 -m pytest -q tests/` |
+| Node/TypeScript project | `npm test` |
+| .NET project | `dotnet test` |
+
+### When to omit it
+
+**Omit `--project-test-command` when the target repo has no test suite** that
+applies to the workflow's changes. The hidden tests alone provide the acceptance
+criteria signal — the project test command is a regression safety net, not the
+primary quality gate.
+
+### Common pitfalls
+
+**"no tests ran in 0.45s" → benchmark fails.** Pytest found zero test files in
+the workspace root. This happens when:
+
+- The target repo is not a Python project (e.g. an Angular monorepo has no
+  `test_*.py` files).
+- The workflow didn't generate pytest-discoverable test files.
+- Test files exist but aren't named `test_*.py` or live in a subdirectory pytest
+  doesn't scan by default.
+
+Fix: either point pytest at the right subdirectory
+(`--project-test-command "python3 -m pytest -q path/to/tests/"`), use the
+target repo's native test runner (`npm test`, `dotnet test`), or omit the flag
+entirely.
+
+**Exit code 5 means "no tests collected."** Pytest uses exit code 5 when it
+discovers zero tests. The eval runner treats any non-zero exit as failure.
+
+**The command runs after the workflow, not before.** It tests the modified
+sandbox, not the gold-master checkout. Gold-master verification is handled
+separately by the hidden tests in step 3.
+
+---
+
 ## All flags
 
 | Flag | Default | Description |
 |---|---|---|
 | `--repo PATH` | `EVAL_TARGET_REPO` env / `.env` | Target Git repo path or URL to clone and test against. Required; falls back to the `EVAL_TARGET_REPO` environment variable or `.env` file. |
 | `--sha SHA` | `EVAL_TARGET_SHA` env / `.env` | Gold-master commit SHA to check out before running the workflow. Required; falls back to `EVAL_TARGET_SHA`. |
-| `--runner NAME` | `EVAL_RUNNER` env / `claude` | Agent runner backend: `claude`, `copilot`, or `gemini`. Falls back to the `EVAL_RUNNER` environment variable or `.env`, then `claude`. |
-| `--model NAME` | runner default | Override the model for the selected runner. Falls back to `EVAL_MODEL` in `.env` when the override is compatible with the runner's allowed model list; otherwise uses the runner default. |
+| `--runner NAME` | `EVAL_RUNNER` env / `claude` | Agent runner backend: `claude`, `copilot`, `gemini`, or `openai-compat`. Falls back to the `EVAL_RUNNER` environment variable or `.env`, then `claude`. |
+| `--model NAME` | runner default | Override the model for the selected runner. Falls back to `EVAL_MODEL` in `.env` when compatible with the runner's model choices (for `openai-compat`, any model name is accepted); otherwise uses the runner default. |
 | `--difficulty LEVEL [LEVEL …]` | all benchmarks | One or more difficulty levels to run: `easy`, `medium`, `hard`. When omitted, all benchmarks in `--benchmarks-dir` are run. |
 | `--benchmark NAME` | all benchmarks | Exact benchmark folder name(s) to run (e.g. `easy`). Repeat the flag for multiple names. Takes precedence over `--difficulty` when both are given. |
 | `--benchmarks-dir PATH` | `eval/benchmarks` | Root directory that contains benchmark sub-folders. Override to point at a custom benchmark tree. |
@@ -380,7 +443,7 @@ python3 eval/runner.py --compare-to eval/reports/baseline.json
 | `hidden tests errored on gold master` | Tests crashed during gold-master verification (pytest exit code 2–5). Runtime or dependency missing. | Check the target repo's dependencies are installed. Tests must not require a runtime that isn't available locally. |
 | `hidden tests skipped on gold master` | Tests contained a skip condition that fired. | Regenerate or repair the benchmark. Hidden tests must not skip. |
 | `workflow failed` | `run.py` exited non-zero. | Check the workflow logs in `logs/<run_id>/`. Look for agent errors, timeouts, or model refusals. |
-| `project tests failed` | The `--project-test-command` exited non-zero after the workflow modified the sandbox. | The workflow introduced a regression. Inspect the sandbox diff. |
+| `project tests failed` | The `--project-test-command` exited non-zero after the workflow modified the sandbox. | Check the stdout/stderr printed above the error. Common causes: pytest found no tests (`no tests ran`, exit code 5), the command is wrong for the target repo type, or the workflow introduced a regression. See [Project test command](#project-test-command). |
 | `hidden tests failed` | One or more hidden tests did not pass after the workflow. | Look at `hidden_tests.ac_results` to see which ACs failed. Check individual test case messages. |
 | `hidden tests skipped` | A hidden test skipped at runtime. | Regenerate the benchmark. Skips are banned unless `--allow-hidden-skips` is set. |
 | `AC_TEST_MAP entries did not execute` | A test name in `AC_TEST_MAP` has no matching JUnit case. Either the test was never collected or the name doesn't match. | Check for typos, parametrized test name mismatches, or collection errors. |

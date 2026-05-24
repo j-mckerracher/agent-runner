@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
+import tempfile
 from types import SimpleNamespace
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import run
@@ -19,6 +22,24 @@ class RunMainArgParseTests(unittest.TestCase):
     def test_easy__parse_args_accepts_skip_materialize(self) -> None:
         args = run.parse_args(["--repo", "/tmp/repo", "--skip-materialize"])
         self.assertTrue(args.skip_materialize)
+
+    def test_easy__story_source_metadata_counts_original_acceptance_criteria(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            story_path = Path(td) / "story.json"
+            story_path.write_text(
+                json.dumps({
+                    "title": "Story",
+                    "description": "Desc",
+                    "acceptance_criteria": {"AC1": "One", "AC2": "Two"},
+                }),
+                encoding="utf-8",
+            )
+
+            metadata = run._story_source_metadata(intake_mode="synthetic", intake_source=str(story_path))
+
+        self.assertEqual(metadata["source"], "story_file")
+        self.assertEqual(metadata["story_file"], str(story_path))
+        self.assertEqual(metadata["original_ac_count"], 2)
 
 
 class RunMainStagePlumbingTests(unittest.TestCase):

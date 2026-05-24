@@ -119,6 +119,24 @@ class EventEmitterDelegatesTests(unittest.TestCase):
             self.assertEqual(r["seq"], 1)
             self.assertEqual(r["type"], "hello")
 
+    def test_escalation_emit_event_inherits_current_stage(self):
+        from core.user_escalation import _emit_event
+        from server import events
+        from server.events import read_all
+
+        with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as fh:
+            path = fh.name
+        events._default = None
+        try:
+            with patch.dict(os.environ, {"AGENT_RUNNER_EVENT_LOG": path, "AGENT_RUNNER_CURRENT_STAGE": "qa"}, clear=False):
+                _emit_event("user.prompt", title="Need input")
+
+            rows = read_all(path)
+            self.assertEqual(rows[0]["stage"], "qa")
+        finally:
+            events._default = None
+            Path(path).unlink(missing_ok=True)
+
 
 class WriteUserResponseTests(unittest.TestCase):
     """write_user_response() validates request, writes atomically. (Medium)"""
@@ -342,4 +360,3 @@ class RunnerProcPersistTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

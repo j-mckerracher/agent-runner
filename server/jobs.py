@@ -58,7 +58,7 @@ class JobManager:
         change_id = payload["change_id"]
         mode = payload.get("mode", "live")
         logger.info("JobManager.submit: job_id=%s change_id=%s runner=%s mode=%s", job_id, change_id, payload.get("runner"), mode)
-        events_path, cassette_path = prepare_job_paths(change_id, mode)
+        events_path, cassette_path = prepare_job_paths(change_id, mode, job_id=job_id)
         record = {
             "id": job_id,
             "change_id": change_id,

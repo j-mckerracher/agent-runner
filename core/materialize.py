@@ -125,6 +125,8 @@ def _agent_target_filename(manifest: dict, runner: str) -> str:
         )
     if runner == "gemini":
         return manifest.get("gemini_agent_file") or manifest["claude_code_agent_file"]
+    if runner == "openai-compat":
+        return manifest.get("openai_compat_agent_file") or manifest["claude_code_agent_file"]
     raise ValueError(f"Unsupported runner for agent target filename: {runner}")
 
 
@@ -140,6 +142,8 @@ def _skill_target_filename(manifest: dict, runner: str) -> str:
         )
     if runner == "gemini":
         return manifest.get("gemini_skill_file") or manifest.get("skill_file") or "SKILL.md"
+    if runner == "openai-compat":
+        return manifest.get("openai_compat_skill_file") or manifest.get("skill_file") or "SKILL.md"
     raise ValueError(f"Unsupported runner for skill target filename: {runner}")
 
 

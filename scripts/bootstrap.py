@@ -151,7 +151,7 @@ def _warn_if_no_ai_backend() -> None:
     print(
         "[bootstrap] Warning: no AI backend CLI was detected. "
         "The local server will start, but workflow runs will fail until you install and authenticate "
-        "at least one of: claude, copilot, gemini.",
+        "at least one of: claude, copilot, gemini, or an openai-compat-based runner.",
         flush=True,
     )
 
@@ -419,11 +419,11 @@ def _prompt_user_config() -> None:
         _echo_step("Default runner")
         print(
             "Choose the default AI backend for workflow runs.\n"
-            "Options: claude, copilot, gemini\n"
+            "Options: claude, copilot, gemini, openai-compat\n"
             "(Press Enter to use 'claude'.)",
             flush=True,
         )
-        valid_runners = ("claude", "copilot", "gemini")
+        valid_runners = ("claude", "copilot", "gemini", "openai-compat")
         try:
             raw = input(f"  Default runner [{valid_runners[0]}]: ").strip().lower()
         except EOFError:
@@ -771,7 +771,7 @@ def parse_args() -> argparse.Namespace:
     eval_group = parser.add_mutually_exclusive_group()
     eval_group.add_argument("--generate-eval-benchmarks", action="store_true", help="Use an LLM to generate eval/benchmarks/{easy,medium,hard} during bootstrap.")
     eval_group.add_argument("--skip-eval-benchmarks", action="store_true", help="Do not prompt for or generate eval benchmarks during bootstrap.")
-    parser.add_argument("--eval-runner", default=None, help="LLM CLI for benchmark generation: claude, copilot, copilot-* alias, or gemini. Defaults to configured runner.")
+    parser.add_argument("--eval-runner", default=None, help="LLM for benchmark generation: claude, copilot, copilot-* alias, gemini, or openai-compat. Defaults to configured runner.")
     parser.add_argument("--eval-model", default=None, help="Optional model override for benchmark generation.")
     parser.add_argument("--force-eval-benchmarks", action="store_true", help="Overwrite existing generated benchmark folders.")
     parser.add_argument(

@@ -34,8 +34,12 @@ def append_event(path: str | os.PathLike, type: str, **fields: Any) -> dict:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     lock_path = p.with_suffix(p.suffix + ".lock")
+    job_id = fields.get("job_id") or os.environ.get("AGENT_RUNNER_JOB_ID")
+    if job_id:
+        fields["job_id"] = str(job_id)
 
     lock_fd = None
+    record: dict[str, Any] | None = None
     try:
         lock_fd = open(lock_path, "w")
         if _fcntl is not None:
@@ -71,9 +75,8 @@ def append_event(path: str | os.PathLike, type: str, **fields: Any) -> dict:
                 os.fsync(fh.fileno())
             except OSError:
                 pass
-
         logger.debug("append_event: seq=%d type=%s path=%s", record["seq"], type, p)
-        return record
+        logger.debug("append_event: seq=%d type=%s path=%s", record["seq"], type, p)
     finally:
         if lock_fd is not None:
             if _fcntl is not None:
@@ -82,6 +85,14 @@ def append_event(path: str | os.PathLike, type: str, **fields: Any) -> dict:
                 except OSError:
                     pass
             lock_fd.close()
+    assert record is not None
+    if job_id:
+        try:
+            from . import db
+            db.insert_telemetry_event(str(job_id), record)
+        except Exception as exc:
+            logger.debug("append_event: telemetry insert failed for job_id=%s seq=%s: %s", job_id, record.get("seq"), exc)
+    return record
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -336,4 +347,3 @@ def aggregate(events: Iterable[dict]) -> dict[str, Any]:
     }
     logger.debug("aggregate: tokens_in=%d tokens_out=%d cost_usd=%f final_status=%s", tokens_in, tokens_out, cost_usd, final_status)
     return result
-

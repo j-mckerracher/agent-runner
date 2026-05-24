@@ -166,6 +166,9 @@ class OpikTracer:
 
     def _emit(self, event_type: str, **fields: Any) -> None:
         if self.emit_event is not None:
+            stage = fields.get("stage") or os.environ.get("AGENT_RUNNER_CURRENT_STAGE")
+            if stage:
+                fields["stage"] = stage
             self.emit_event(event_type, **fields)
 
     @contextmanager

@@ -20,6 +20,8 @@ from .materialized_paths import normalize_runner, runner_skill_dir
 from .runner_models import (
     DEFAULT_GEMINI_MODEL,
     DEFAULT_COPILOT_MODEL,
+    DEFAULT_OPENAI_COMPAT_MODEL,
+    OPENAI_COMPAT_RETRY_DEFAULTS,
     is_copilot_runner,
     _provider_for_runner,
     resolve_runner_transport_config,
@@ -95,6 +97,9 @@ def _emit_event(type: str, **fields) -> None:
         return
     try:
         from server.events import emit
+        stage = fields.get("stage") or os.environ.get("AGENT_RUNNER_CURRENT_STAGE")
+        if stage:
+            fields["stage"] = stage
         emit(type, **fields)
     except Exception:
         pass
@@ -553,7 +558,7 @@ def run_openai_compat_text(
     logger.info("run_openai_compat_text: model=%s runner=%s prompt_len=%d system_prompt_len=%d",
                 model, runner, len(prompt), len(system_prompt))
     config = _load_runtime_config()
-    transport = resolve_runner_transport_config(runner, config=config) if runner != "openai-compat" else {}
+    transport = resolve_runner_transport_config(runner, config=config) if runner.lower() != "openai-compat" else dict(OPENAI_COMPAT_RETRY_DEFAULTS)
     base_url = _resolve_openai_compat_base_url(transport)
     logger.info("run_openai_compat_text: base_url=%s", base_url)
     logger.debug("run_openai_compat_text: system_prompt first 300 chars: %s", system_prompt[:300])
@@ -1713,7 +1718,7 @@ def run_openai_compat_cmd(
     logger.info("run_openai_compat_cmd: loading runtime config for transport resolution")
     config = _load_runtime_config()
     logger.debug("run_openai_compat_cmd: runtime config keys=%s", list(config.keys()) if config else "EMPTY")
-    transport = resolve_runner_transport_config(runner, config=config) if runner != "openai-compat" else {}
+    transport = resolve_runner_transport_config(runner, config=config) if runner.lower() != "openai-compat" else dict(OPENAI_COMPAT_RETRY_DEFAULTS)
     base_url = _resolve_openai_compat_base_url(transport)
     stripped_model = _strip_openai_compat_model_prefix(model)
     logger.info("run_openai_compat_cmd: resolved base_url=%s stripped_model=%s transport_keys=%s",
@@ -2026,8 +2031,9 @@ def run_agent_cmd(
     # ──────────────────────────────────────────────────────────────────────
     # copilot_effort is no longer supported — accept and discard for backward compat.
     kwargs.pop("copilot_effort", None)
+    runner_lower = runner.lower()
     if is_copilot_runner(runner):
-        if runner == "copilot":
+        if runner_lower == "copilot":
             # Base copilot: pass --model as usual
             effective_model = runner_model if runner_model is not None else DEFAULT_COPILOT_MODEL
             return run_copilot_cmd(
@@ -2048,12 +2054,26 @@ def run_agent_cmd(
                 extra_skills=extra_skills,
                 **kwargs,
             )
-    elif runner == "claude":
+    elif runner_lower == "claude":
         model_kwarg = {"model": runner_model} if runner_model is not None else {}
         return run_claude_cmd(prompt=prompt, agent=agent, **model_kwarg, **kwargs)
-    elif runner == "gemini":
+    elif runner_lower == "gemini":
         model_kwarg = {"model": runner_model} if runner_model is not None else {}
         return run_gemini_cmd(prompt=prompt, agent=agent, extra_skills=extra_skills, **model_kwarg, **kwargs)
+    elif runner_lower == "openai-compat":
+        effective_model = runner_model or DEFAULT_OPENAI_COMPAT_MODEL
+        logger.info("run_agent_cmd: dispatching to run_openai_compat_cmd runner=%s model=%s agent=%s",
+                    runner, effective_model, agent)
+        return run_openai_compat_cmd(
+            prompt=prompt,
+            agent=agent,
+            model=effective_model,
+            runner=runner,
+            extra_skills=extra_skills,
+            repo=repo,
+            change_id=change_id,
+            **kwargs,
+        )
     else:
         # Check if the runner is an alias for a supported provider (like openai-compat)
         from .runner_models import _runner_aliases
@@ -2065,8 +2085,21 @@ def run_agent_cmd(
         except ImportError:
             pass
 
+        from .runner_models import _resolve_alias
+        alias_cfg = _resolve_alias(runner, config)
         provider = _provider_for_runner(runner, config=config)
-        logger.info("run_agent_cmd: unknown runner=%r resolved provider=%s", runner, provider)
+        logger.info("run_agent_cmd: unknown runner=%r resolved provider=%s alias=%s", runner, provider, alias_cfg)
+        if provider == "copilot" and alias_cfg is not None:
+            # Alias with provider="copilot": use the alias's cli_cmd (or the runner name) as the binary.
+            cli_cmd = alias_cfg.get("cli_cmd") or runner
+            logger.debug("run_agent_cmd: copilot alias runner=%s → cli_cmd=%r", runner, cli_cmd)
+            return run_copilot_cmd(
+                prompt=prompt,
+                agent=agent,
+                cli_cmd=cli_cmd,
+                extra_skills=extra_skills,
+                **kwargs,
+            )
         if provider == "openai-compat":
             effective_model = runner_model if runner_model is not None else runner
             logger.info("run_agent_cmd: dispatching to run_openai_compat_cmd runner=%s model=%s agent=%s",

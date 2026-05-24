@@ -43,6 +43,8 @@ class ServerRoutesTests(unittest.TestCase):
         self.assertIn("Open current run in Opik", r.text)
         self.assertIn("Open Opik evaluation workspace", r.text)
         self.assertIn("Opik trace timeline", r.text)
+        self.assertIn("Run Telemetry", r.text)
+        self.assertIn('data-view="telemetry"', r.text)
         self.assertIn('id="trace-summary"', r.text)
         self.assertIn('id="eval-trace-summary"', r.text)
         self.assertIn('id="s-opik-status"', r.text)
@@ -721,6 +723,150 @@ class ServerRoutesTests(unittest.TestCase):
         self.assertEqual(updated_job["status"], "running")
 
         responses_path.unlink(missing_ok=True)
+
+    # -- model validation matrix tests ----------------------------------------
+
+    def test_medium__submit_run_rejects_invalid_model(self):
+        r = self.client.post(
+            "/runs",
+            json={
+                "repo": self.tmpdir,
+                "change_id": "TEST-MODEL-001",
+                "runner": "claude",
+                "mode": "live",
+                "model": "definitely-not-a-valid-model",
+            },
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("definitely-not-a-valid-model", r.json()["detail"])
+
+    def test_medium__submit_run_with_valid_model_per_runner(self):
+        from core.runner_models import RUNNER_MODEL_CHOICES
+        from core.workflow_inputs import WorkflowInput
+
+        for runner, models in RUNNER_MODEL_CHOICES.items():
+            for model in models:
+                with self.subTest(runner=runner, model=model):
+                    with patch(
+                        "server.routes.runs.resolve_workflow_input",
+                        return_value=WorkflowInput(
+                            repo=self.tmpdir,
+                            change_id="TEST-MODEL-MTX",
+                            intake_mode="synthetic",
+                            intake_source="",
+                        ),
+                    ):
+                        r = self.client.post(
+                            "/runs",
+                            json={
+                                "repo": self.tmpdir,
+                                "change_id": "TEST-MODEL-MTX",
+                                "runner": runner,
+                                "mode": "live",
+                                "model": model,
+                            },
+                        )
+                        self.assertEqual(
+                            r.status_code, 200,
+                            f"runner={runner} model={model}: expected 200, got {r.status_code} {r.json().get('detail', '')}"
+                        )
+                        self.assertIn("job_id", r.json())
+
+    def test_medium__submit_benchmark_rejects_invalid_model(self):
+        r = self.client.post(
+            "/evaluate/benchmark-runs",
+            json={
+                "repo": self.tmpdir,
+                "sha": "abc123",
+                "runner": "claude",
+                "difficulties": ["easy"],
+                "model": "definitely-not-a-valid-model",
+            },
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("definitely-not-a-valid-model", r.json()["detail"])
+
+    def test_medium__submit_benchmark_with_valid_model_per_runner(self):
+        from core.runner_models import RUNNER_MODEL_CHOICES
+
+        for runner, models in RUNNER_MODEL_CHOICES.items():
+            for model in models:
+                with self.subTest(runner=runner, model=model):
+                    r = self.client.post(
+                        "/evaluate/benchmark-runs",
+                        json={
+                            "repo": self.tmpdir,
+                            "sha": "abc123",
+                            "runner": runner,
+                            "difficulties": ["easy"],
+                            "model": model,
+                        },
+                    )
+                    self.assertEqual(
+                        r.status_code, 200,
+                        f"runner={runner} model={model}: expected 200, got {r.status_code} {r.json().get('detail', '')}"
+                    )
+                    self.assertIn("job_id", r.json())
+
+    def test_medium__submit_run_accepts_arbitrary_openai_compat_model(self):
+        from core.workflow_inputs import WorkflowInput
+
+        with patch(
+            "server.routes.runs.resolve_workflow_input",
+            return_value=WorkflowInput(
+                repo=self.tmpdir,
+                change_id="TEST-OC-ARB",
+                intake_mode="synthetic",
+                intake_source="",
+            ),
+        ):
+            r = self.client.post(
+                "/runs",
+                json={
+                    "repo": self.tmpdir,
+                    "change_id": "TEST-OC-ARB",
+                    "runner": "openai-compat",
+                    "mode": "live",
+                    "model": "my-custom-model:latest",
+                },
+            )
+            self.assertEqual(r.status_code, 200)
+            self.assertIn("job_id", r.json())
+
+    def test_medium__submit_benchmark_accepts_arbitrary_openai_compat_model(self):
+        r = self.client.post(
+            "/evaluate/benchmark-runs",
+            json={
+                "repo": self.tmpdir,
+                "sha": "abc123",
+                "runner": "openai-compat",
+                "difficulties": ["easy"],
+                "model": "ollama/llama3:70b",
+            },
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("job_id", r.json())
+
+    def test_medium__settings_put_accepts_arbitrary_openai_compat_default(self):
+        r = self.client.put("/settings", json={
+            "agent_model_defaults": {
+                "qa-evaluator": {"openai-compat": "my-local-model:latest"}
+            }
+        })
+        self.assertEqual(r.status_code, 200)
+        cfg = self.client.get("/settings").json()
+        self.assertEqual(
+            cfg["agent_model_defaults"]["qa-evaluator"]["openai-compat"],
+            "my-local-model:latest",
+        )
+
+    def test_medium__settings_put_rejects_invalid_closed_runner_model(self):
+        r = self.client.put("/settings", json={
+            "agent_model_defaults": {
+                "intake": {"claude": "definitely-not-a-model"}
+            }
+        })
+        self.assertEqual(r.status_code, 422)
 
 
 if __name__ == "__main__":

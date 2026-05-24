@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from core.runner_models import (
+    OPENAI_COMPAT_MODEL_CHOICES,
     OPENAI_COMPAT_RETRY_DEFAULTS,
     RUNNER_DEFAULT_MODELS,
     RUNNER_MODEL_CHOICES,
@@ -11,6 +12,7 @@ from core.runner_models import (
     resolve_agent_llm_config,
     resolve_agent_model,
     resolve_runner_llm_config,
+    resolve_runner_model,
 )
 
 
@@ -290,6 +292,39 @@ class CopilotRunnerDetectionTests(unittest.TestCase):
         self.assertFalse(is_copilot_runner("gemini"))
         self.assertFalse(is_copilot_runner(None))
         self.assertFalse(is_copilot_runner(""))
+
+
+class OpenaiCompatArbitraryModelTests(unittest.TestCase):
+    def test_openai_compat_accepts_arbitrary_explicit_model(self):
+        cfg = resolve_runner_llm_config(
+            "openai-compat",
+            explicit_model="my-custom-model:latest",
+        )
+        self.assertEqual(cfg["model"], "my-custom-model:latest")
+
+    def test_openai_compat_presets_still_resolve(self):
+        for model in OPENAI_COMPAT_MODEL_CHOICES:
+            with self.subTest(model=model):
+                cfg = resolve_runner_llm_config(
+                    "openai-compat", explicit_model=model
+                )
+                self.assertEqual(cfg["model"], model)
+
+    def test_openai_compat_default_resolves_when_no_explicit_model(self):
+        resolved = resolve_runner_model("openai-compat", explicit_model=None)
+        self.assertEqual(resolved, RUNNER_DEFAULT_MODELS["openai-compat"])
+
+    def test_claude_rejects_invalid_model(self):
+        with self.assertRaises(ValueError):
+            resolve_runner_llm_config("claude", explicit_model="not-a-real-model")
+
+    def test_copilot_rejects_invalid_model(self):
+        with self.assertRaises(ValueError):
+            resolve_runner_llm_config("copilot", explicit_model="not-a-real-model")
+
+    def test_gemini_rejects_invalid_model(self):
+        with self.assertRaises(ValueError):
+            resolve_runner_llm_config("gemini", explicit_model="not-a-real-model")
 
 
 if __name__ == "__main__":

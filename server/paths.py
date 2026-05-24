@@ -62,6 +62,12 @@ def events_path_for(change_id: str) -> Path:
     return logs_dir_for(change_id) / "events.jsonl"
 
 
+def events_path_for_job(job_id: str) -> Path:
+    p = data_dir() / "events" / safe_id(job_id)
+    p.mkdir(parents=True, exist_ok=True)
+    return p / "events.jsonl"
+
+
 def legacy_events_path_for(change_id: str) -> Path:
     p = AGENT_CONTEXT_ROOT / change_id
     p.mkdir(parents=True, exist_ok=True)
@@ -107,4 +113,3 @@ def escalation_response_path_for(
 
 def escalation_transcript_path_for(change_id: str, conversation_id: str) -> Path:
     return conversation_dir_for(change_id, conversation_id) / "transcript.jsonl"
-

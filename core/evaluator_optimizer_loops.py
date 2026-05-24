@@ -1,5 +1,7 @@
 import logging
+import os
 import re
+import time
 
 from opik import opik_context
 
@@ -28,6 +30,19 @@ def _annotate_loop_trace(*, runner: str, change_id: str, stage: str, extra_metad
         if change_id:
             kwargs["thread_id"] = change_id
         opik_context.update_current_trace(**kwargs)
+    except Exception:
+        pass
+
+
+def _emit_loop_event(type: str, **fields: object) -> None:
+    if not os.environ.get("AGENT_RUNNER_EVENT_LOG"):
+        return
+    try:
+        from server.events import emit
+        stage = fields.get("stage") or os.environ.get("AGENT_RUNNER_CURRENT_STAGE")
+        if stage:
+            fields["stage"] = stage
+        emit(type, **fields)
     except Exception:
         pass
 
@@ -69,68 +84,143 @@ def run_uow_eval_loop(
         extra_metadata={"uow_id": uow_id},
     )
     producer_out, evaluator_out = "", ""
-    for i in range(iter_count):
-        logger.info("run_uow_eval_loop: iteration %d/%d uow_id=%s", i + 1, iter_count, uow_id)
-        with start_span_with_ui(
-            f"uow-iteration-{i + 1}",
-            type="general",
-            metadata={
-                "runner": runner,
-                "change_id": change_id,
-                "stage": "uow-eval",
-                "uow_id": uow_id,
-                "iteration": i + 1,
-            },
-        ) as span:
-            span.input = {"uow_id": uow_id, "iteration": i + 1}
-            producer_out = steps.step_software_engineer(
+    actual_iterations = 0
+    passed = False
+    loop_started = time.perf_counter()
+    _emit_loop_event(
+        "loop.start",
+        loop_name="uow-eval",
+        stage="uow-eval",
+        uow_id=uow_id,
+        change_id=change_id,
+        max_iterations=iter_count,
+        runner=runner,
+        model=runner_model,
+    )
+    try:
+        for i in range(iter_count):
+            iteration = i + 1
+            actual_iterations = iteration
+            iteration_started = time.perf_counter()
+            logger.info("run_uow_eval_loop: iteration %d/%d uow_id=%s", iteration, iter_count, uow_id)
+            _emit_loop_event(
+                "loop.iteration.start",
+                loop_name="uow-eval",
+                stage="uow-eval",
                 uow_id=uow_id,
                 change_id=change_id,
-                repo=repo,
-                evaluator_feedback=evaluator_out if i > 0 else "",
+                iteration=iteration,
+                max_iterations=iter_count,
                 runner=runner,
-                runner_model=runner_model,
+                model=runner_model,
             )
-            snapshot_impl_report_attempt(
-                agent_context_root=steps.AGENT_CONTEXT_ROOT,
-                change_id=change_id,
-                uow_id=uow_id,
-                attempt=i + 1,
-            )
-            validate_impl_report_alignment(
-                agent_context_root=steps.AGENT_CONTEXT_ROOT,
-                change_id=change_id,
-                uow_id=uow_id,
-            )
-            evaluator_out = steps.step_software_engineer_evaluator(
-                uow_id=uow_id,
-                change_id=change_id,
-                repo=repo,
-                runner=runner,
-                runner_model=runner_model,
-            )
-            passed = "PASS" in evaluator_out
-            logger.info("run_uow_eval_loop: iteration %d/%d uow_id=%s passed=%s", i + 1, iter_count, uow_id, passed)
-            span.output = {"passed": passed}
-            try:
-                opik_context.update_current_span(
-                    metadata={
-                        "iteration": i + 1,
-                        "attempt": i + 1,
-                        "uow_id": uow_id,
-                        "change_id": change_id,
-                        "stage": "uow-eval",
-                        "passed": passed,
-                    },
+            with start_span_with_ui(
+                f"uow-iteration-{iteration}",
+                type="general",
+                metadata={
+                    "runner": runner,
+                    "change_id": change_id,
+                    "stage": "uow-eval",
+                    "uow_id": uow_id,
+                    "iteration": iteration,
+                },
+            ) as span:
+                span.input = {"uow_id": uow_id, "iteration": iteration}
+                producer_out = steps.step_software_engineer(
+                    uow_id=uow_id,
+                    change_id=change_id,
+                    repo=repo,
+                    evaluator_feedback=evaluator_out if i > 0 else "",
+                    runner=runner,
+                    runner_model=runner_model,
                 )
-            except Exception:
-                pass
-        if passed:
-            logger.info("run_uow_eval_loop: uow_id=%s PASSED on iteration %d — stopping early", uow_id, i + 1)
-            print(f"[{uow_id}] Evaluator passed on iteration {i + 1} — stopping loop early.")
-            break
-    else:
-        logger.warning("run_uow_eval_loop: uow_id=%s did NOT pass after %d iteration(s)", uow_id, iter_count)
+                snapshot_impl_report_attempt(
+                    agent_context_root=steps.AGENT_CONTEXT_ROOT,
+                    change_id=change_id,
+                    uow_id=uow_id,
+                    attempt=iteration,
+                )
+                validate_impl_report_alignment(
+                    agent_context_root=steps.AGENT_CONTEXT_ROOT,
+                    change_id=change_id,
+                    uow_id=uow_id,
+                )
+                evaluator_out = steps.step_software_engineer_evaluator(
+                    uow_id=uow_id,
+                    change_id=change_id,
+                    repo=repo,
+                    runner=runner,
+                    runner_model=runner_model,
+                )
+                passed = "PASS" in evaluator_out
+                logger.info("run_uow_eval_loop: iteration %d/%d uow_id=%s passed=%s", iteration, iter_count, uow_id, passed)
+                span.output = {"passed": passed}
+                try:
+                    opik_context.update_current_span(
+                        metadata={
+                            "iteration": iteration,
+                            "attempt": iteration,
+                            "uow_id": uow_id,
+                            "change_id": change_id,
+                            "stage": "uow-eval",
+                            "passed": passed,
+                        },
+                    )
+                except Exception:
+                    pass
+            _emit_loop_event(
+                "loop.iteration.end",
+                loop_name="uow-eval",
+                stage="uow-eval",
+                uow_id=uow_id,
+                change_id=change_id,
+                iteration=iteration,
+                max_iterations=iter_count,
+                passed=passed,
+                duration_ms=int((time.perf_counter() - iteration_started) * 1000),
+                runner=runner,
+                model=runner_model,
+            )
+            if passed:
+                logger.info("run_uow_eval_loop: uow_id=%s PASSED on iteration %d — stopping early", uow_id, iteration)
+                print(f"[{uow_id}] Evaluator passed on iteration {iteration} — stopping loop early.")
+                break
+        else:
+            logger.warning("run_uow_eval_loop: uow_id=%s did NOT pass after %d iteration(s)", uow_id, iter_count)
+    except Exception:
+        _emit_loop_event(
+            "loop.end",
+            loop_name="uow-eval",
+            stage="uow-eval",
+            uow_id=uow_id,
+            change_id=change_id,
+            actual_iterations=actual_iterations,
+            max_iterations=iter_count,
+            passed=False,
+            stopped_early=False,
+            exhausted=False,
+            status="error",
+            duration_ms=int((time.perf_counter() - loop_started) * 1000),
+            runner=runner,
+            model=runner_model,
+        )
+        raise
+    _emit_loop_event(
+        "loop.end",
+        loop_name="uow-eval",
+        stage="uow-eval",
+        uow_id=uow_id,
+        change_id=change_id,
+        actual_iterations=actual_iterations,
+        max_iterations=iter_count,
+        passed=passed,
+        stopped_early=passed,
+        exhausted=actual_iterations >= iter_count and not passed,
+        status="ok",
+        duration_ms=int((time.perf_counter() - loop_started) * 1000),
+        runner=runner,
+        model=runner_model,
+    )
     logger.info("run_uow_eval_loop: DONE uow_id=%s", uow_id)
     return producer_out, evaluator_out
 
@@ -165,54 +255,123 @@ def run_eval_optimizer_loop(
     )
     _annotate_loop_trace(runner=runner, change_id=change_id, stage="eval-optimizer")
     producer_out, evaluator_out = "", ""
-
-    for i in range(iter_count):
-        logger.info("run_eval_optimizer_loop: iteration %d/%d change_id=%s", i + 1, iter_count, change_id)
-        with start_span_with_ui(
-            f"eval-optimizer-iteration-{i + 1}",
-            type="general",
-            metadata={
-                "runner": runner,
-                "change_id": change_id,
-                "stage": "eval-optimizer",
-                "iteration": i + 1,
-            },
-        ) as span:
-            span.input = {"iteration": i + 1}
-            if i == 0 or not evaluator_out:
-                combined_input = producer_input
-            else:
-                combined_input = (
-                    f"{producer_input}\n\n"
-                    f"## Evaluator Issues to Fix (iteration {i}):\n{evaluator_out}\n\n"
-                    f"Revise your output artifact to address the issues above. "
-                    f"If resolving an issue requires a blocking product decision or user-only clarification, "
-                    f"use the user escalation protocol and continue after receiving the response."
-                )
-                logger.debug("run_eval_optimizer_loop: iteration %d injecting evaluator feedback (len=%d)", i + 1, len(evaluator_out))
-            producer_out = producer_func(combined_input, runner=runner, runner_model=runner_model)
-            evaluator_out = evaluator_func(evaluator_prompt, runner=runner, runner_model=runner_model)
-            passed = "PASS" in evaluator_out
-            logger.info("run_eval_optimizer_loop: iteration %d/%d change_id=%s passed=%s", i + 1, iter_count, change_id, passed)
-            span.output = {"passed": passed}
-            try:
-                opik_context.update_current_span(
-                    metadata={
-                        "iteration": i + 1,
-                        "attempt": i + 1,
-                        "change_id": change_id,
-                        "stage": "eval-optimizer",
-                        "passed": passed,
-                    },
-                )
-            except Exception:
-                pass
-        if passed:
-            logger.info("run_eval_optimizer_loop: PASSED on iteration %d — stopping early", i + 1)
-            print(f"Evaluator passed on iteration {i + 1} — stopping loop early.")
-            break
-    else:
-        logger.warning("run_eval_optimizer_loop: did NOT pass after %d iteration(s) for change_id=%s", iter_count, change_id)
+    actual_iterations = 0
+    passed = False
+    loop_started = time.perf_counter()
+    _emit_loop_event(
+        "loop.start",
+        loop_name="eval-optimizer",
+        stage="eval-optimizer",
+        change_id=change_id,
+        max_iterations=iter_count,
+        runner=runner,
+        model=runner_model,
+    )
+    try:
+        for i in range(iter_count):
+            iteration = i + 1
+            actual_iterations = iteration
+            iteration_started = time.perf_counter()
+            logger.info("run_eval_optimizer_loop: iteration %d/%d change_id=%s", iteration, iter_count, change_id)
+            _emit_loop_event(
+                "loop.iteration.start",
+                loop_name="eval-optimizer",
+                stage="eval-optimizer",
+                change_id=change_id,
+                iteration=iteration,
+                max_iterations=iter_count,
+                runner=runner,
+                model=runner_model,
+            )
+            with start_span_with_ui(
+                f"eval-optimizer-iteration-{iteration}",
+                type="general",
+                metadata={
+                    "runner": runner,
+                    "change_id": change_id,
+                    "stage": "eval-optimizer",
+                    "iteration": iteration,
+                },
+            ) as span:
+                span.input = {"iteration": iteration}
+                if i == 0 or not evaluator_out:
+                    combined_input = producer_input
+                else:
+                    combined_input = (
+                        f"{producer_input}\n\n"
+                        f"## Evaluator Issues to Fix (iteration {i}):\n{evaluator_out}\n\n"
+                        f"Revise your output artifact to address the issues above. "
+                        f"If resolving an issue requires a blocking product decision or user-only clarification, "
+                        f"use the user escalation protocol and continue after receiving the response."
+                    )
+                    logger.debug("run_eval_optimizer_loop: iteration %d injecting evaluator feedback (len=%d)", iteration, len(evaluator_out))
+                producer_out = producer_func(combined_input, runner=runner, runner_model=runner_model)
+                evaluator_out = evaluator_func(evaluator_prompt, runner=runner, runner_model=runner_model)
+                passed = "PASS" in evaluator_out
+                logger.info("run_eval_optimizer_loop: iteration %d/%d change_id=%s passed=%s", iteration, iter_count, change_id, passed)
+                span.output = {"passed": passed}
+                try:
+                    opik_context.update_current_span(
+                        metadata={
+                            "iteration": iteration,
+                            "attempt": iteration,
+                            "change_id": change_id,
+                            "stage": "eval-optimizer",
+                            "passed": passed,
+                        },
+                    )
+                except Exception:
+                    pass
+            _emit_loop_event(
+                "loop.iteration.end",
+                loop_name="eval-optimizer",
+                stage="eval-optimizer",
+                change_id=change_id,
+                iteration=iteration,
+                max_iterations=iter_count,
+                passed=passed,
+                duration_ms=int((time.perf_counter() - iteration_started) * 1000),
+                runner=runner,
+                model=runner_model,
+            )
+            if passed:
+                logger.info("run_eval_optimizer_loop: PASSED on iteration %d — stopping early", iteration)
+                print(f"Evaluator passed on iteration {iteration} — stopping loop early.")
+                break
+        else:
+            logger.warning("run_eval_optimizer_loop: did NOT pass after %d iteration(s) for change_id=%s", iter_count, change_id)
+    except Exception:
+        _emit_loop_event(
+            "loop.end",
+            loop_name="eval-optimizer",
+            stage="eval-optimizer",
+            change_id=change_id,
+            actual_iterations=actual_iterations,
+            max_iterations=iter_count,
+            passed=False,
+            stopped_early=False,
+            exhausted=False,
+            status="error",
+            duration_ms=int((time.perf_counter() - loop_started) * 1000),
+            runner=runner,
+            model=runner_model,
+        )
+        raise
+    _emit_loop_event(
+        "loop.end",
+        loop_name="eval-optimizer",
+        stage="eval-optimizer",
+        change_id=change_id,
+        actual_iterations=actual_iterations,
+        max_iterations=iter_count,
+        passed=passed,
+        stopped_early=passed,
+        exhausted=actual_iterations >= iter_count and not passed,
+        status="ok",
+        duration_ms=int((time.perf_counter() - loop_started) * 1000),
+        runner=runner,
+        model=runner_model,
+    )
 
     logger.info("run_eval_optimizer_loop: DONE change_id=%s", change_id)
     return producer_out, evaluator_out

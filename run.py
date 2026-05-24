@@ -12,7 +12,6 @@ from pathlib import Path
 import yaml
 
 from dotenv import load_dotenv
-load_dotenv()
 
 from core.cli_logging import normalize_log_level, to_logging_level
 from core.workspace_cleanup import clean_change_workspace
@@ -89,6 +88,53 @@ def _emit(type: str, **fields) -> None:
     try:
         from server.events import emit
         emit(type, **fields)
+    except Exception:
+        pass
+
+
+def _acceptance_criteria_count(value: object) -> int | None:
+    if isinstance(value, dict):
+        return sum(1 for key, item in value.items() if isinstance(key, str) and key.strip() and isinstance(item, str) and item.strip())
+    if isinstance(value, list):
+        return sum(1 for item in value if isinstance(item, str) and item.strip())
+    return None
+
+
+def _story_payload_from_path(path: str | Path) -> dict | None:
+    story_path = Path(path).expanduser()
+    if not story_path.is_file():
+        return None
+    try:
+        with story_path.open("r", encoding="utf-8") as handle:
+            if story_path.suffix.lower() == ".json":
+                payload = json.load(handle)
+            else:
+                payload = yaml.safe_load(handle)
+    except Exception:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _story_source_metadata(*, intake_mode: str, intake_source: str) -> dict:
+    payload = _story_payload_from_path(intake_source) if intake_mode == "synthetic" else None
+    source = "story_file" if intake_mode == "synthetic" else ("ado" if intake_mode == "ado" else "unknown")
+    return {
+        "source": source,
+        "story_file": intake_source if intake_mode == "synthetic" else None,
+        "original_ac_count": _acceptance_criteria_count(payload.get("acceptance_criteria")) if payload else None,
+    }
+
+
+def _record_current_job_metadata(**fields) -> None:
+    job_id = os.environ.get("AGENT_RUNNER_JOB_ID")
+    if not job_id:
+        return
+    clean = {key: value for key, value in fields.items() if value is not None}
+    if not clean:
+        return
+    try:
+        from server import db
+        db.update_job(job_id, **clean)
     except Exception:
         pass
 
@@ -182,8 +228,15 @@ def _parse_event_timestamp(value: str | None) -> datetime | None:
         return None
 
 
+def _event_log_path(change_id: str) -> Path:
+    configured = os.environ.get("AGENT_RUNNER_EVENT_LOG")
+    if configured:
+        return Path(configured)
+    return LOGS_ROOT / change_id / "events.jsonl"
+
+
 def _read_event_rows(change_id: str) -> list[dict]:
-    path = LOGS_ROOT / change_id / "events.jsonl"
+    path = _event_log_path(change_id)
     if not path.is_file():
         return []
     rows: list[dict] = []
@@ -202,7 +255,7 @@ def _read_event_rows(change_id: str) -> list[dict]:
 
 
 def _copy_event_log_to_summary(change_id: str) -> str | None:
-    source = LOGS_ROOT / change_id / "events.jsonl"
+    source = _event_log_path(change_id)
     if not source.is_file():
         return None
     destination = AGENT_CONTEXT_ROOT / change_id / "summary" / "events.jsonl"
@@ -499,7 +552,7 @@ def _write_run_metrics(change_id: str) -> dict | None:
     payload = {
         "change_id": change_id,
         "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
-        "source_event_log": str(LOGS_ROOT / change_id / "events.jsonl"),
+        "source_event_log": str(_event_log_path(change_id)),
         "event_log_artifact": event_log_artifact,
         "events_observed": len(rows),
         "metrics": _summarize_event_rows(rows),
@@ -798,6 +851,18 @@ def main(
             model=resolved_model,
             intake_mode=intake_mode,
         )
+        story_source_metadata = _story_source_metadata(intake_mode=intake_mode, intake_source=intake_source)
+        _emit(
+            "story.source",
+            stage="intake",
+            source=story_source_metadata.get("source"),
+            story_file=story_source_metadata.get("story_file"),
+            original_ac_count=story_source_metadata.get("original_ac_count"),
+        )
+        _record_current_job_metadata(
+            original_ac_count=story_source_metadata.get("original_ac_count"),
+            story_source=story_source_metadata.get("source"),
+        )
 
         # Cooperative cancellation
         def _on_term(signum, frame):  # noqa: ARG001
@@ -877,7 +942,22 @@ def main(
                 )
                 last_completed_stage = "intake"
                 failed_stage = None
-                _require_file(resolved_change_id, "intake", "intake", "story.yaml")
+                story_artifact_path = _require_file(resolved_change_id, "intake", "intake", "story.yaml")
+                normalized_story = _story_payload_from_path(story_artifact_path)
+                normalized_ac_count = (
+                    _acceptance_criteria_count(normalized_story.get("acceptance_criteria"))
+                    if normalized_story else None
+                )
+                _emit(
+                    "story.normalized",
+                    stage="intake",
+                    original_ac_count=story_source_metadata.get("original_ac_count"),
+                    normalized_ac_count=normalized_ac_count,
+                )
+                _record_current_job_metadata(
+                    original_ac_count=story_source_metadata.get("original_ac_count"),
+                    normalized_ac_count=normalized_ac_count,
+                )
                 logger.info("main: intake stage complete, story.yaml verified")
 
             # ── Stage 2: Task Generation (eval-optimizer loop) ───────────────
@@ -1155,6 +1235,7 @@ main.fn = main
 
 
 if __name__ == "__main__":
+    load_dotenv()
     args = parse_args()
     try:
         main(

@@ -7,6 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Crect width='32' height='32' rx='6' fill='%23c4873a'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='central' text-anchor='middle' font-family='monospace' font-size='20' font-weight='700' fill='%2307080b'%3Ea%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<script src="/static/vendor/echarts.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -572,6 +573,43 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 }
 .empty{padding:30px;text-align:center;color:var(--t1);font-weight:600;font-style:italic}
 .empty.error{color:var(--er)}
+.view[data-view="telemetry"]{overflow:hidden}
+.view[data-view="telemetry"] .telemetry-content{flex:1;overflow:auto;padding:14px 24px 28px;scrollbar-gutter:stable}
+.telemetry-panel{border:1px solid var(--br);border-radius:8px;background:rgba(13,15,20,.52);margin-bottom:14px;overflow:hidden}
+.telemetry-panel-head{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--br)}
+.telemetry-panel-title{font-size:12px;color:var(--t1);font-weight:600}
+.telemetry-panel-meta{font-family:var(--mono);font-size:10px;color:var(--t3)}
+.telemetry-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:14px}
+.telemetry-filters .field{margin-bottom:0}
+.telemetry-actions,.telemetry-presets{display:flex;flex-wrap:wrap;gap:8px;padding:0 14px 14px}
+.telemetry-chip{border:1px solid var(--brb);background:rgba(28,32,40,.72);color:var(--t1);border-radius:999px;padding:5px 10px;font-size:11px;cursor:pointer}
+.telemetry-chip:hover,.telemetry-chip.active{border-color:var(--acc);background:var(--acc-lo)}
+.telemetry-note{margin:0 14px 14px;padding:9px 12px;border:1px solid rgba(212,168,50,.22);border-left:3px solid var(--wa);border-radius:6px;background:rgba(212,168,50,.06);font-family:var(--mono);font-size:11px;color:#f0cc5e}
+.telemetry-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.telemetry-table-wrap{overflow:auto;max-height:360px}
+.telemetry-table{width:100%;border-collapse:collapse;font-size:12px}
+.telemetry-table th{position:sticky;top:0;background:rgba(13,15,20,.96);z-index:1;text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--t3);padding:8px;border-bottom:1px solid var(--br)}
+.telemetry-table td{padding:8px;border-bottom:1px solid var(--br);color:var(--t1);vertical-align:top}
+.telemetry-table tbody tr:hover{background:rgba(255,255,255,.03)}
+.telemetry-table tbody tr.is-selected{background:var(--acc-lo)}
+.telemetry-table .mono{font-family:var(--mono);font-size:11px;color:var(--t2)}
+.telemetry-badge{display:inline-block;border:1px solid var(--brb);border-radius:999px;padding:2px 7px;font-family:var(--mono);font-size:10px;color:var(--t2);background:rgba(28,32,40,.65);margin:1px 2px 1px 0}
+.telemetry-badge.warn{border-color:rgba(212,168,50,.3);color:#f0cc5e;background:rgba(212,168,50,.08)}
+.telemetry-badge.error{border-color:rgba(224,90,70,.3);color:#f87171;background:rgba(224,90,70,.08)}
+.telemetry-badge.ok{border-color:rgba(82,201,123,.25);color:#6ee7a0;background:rgba(82,201,123,.08)}
+.telemetry-card-source{font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:6px}
+.telemetry-detail{display:none;padding:14px;border-top:1px solid var(--br);background:rgba(7,8,11,.38)}
+.telemetry-detail.show{display:block}
+.telemetry-detail pre{white-space:pre-wrap;word-break:break-word;background:rgba(7,8,11,.75);border:1px solid var(--br);border-radius:6px;padding:10px;color:var(--t1);font-family:var(--mono);font-size:11px;max-height:260px;overflow:auto}
+.telemetry-timeseries{display:flex;gap:6px;align-items:end;min-height:70px;padding:12px 14px;overflow:auto}
+.telemetry-bar{min-width:34px;background:rgba(196,135,58,.16);border:1px solid rgba(196,135,58,.25);border-radius:4px 4px 0 0;color:var(--t2);font-family:var(--mono);font-size:9px;text-align:center;padding-top:4px}
+.telemetry-chart-controls{display:flex;flex-wrap:wrap;gap:10px;padding:0 14px 14px}
+.telemetry-chart-controls .field{min-width:150px;margin:0}
+.telemetry-chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;padding:14px}
+.telemetry-chart-card{border:1px solid var(--br);border-radius:8px;background:rgba(7,8,11,.35);padding:12px;min-height:300px}
+.telemetry-chart-card.wide{grid-column:1 / -1}
+.telemetry-chart-title{font-size:12px;font-weight:600;color:var(--t1);margin-bottom:8px}
+.telemetry-chart{width:100%;height:270px}
 
 .toast{position:fixed;bottom:20px;right:20px;background:var(--s4);border:1px solid var(--brb);border-radius:4px;padding:10px 16px;color:var(--t1);font-size:12px;z-index:1000;display:none}
 .toast.show{display:block}
@@ -937,6 +975,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
     </div>
     <nav class="nav" id="nav">
       <div class="nav-item active" data-view="runs">Runs</div>
+      <div class="nav-item" data-view="telemetry">Run Telemetry</div>
       <div class="nav-item" data-view="agents">Agents</div>
       <div class="nav-item" data-view="evaluate">Run Evaluations</div>
       <div class="nav-item" data-view="corpus">Evaluation Results</div>
@@ -1019,6 +1058,105 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
           </div>
           <div class="term" id="term"><div class="empty">No run selected.</div></div>
           <div class="metrics" id="metrics"><span>tokens in <b id="m-ti">—</b></span><span class="metrics-sep">|</span><span>tokens out <b id="m-to">—</b></span><span class="metrics-sep">|</span><span>total <b id="m-total">—</b></span><span class="metrics-sep">|</span><span>cost <b id="m-cost">—</b></span><span class="cost-disclaimer">est. $3/$15 per Mtok</span><span class="metrics-sep">|</span><span>stage <b id="m-stage">—</b></span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RUN TELEMETRY -->
+    <section class="view" data-view="telemetry">
+      <div class="view-header">
+        <span class="view-title">Run Telemetry</span>
+        <span class="view-meta" id="telemetry-meta">Not loaded</span>
+      </div>
+      <div class="telemetry-content">
+        <div class="telemetry-panel">
+          <div class="telemetry-panel-head">
+            <div>
+              <div class="telemetry-panel-title">Filters and selection</div>
+              <div class="telemetry-panel-meta" id="telemetry-selection-meta">All matching runs</div>
+            </div>
+            <button class="btn" id="telemetry-refresh" type="button">Apply filters</button>
+            <button class="btn ghost" id="telemetry-reset-filters" type="button">Reset filters</button>
+          </div>
+          <div class="telemetry-filters">
+            <div class="field"><label>Time range</label><select id="telemetry-range"><option value="1h">Last hour</option><option value="24h" selected>Last 24 hours</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="all">All time</option><option value="custom">Custom</option></select></div>
+            <div class="field"><label>Custom start</label><input type="text" id="telemetry-start" placeholder="YYYY-MM-DDTHH:mm:ssZ"></div>
+            <div class="field"><label>Custom end</label><input type="text" id="telemetry-end" placeholder="YYYY-MM-DDTHH:mm:ssZ"></div>
+            <div class="field"><label>Status</label><select id="telemetry-status" multiple size="4"></select></div>
+            <div class="field"><label>Runner</label><select id="telemetry-runner"><option value="">Any</option></select></div>
+            <div class="field"><label>Model</label><select id="telemetry-model"><option value="">Any</option></select></div>
+            <div class="field"><label>Run kind</label><select id="telemetry-run-kind"><option value="">Any</option></select></div>
+            <div class="field"><label>Mode</label><select id="telemetry-mode"><option value="">Any</option></select></div>
+            <div class="field"><label>Repo</label><select id="telemetry-repo"><option value="">Any</option></select></div>
+            <div class="field"><label>Change ID</label><input type="text" id="telemetry-change" placeholder="WI-12345"></div>
+            <div class="field"><label>Search</label><input type="text" id="telemetry-q" placeholder="job, repo, model, error"></div>
+            <div class="field"><label>Sort</label><select id="telemetry-sort"><option value="newest">Most recent</option><option value="slowest">Slowest</option><option value="expensive">Most expensive</option><option value="tokens">Most tokens</option><option value="failed">Failed first</option><option value="awaiting">Longest awaiting input</option><option value="error">Most recent error</option></select></div>
+          </div>
+          <div class="telemetry-presets" id="telemetry-presets">
+            <button class="telemetry-chip" data-preset="active" type="button">Active now</button>
+            <button class="telemetry-chip" data-preset="attention" type="button">Needs attention</button>
+            <button class="telemetry-chip" data-preset="failed" type="button">Failed recently</button>
+            <button class="telemetry-chip" data-preset="slow" type="button">Slow runs</button>
+            <button class="telemetry-chip" data-preset="tokens" type="button">High token use</button>
+            <button class="telemetry-chip" data-preset="awaiting" type="button">Awaiting user</button>
+            <button class="telemetry-chip" data-preset="missing" type="button">No structured events</button>
+            <button class="telemetry-chip" data-preset="expensive-failures" type="button">Most expensive failures</button>
+          </div>
+          <div class="telemetry-actions">
+            <button class="btn ghost" id="telemetry-all" type="button">All matching runs</button>
+            <button class="btn ghost" id="telemetry-select-visible" type="button">Select visible</button>
+            <button class="btn ghost" id="telemetry-clear" type="button">Clear selection</button>
+          </div>
+          <div class="telemetry-note" id="telemetry-coverage-note" style="display:none"></div>
+        </div>
+
+        <div class="cards" id="telemetry-cards"></div>
+
+        <div class="telemetry-panel" id="telemetry-chart-panel">
+          <div class="telemetry-panel-head">
+            <div>
+              <div class="telemetry-panel-title">Run trends</div>
+              <div class="telemetry-panel-meta">Daily duration, tokens, stages, models, AC complexity, and loops</div>
+            </div>
+          </div>
+          <div class="telemetry-chart-controls">
+            <div class="field"><label>Bucket</label><select id="telemetry-chart-bucket"><option value="day" selected>Day</option><option value="hour">Hour</option><option value="week">Week</option></select></div>
+            <div class="field"><label>Roll up by</label><select id="telemetry-rollup"><option value="run" selected>Run</option><option value="story">Story/change</option><option value="parent">Parent/suite</option></select></div>
+          </div>
+          <div class="telemetry-chart-grid">
+            <div class="telemetry-chart-card wide"><div class="telemetry-chart-title">Run duration trend</div><div id="telemetry-chart-duration" class="telemetry-chart"></div></div>
+            <div class="telemetry-chart-card wide"><div class="telemetry-chart-title">Token usage trend</div><div id="telemetry-chart-tokens" class="telemetry-chart"></div></div>
+            <div class="telemetry-chart-card wide"><div class="telemetry-chart-title">Stage duration heatmap</div><div id="telemetry-chart-stage-heatmap" class="telemetry-chart"></div></div>
+            <div class="telemetry-chart-card"><div class="telemetry-chart-title">Model comparison</div><div id="telemetry-chart-models" class="telemetry-chart"></div></div>
+            <div class="telemetry-chart-card"><div class="telemetry-chart-title">AC complexity</div><div id="telemetry-chart-ac" class="telemetry-chart"></div></div>
+            <div class="telemetry-chart-card"><div class="telemetry-chart-title">Loop iterations</div><div id="telemetry-chart-loops" class="telemetry-chart"></div></div>
+          </div>
+        </div>
+
+        <div class="telemetry-panel">
+          <div class="telemetry-panel-head"><div class="telemetry-panel-title">Live now</div><div class="telemetry-panel-meta">Active, queued, and awaiting runs</div></div>
+          <div class="telemetry-table-wrap"><table class="telemetry-table"><thead><tr><th>Status</th><th>Change</th><th>Repo</th><th>Runner/model</th><th>Stage</th><th>Runtime</th><th>Tokens</th><th>Cost</th><th>Attention</th></tr></thead><tbody id="telemetry-live"></tbody></table></div>
+        </div>
+
+        <div class="telemetry-grid">
+          <div class="telemetry-panel"><div class="telemetry-panel-head"><div class="telemetry-panel-title">Stage bottlenecks</div></div><div class="telemetry-table-wrap"><table class="telemetry-table"><thead><tr><th>Stage</th><th>Runs</th><th>Active</th><th>Avg</th><th>Median</th><th>P95</th><th>Total</th><th>Failures</th><th>Failure rate</th></tr></thead><tbody id="telemetry-stages"></tbody></table></div></div>
+          <div class="telemetry-panel"><div class="telemetry-panel-head"><div class="telemetry-panel-title">Error intelligence</div></div><div class="telemetry-table-wrap"><table class="telemetry-table"><thead><tr><th>Signature</th><th>Count</th><th>Last seen</th><th>Stage</th><th>Runner/model</th><th>Sample</th><th>Message</th></tr></thead><tbody id="telemetry-errors"></tbody></table></div></div>
+        </div>
+
+        <div class="telemetry-grid">
+          <div class="telemetry-panel"><div class="telemetry-panel-head"><div class="telemetry-panel-title">User input / escalation</div><div class="telemetry-panel-meta" id="telemetry-user-summary"></div></div><div class="telemetry-table-wrap"><table class="telemetry-table"><thead><tr><th>Job</th><th>Change</th><th>Stage</th><th>Agent</th><th>Severity</th><th>Title/message</th><th>Waiting</th></tr></thead><tbody id="telemetry-prompts"></tbody></table></div></div>
+          <div class="telemetry-panel"><div class="telemetry-panel-head"><div class="telemetry-panel-title">Runner/model comparison</div></div><div class="telemetry-table-wrap"><table class="telemetry-table"><thead><tr><th>Runner/model</th><th>Runs</th><th>Success</th><th>Median</th><th>P95</th><th>Tokens/run</th><th>Cost/run</th><th>Cost/success</th><th>Common failure</th></tr></thead><tbody id="telemetry-runner-models"></tbody></table></div></div>
+        </div>
+
+        <div class="telemetry-panel">
+          <div class="telemetry-panel-head"><div><div class="telemetry-panel-title">Run history</div><div class="telemetry-panel-meta">Checkboxes switch to selected-runs mode</div></div></div>
+          <div class="telemetry-table-wrap"><table class="telemetry-table"><thead><tr><th></th><th>Submitted</th><th>Duration</th><th>Queue</th><th>Change</th><th>Repo</th><th>Kind</th><th>Runner</th><th>Model</th><th>Mode</th><th>Status</th><th>Stage</th><th>Tokens</th><th>Cost</th><th>Prompts</th><th>Error</th></tr></thead><tbody id="telemetry-runs"></tbody></table></div>
+          <div class="telemetry-detail" id="telemetry-detail"></div>
+        </div>
+
+        <div class="telemetry-panel">
+          <div class="telemetry-panel-head"><div class="telemetry-panel-title">Timeseries</div><div class="telemetry-panel-meta">Simple submitted-run buckets</div></div>
+          <div class="telemetry-timeseries" id="telemetry-timeseries"></div>
         </div>
       </div>
     </section>
@@ -1301,10 +1439,11 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 </div>
 <div class="toast" id="toast"></div>
 <div class="set-help-tooltip" id="settings-help-tooltip" role="tooltip" hidden></div>
+<datalist id="openai-compat-model-suggestions"></datalist>
 <script>
 const $ = (s,r=document)=>r.querySelector(s);
 const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
-let RUNNER_MODELS = {claude:[],copilot:[],gemini:[]};
+let RUNNER_MODELS = {claude:[],copilot:[],gemini:[],"openai-compat":[]};
 let REPO_PATH_OPTIONS = [];
 let REPO_CUSTOM_VALUES = [];
 let REPO_BASE_DIR = "";
@@ -1325,6 +1464,22 @@ let lastSeq = 0;
 const ACTIVE_JOB_BY_SURFACE = {runs:null, evaluate:null};
 const TRACE_EVENTS = {runs:[], evaluate:[]};
 const STREAM_EVENT_TYPES = ["job.start","stage.start","stage.end","cli.invoke","cli.exit","log","metrics","opik.start","opik.end","job.end","stream.end","user.prompt","user.response","user.prompt.timeout","user.escalation.resolved"];
+const TELEMETRY_STATE = {
+  loaded:false,
+  loading:false,
+  selectionMode:"all",
+  selectedIds:new Set(),
+  visibleRuns:[],
+  aggregate:null,
+  lastRefresh:null,
+  timer:null,
+  detailJobId:null,
+  failedStage:null,
+  autoSelected:true,
+  charts:{},
+  chartBucket:"day",
+  rollup:"run",
+};
 const SETTINGS_HELP_COPY = {
   "s-host":"The network interface the API server binds to. Use 127.0.0.1 (default) to keep it local-only. Set to 0.0.0.0 if you need to access the GUI from another machine on your network.",
   "s-port":"TCP port for the API server and GUI. Default is 8742. If another service uses this port, change it here — but you must restart the server for the new port to take effect.",
@@ -1798,10 +1953,12 @@ function formatMoney(value){
   return `$${n.toFixed(4)}`;
 }
 function formatSeconds(value){
+  if(value==null || value==="") return "—";
   const n = Number(value);
   return Number.isFinite(n) ? `${Math.round(n)}s` : "—";
 }
 function formatNumber(value){
+  if(value==null || value==="") return "—";
   const n = Number(value);
   return Number.isFinite(n) ? Math.round(n).toLocaleString() : "—";
 }
@@ -2008,6 +2165,526 @@ function applyWorkflowEventToJob(job, ev){
 }
 renderRunWorkflow();
 
+function telemetryActive(){
+  return $('.view[data-view="telemetry"]')?.classList.contains("active");
+}
+function telemetryRangeBounds(){
+  const range = $("#telemetry-range")?.value || "24h";
+  if(range==="custom"){
+    return {submitted_after:$("#telemetry-start").value.trim(), submitted_before:$("#telemetry-end").value.trim()};
+  }
+  if(range==="all") return {submitted_after:"", submitted_before:""};
+  const hours = range==="1h" ? 1 : range==="7d" ? 24*7 : range==="30d" ? 24*30 : 24;
+  return {submitted_after:new Date(Date.now() - hours*3600*1000).toISOString(), submitted_before:""};
+}
+function selectedOptions(select){
+  return [...(select?.selectedOptions || [])].map(o=>o.value).filter(Boolean);
+}
+function telemetryFilters(){
+  const bounds = telemetryRangeBounds();
+  return {
+    status:selectedOptions($("#telemetry-status")),
+    runner:$("#telemetry-runner").value ? [$("#telemetry-runner").value] : [],
+    model:$("#telemetry-model").value ? [$("#telemetry-model").value] : [],
+    run_kind:$("#telemetry-run-kind").value ? [$("#telemetry-run-kind").value] : [],
+    mode:$("#telemetry-mode").value ? [$("#telemetry-mode").value] : [],
+    repo:$("#telemetry-repo").value ? [$("#telemetry-repo").value] : [],
+    change_id:$("#telemetry-change").value.trim(),
+    submitted_after:bounds.submitted_after,
+    submitted_before:bounds.submitted_before,
+    q:$("#telemetry-q").value.trim(),
+    stage:[],
+    failed_stage:TELEMETRY_STATE.failedStage ? [TELEMETRY_STATE.failedStage] : [],
+    min_tokens:null,
+    min_cost_usd:null,
+    errors_only:false,
+    awaiting_input_only:false,
+  };
+}
+function telemetryRunsQuery(filters){
+  const params = new URLSearchParams({limit:"500", offset:"0"});
+  const scalar = {
+    status:filters.status[0] || "",
+    runner:filters.runner[0] || "",
+    model:filters.model[0] || "",
+    run_kind:filters.run_kind[0] || "",
+    mode:filters.mode[0] || "",
+    repo:filters.repo[0] || "",
+    change_id:filters.change_id || "",
+    submitted_after:filters.submitted_after || "",
+    submitted_before:filters.submitted_before || "",
+    q:filters.q || "",
+  };
+  Object.entries(scalar).forEach(([key,value])=>{ if(value) params.set(key, value); });
+  return `/telemetry/runs?${params.toString()}`;
+}
+function pickDefaultTelemetryRun(runs){
+  const items = Array.isArray(runs) ? runs.filter(Boolean) : [];
+  if(!items.length) return null;
+  return items.find(row=>row.status==="running")
+    || items.find(row=>row.status==="awaiting_input")
+    || items.find(row=>row.status==="queued")
+    || items[0];
+}
+function setSelectOptions(selector, values, anyLabel="Any"){
+  const select = $(selector);
+  if(!select) return;
+  const current = select.multiple ? selectedOptions(select) : [select.value];
+  select.innerHTML = select.multiple ? "" : `<option value="">${escapeHtml(anyLabel)}</option>`;
+  (values || []).forEach(value=>{
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = value;
+    if(current.includes(value)) opt.selected = true;
+    select.appendChild(opt);
+  });
+}
+function populateTelemetryOptions(options){
+  if(!options) return;
+  setSelectOptions("#telemetry-status", options.statuses || [], "Any");
+  setSelectOptions("#telemetry-runner", options.runners || [], "Any");
+  setSelectOptions("#telemetry-model", options.models || [], "Any");
+  setSelectOptions("#telemetry-run-kind", options.run_kinds || [], "Any");
+  setSelectOptions("#telemetry-mode", options.modes || [], "Any");
+  setSelectOptions("#telemetry-repo", options.repos || [], "Any");
+}
+function telemetryCostLabel(source){
+  if(source==="actual") return "actual";
+  if(source==="estimated") return "estimated";
+  if(source==="mixed") return "mixed";
+  return "unknown";
+}
+function telemetryCostDisplay(rowOrSummary, source){
+  if(source==="unknown") return "—";
+  const actual = Number(rowOrSummary?.cost_usd);
+  const estimated = Number(rowOrSummary?.estimated_cost_usd);
+  if(source==="actual" && Number.isFinite(actual) && actual > 0) return formatMoney(actual);
+  if((source==="estimated" || source==="mixed") && Number.isFinite(estimated) && estimated > 0) return formatMoney(estimated);
+  if(Number.isFinite(actual) && actual > 0) return formatMoney(actual);
+  return Number.isFinite(estimated) && estimated > 0 ? formatMoney(estimated) : "—";
+}
+function telemetryCoverageLabel(source){
+  if(source==="sqlite") return "SQLite telemetry";
+  if(source==="jsonl_fallback") return "JSONL fallback";
+  return "No structured events";
+}
+function renderTelemetryCards(data){
+  const summary = data?.summary || {};
+  const coverage = data?.coverage || {};
+  const cards = [
+    ["Selected runs", data?.selected_count ?? 0, `${coverage.aggregated_jobs || 0}/${coverage.matched_jobs ?? coverage.aggregated_jobs ?? 0} aggregated`],
+    ["Active now", summary.active || 0, ""],
+    ["Queued", summary.queued || 0, ""],
+    ["Awaiting input", summary.awaiting_input || 0, ""],
+    ["Success rate", formatPercent(summary.success_rate), ""],
+    ["Failure rate", formatPercent(summary.failure_rate), ""],
+    ["Median runtime", formatSeconds(summary.median_runtime_seconds), ""],
+    ["P95 runtime", formatSeconds(summary.p95_runtime_seconds), ""],
+    ["Median queue", formatSeconds(summary.median_queue_seconds), ""],
+    ["Total tokens", formatNumber(summary.tokens_total), ""],
+    ["Cost", telemetryCostDisplay(summary, coverage.cost_data_source), telemetryCostLabel(coverage.cost_data_source)],
+    ["Top failed stage", summary.top_failed_stage || "—", ""],
+    ["User-blocked time", formatSeconds(summary.user_blocked_seconds), ""],
+  ];
+  $("#telemetry-cards").innerHTML = cards.map(([label,value,source])=>`
+    <div class="card" data-telemetry-card="${escapeHtml(label)}">
+      <div class="lbl">${escapeHtml(label)}</div>
+      <div class="val">${escapeHtml(value)}</div>
+      ${source ? `<div class="telemetry-card-source">${escapeHtml(source)}</div>` : ""}
+    </div>`).join("");
+  $$("[data-telemetry-card]").forEach(card=>{
+    card.style.cursor = "pointer";
+    card.addEventListener("click", ()=>{
+      const label = card.dataset.telemetryCard;
+      if(label==="Failure rate"){ $("#telemetry-status").value = "failed"; TELEMETRY_STATE.failedStage = null; }
+      if(label==="Awaiting input"){ $("#telemetry-status").value = "awaiting_input"; TELEMETRY_STATE.failedStage = null; }
+      if(label==="Top failed stage" && summary.top_failed_stage){ $("#telemetry-status").value = "failed"; TELEMETRY_STATE.failedStage = summary.top_failed_stage; }
+      scheduleTelemetryRefresh();
+    });
+  });
+}
+function emptyTelemetryRow(cols, message="No data"){
+  return `<tr><td colspan="${cols}" class="empty">${escapeHtml(message)}</td></tr>`;
+}
+function renderTelemetryTable(tbodySelector, rows, cols, render){
+  const tbody = $(tbodySelector);
+  if(!tbody) return;
+  tbody.innerHTML = rows?.length ? rows.map(render).join("") : emptyTelemetryRow(cols);
+}
+function renderTelemetryAggregate(data){
+  TELEMETRY_STATE.aggregate = data;
+  renderTelemetryCards(data);
+  const coverage = data.coverage || {};
+  const note = $("#telemetry-coverage-note");
+  const coverageText = `Structured event data available for ${coverage.jobs_with_events || 0} of ${data.selected_count || 0} selected runs. Cost source: ${telemetryCostLabel(coverage.cost_data_source)}.${coverage.truncated ? ` Aggregation truncated: ${coverage.aggregated_jobs} of ${coverage.matched_jobs} matched jobs.` : ""}`;
+  note.textContent = coverageText;
+  note.style.display = (coverage.jobs_missing_events || coverage.truncated || coverage.cost_data_source!=="actual") ? "block" : "none";
+  $("#telemetry-meta").textContent = `${data.selected_count || 0} selected · refreshed ${fmtLocalTime(new Date().toISOString())}`;
+  $("#telemetry-selection-meta").textContent = TELEMETRY_STATE.selectionMode==="all" ? "All matching runs" : `${TELEMETRY_STATE.selectedIds.size} selected run${TELEMETRY_STATE.selectedIds.size===1?"":"s"}`;
+  renderTelemetryTable("#telemetry-live", data.active_runs || [], 9, row=>`
+    <tr><td><span class="status ${escapeHtml(row.status)}">${escapeHtml(row.status)}</span></td><td>${escapeHtml(row.change_id||"")}</td><td class="mono">${escapeHtml(row.repo||"")}</td><td>${escapeHtml(row.runner||"")}/${escapeHtml(row.model||"")}</td><td>${escapeHtml(row.current_stage||"—")}</td><td>${formatSeconds(row.duration_seconds)}</td><td>${formatNumber((row.tokens_in||0)+(row.tokens_out||0))}</td><td>${telemetryCostDisplay(row, row.cost_source)} <span class="telemetry-badge">${escapeHtml(telemetryCostLabel(row.cost_source))}</span></td><td>${(row.attention_badges||[]).map(b=>`<span class="telemetry-badge warn">${escapeHtml(b)}</span>`).join("")}</td></tr>`);
+  renderTelemetryTable("#telemetry-stages", data.stage_stats || [], 9, row=>`
+    <tr><td>${escapeHtml(row.stage)}</td><td>${formatNumber(row.runs_observed)}</td><td>${formatNumber(row.active_count)}</td><td>${formatSeconds(row.average_duration_seconds)}</td><td>${formatSeconds(row.median_duration_seconds)}</td><td>${formatSeconds(row.p95_duration_seconds)}</td><td>${formatSeconds(row.total_duration_seconds)}</td><td>${formatNumber(row.failure_count)}</td><td>${formatPercent(row.failure_rate)}</td></tr>`);
+  renderTelemetryTable("#telemetry-errors", data.error_stats || [], 7, row=>`
+    <tr><td>${escapeHtml(row.signature)}</td><td>${formatNumber(row.count)}</td><td>${escapeHtml(fmtLocalTime(row.last_seen))}</td><td>${escapeHtml(row.affected_stage||"—")}</td><td>${escapeHtml(row.runner_model||"—")}</td><td class="mono">${escapeHtml(row.sample_job_id||"")}<br>${escapeHtml(row.sample_change_id||"")}</td><td>${escapeHtml(row.sample_message||"")}</td></tr>`);
+  const ui = data.user_input_stats || {};
+  $("#telemetry-user-summary").textContent = `${ui.total_prompt_count || 0} prompts · ${ui.timeout_count || 0} timeouts · ${formatSeconds(ui.total_blocked_seconds)} blocked · common stage ${ui.most_common_prompting_stage || "—"}`;
+  renderTelemetryTable("#telemetry-prompts", ui.active_unresolved_prompts || [], 7, row=>`
+    <tr><td class="mono">${escapeHtml(row.job_id||"")}</td><td>${escapeHtml(row.change_id||"")}</td><td>${escapeHtml(row.stage||"—")}</td><td>${escapeHtml(row.agent||"—")}</td><td>${escapeHtml(row.severity||"—")}</td><td>${escapeHtml(row.title||"")}</td><td>${formatSeconds(row.age_seconds)}</td></tr>`);
+  renderTelemetryTable("#telemetry-runner-models", data.runner_model_stats || [], 9, row=>`
+    <tr><td>${escapeHtml(row.runner_model||"")}</td><td>${formatNumber(row.runs)}</td><td>${formatPercent(row.success_rate)}</td><td>${formatSeconds(row.median_runtime_seconds)}</td><td>${formatSeconds(row.p95_runtime_seconds)}</td><td>${formatNumber(row.tokens_per_run)}</td><td>${formatMoney(row.cost_per_run)}</td><td>${row.cost_per_successful_run==null?"—":formatMoney(row.cost_per_successful_run)}</td><td>${escapeHtml(row.most_common_failure||"—")}</td></tr>`);
+  renderTelemetryCharts(data.charts || {});
+  renderTelemetryRuns(data.run_rows || []);
+  renderTelemetryTimeseries(data.timeseries || []);
+}
+function sortTelemetryRows(rows){
+  const sort = $("#telemetry-sort")?.value || "newest";
+  const n = value=>Number(value)||0;
+  const ts = value=>Date.parse(value||"")||0;
+  return [...rows].sort((a,b)=>{
+    if(sort==="slowest") return n(b.duration_seconds)-n(a.duration_seconds);
+    if(sort==="expensive") return n(b.cost_usd || b.estimated_cost_usd)-n(a.cost_usd || a.estimated_cost_usd);
+    if(sort==="tokens") return n((b.tokens_in||0)+(b.tokens_out||0))-n((a.tokens_in||0)+(a.tokens_out||0));
+    if(sort==="failed") return (b.status==="failed")-(a.status==="failed") || ts(b.submitted_at)-ts(a.submitted_at);
+    if(sort==="awaiting") return (b.status==="awaiting_input")-(a.status==="awaiting_input") || n(b.duration_seconds)-n(a.duration_seconds);
+    if(sort==="error") return (b.error_summary?1:0)-(a.error_summary?1:0) || ts(b.submitted_at)-ts(a.submitted_at);
+    return ts(b.submitted_at)-ts(a.submitted_at);
+  });
+}
+function renderTelemetryRuns(rows){
+  const sorted = sortTelemetryRows(rows);
+  const tbody = $("#telemetry-runs");
+  if(!tbody) return;
+  tbody.innerHTML = sorted.length ? sorted.map(row=>{
+    const selected = TELEMETRY_STATE.selectedIds.has(row.id);
+    const coverageClass = row.coverage_source==="none" ? "error" : row.coverage_source==="jsonl_fallback" ? "warn" : "ok";
+    return `<tr class="${selected?"is-selected":""}" data-telemetry-job="${escapeHtml(row.id)}">
+      <td><input type="checkbox" class="telemetry-run-check" data-job-id="${escapeHtml(row.id)}" ${selected?"checked":""}></td>
+      <td>${escapeHtml(fmtLocalTime(row.submitted_at))}</td><td>${formatSeconds(row.duration_seconds)}</td><td>${formatSeconds(row.queue_seconds)}</td>
+      <td>${escapeHtml(row.change_id||"")}</td><td class="mono">${escapeHtml(row.repo||"")}</td><td>${escapeHtml(row.run_kind||"")}</td>
+      <td>${escapeHtml(row.runner||"")}</td><td>${escapeHtml(row.model||"")}</td><td>${escapeHtml(row.mode||"")}</td>
+      <td><span class="status ${escapeHtml(row.status)}">${escapeHtml(row.status||"")}</span></td><td>${escapeHtml(row.current_stage || row.failed_stage || "—")}</td>
+      <td>${formatNumber((row.tokens_in||0)+(row.tokens_out||0))}</td><td>${telemetryCostDisplay(row, row.cost_source)} <span class="telemetry-badge">${escapeHtml(telemetryCostLabel(row.cost_source))}</span></td>
+      <td>${formatNumber(row.user_prompts)}</td><td>${escapeHtml(row.error_summary||"")}<br><span class="telemetry-badge ${coverageClass}">${escapeHtml(telemetryCoverageLabel(row.coverage_source))}</span></td>
+    </tr>`;
+  }).join("") : emptyTelemetryRow(16);
+  $$(".telemetry-run-check", tbody).forEach(check=>{
+    check.addEventListener("click", event=>event.stopPropagation());
+    check.addEventListener("change", ()=>{
+      const id = check.dataset.jobId;
+      if(check.checked) TELEMETRY_STATE.selectedIds.add(id);
+      else TELEMETRY_STATE.selectedIds.delete(id);
+      TELEMETRY_STATE.selectionMode = TELEMETRY_STATE.selectedIds.size ? "selected" : "all";
+      refreshTelemetry();
+    });
+  });
+  $$("tr[data-telemetry-job]", tbody).forEach(row=>{
+    row.addEventListener("click", event=>{
+      if(event.target.matches("input")) return;
+      showTelemetryDetail(row.dataset.telemetryJob);
+    });
+  });
+}
+function renderTelemetryTimeseries(rows){
+  const wrap = $("#telemetry-timeseries");
+  if(!wrap) return;
+  if(!rows.length){ wrap.innerHTML = '<div class="empty">No timeseries data.</div>'; return; }
+  const max = Math.max(...rows.map(row=>Number(row.submitted)||0), 1);
+  wrap.innerHTML = rows.map(row=>{
+    const h = 18 + Math.round((Number(row.submitted)||0)/max*52);
+    return `<div class="telemetry-bar" title="${escapeHtml(row.bucket)} · ${row.submitted} submitted" style="height:${h}px">${escapeHtml(row.submitted)}</div>`;
+  }).join("");
+}
+function telemetryChartsAvailable(){
+  return typeof echarts !== "undefined";
+}
+function telemetryEmptyChart(id, message){
+  const el = $(`#${id}`);
+  if(!el) return;
+  if(TELEMETRY_STATE.charts[id]){
+    TELEMETRY_STATE.charts[id].dispose();
+    delete TELEMETRY_STATE.charts[id];
+  }
+  el.innerHTML = `<div class="empty">${escapeHtml(message || "No chart data.")}</div>`;
+}
+function telemetryChart(id){
+  const el = $(`#${id}`);
+  if(!el || !telemetryChartsAvailable()) return null;
+  if(!TELEMETRY_STATE.charts[id]) TELEMETRY_STATE.charts[id] = echarts.init(el, null, {renderer:"canvas"});
+  return TELEMETRY_STATE.charts[id];
+}
+function renderTelemetryChart(id, option, hasData){
+  if(!hasData){ telemetryEmptyChart(id, telemetryChartsAvailable() ? "No chart data." : "Chart library unavailable."); return null; }
+  const chart = telemetryChart(id);
+  if(!chart){ telemetryEmptyChart(id, "Chart library unavailable."); return null; }
+  chart.setOption({
+    backgroundColor:"transparent",
+    textStyle:{color:"#8a8580",fontFamily:"JetBrains Mono, monospace",fontSize:10},
+    grid:{left:48,right:18,top:28,bottom:42},
+    tooltip:{trigger:"item",backgroundColor:"#141720",borderColor:"rgba(255,255,255,.13)",textStyle:{color:"#e2ddd5"}},
+    ...option,
+  }, true);
+  chart.resize();
+  return chart;
+}
+function renderTelemetryCharts(charts){
+  const payload = charts || {};
+  const durationPoints = payload.duration_points || [];
+  const durationSeries = payload.duration_series || [];
+  const durationChart = renderTelemetryChart("telemetry-chart-duration", {
+    xAxis:{type:"time"},
+    yAxis:{type:"value",name:"seconds"},
+    dataZoom:[{type:"inside"},{type:"slider",height:18,bottom:8}],
+    series:[
+      {name:"Run",type:"scatter",symbolSize:value=>Math.max(6, Math.min(18, Math.sqrt(Number(value?.[2]||0)/500))),data:durationPoints.filter(p=>p.submitted_at && p.complete_elapsed_seconds!=null).map(p=>[p.submitted_at,p.complete_elapsed_seconds,p.tokens_total||0,p.job_id,p.status]),encode:{x:0,y:1},itemStyle:{color:"#c4873a"}},
+      {name:"Daily median",type:"line",showSymbol:true,data:durationSeries.filter(p=>p.bucket && p.complete_elapsed_median_seconds!=null).map(p=>[p.bucket,p.complete_elapsed_median_seconds]),lineStyle:{color:"#6ee7a0"}},
+      {name:"Daily P95",type:"line",showSymbol:false,data:durationSeries.filter(p=>p.bucket && p.complete_elapsed_p95_seconds!=null).map(p=>[p.bucket,p.complete_elapsed_p95_seconds]),lineStyle:{color:"#f0cc5e",type:"dashed"}},
+    ],
+  }, durationPoints.length || durationSeries.length);
+  durationChart?.off("click");
+  durationChart?.on("click", params=>{
+    const jobId = params?.data?.[3];
+    if(jobId) showTelemetryDetail(jobId);
+  });
+
+  const tokenSeries = payload.token_series || [];
+  renderTelemetryChart("telemetry-chart-tokens", {
+    legend:{top:0,textStyle:{color:"#8a8580"}},
+    xAxis:{type:"category",data:tokenSeries.map(row=>row.bucket),axisLabel:{hideOverlap:true}},
+    yAxis:{type:"value",name:"tokens"},
+    series:[
+      {name:"Input",type:"bar",stack:"tokens",data:tokenSeries.map(row=>row.tokens_in||0),itemStyle:{color:"#8fb4ff"}},
+      {name:"Output",type:"bar",stack:"tokens",data:tokenSeries.map(row=>row.tokens_out||0),itemStyle:{color:"#c4873a"}},
+      {name:"Tokens/run",type:"line",yAxisIndex:0,data:tokenSeries.map(row=>row.tokens_per_run||0),itemStyle:{color:"#6ee7a0"}},
+    ],
+  }, tokenSeries.length);
+
+  const stageRows = payload.stage_duration_heatmap || [];
+  const stages = [...new Set(stageRows.map(row=>row.stage))];
+  const buckets = [...new Set(stageRows.map(row=>row.bucket))];
+  renderTelemetryChart("telemetry-chart-stage-heatmap", {
+    grid:{left:120,right:24,top:22,bottom:46},
+    xAxis:{type:"category",data:buckets,axisLabel:{hideOverlap:true}},
+    yAxis:{type:"category",data:stages},
+    visualMap:{min:0,max:Math.max(...stageRows.map(row=>Number(row.median_seconds)||0),1),calculable:true,orient:"horizontal",left:"center",bottom:0,textStyle:{color:"#8a8580"}},
+    series:[{type:"heatmap",data:stageRows.map(row=>[buckets.indexOf(row.bucket),stages.indexOf(row.stage),row.median_seconds||0,row]),label:{show:false},itemStyle:{borderColor:"rgba(7,8,11,.6)",borderWidth:1}}],
+  }, stageRows.length);
+
+  const modelRows = payload.model_points || [];
+  renderTelemetryChart("telemetry-chart-models", {
+    xAxis:{type:"value",name:"runtime"},
+    yAxis:{type:"value",name:"tokens/run"},
+    series:[{type:"scatter",symbolSize:value=>Math.max(7, Math.min(28, Number(value?.[2]||1)*4)),data:modelRows.map(row=>[row.median_runtime_seconds||0,row.tokens_per_run||0,row.runs||1,row.model_set]),itemStyle:{color:"#c4873a"}}],
+  }, modelRows.length);
+
+  const acRows = (payload.ac_complexity_points || []).filter(row=>row.original_ac_count!=null && row.complete_elapsed_seconds!=null);
+  renderTelemetryChart("telemetry-chart-ac", {
+    xAxis:{type:"value",name:"original ACs"},
+    yAxis:{type:"value",name:"seconds"},
+    series:[{type:"scatter",symbolSize:value=>Math.max(6, Math.min(22, Math.sqrt(Number(value?.[2]||0)/500))),data:acRows.map(row=>[row.original_ac_count,row.complete_elapsed_seconds,row.tokens_total||0,row.job_id]),itemStyle:{color:"#8fb4ff"}}],
+  }, acRows.length);
+
+  const loopRows = payload.loop_iteration_series || [];
+  renderTelemetryChart("telemetry-chart-loops", {
+    xAxis:{type:"category",data:loopRows.map(row=>row.bucket),axisLabel:{hideOverlap:true}},
+    yAxis:{type:"value",name:"iterations"},
+    series:[{name:"Total iterations",type:"bar",data:loopRows.map(row=>row.total_iterations||0),itemStyle:{color:"#c4873a"}},{name:"Median",type:"line",data:loopRows.map(row=>row.median_iterations||0),itemStyle:{color:"#6ee7a0"}}],
+  }, loopRows.length);
+}
+function renderTelemetryProfileCharts(profile){
+  const stageSpans = profile?.stage_spans || [];
+  renderTelemetryChart("telemetry-detail-waterfall", {
+    grid:{left:110,right:18,top:18,bottom:30},
+    xAxis:{type:"value",name:"seconds"},
+    yAxis:{type:"category",data:stageSpans.map((span,index)=>`${index+1}. ${span.stage || "stage"}`)},
+    series:[{type:"bar",data:stageSpans.map(span=>span.duration_seconds||0),itemStyle:{color:"#c4873a"}}],
+  }, stageSpans.length);
+  const tokenStages = profile?.token_by_stage || [];
+  renderTelemetryChart("telemetry-detail-token-stage", {
+    legend:{top:0,textStyle:{color:"#8a8580"}},
+    xAxis:{type:"value",name:"tokens"},
+    yAxis:{type:"category",data:tokenStages.map(row=>row.stage || "unattributed")},
+    series:[
+      {name:"Input",type:"bar",stack:"tokens",data:tokenStages.map(row=>row.tokens_in||0),itemStyle:{color:"#8fb4ff"}},
+      {name:"Output",type:"bar",stack:"tokens",data:tokenStages.map(row=>row.tokens_out||0),itemStyle:{color:"#c4873a"}},
+    ],
+  }, tokenStages.length);
+  const llmCalls = profile?.llm_calls || [];
+  const start = Date.parse(profile?.started_at || profile?.submitted_at || "");
+  renderTelemetryChart("telemetry-detail-llm-timeline", {
+    xAxis:{type:"value",name:"seconds from start"},
+    yAxis:{type:"value",name:"tokens"},
+    series:[{type:"scatter",symbolSize:value=>Math.max(6, Math.min(22, Math.sqrt(Number(value?.[1]||0)/250))),data:llmCalls.map(call=>[Math.max(0, ((Date.parse(call.ts||"")||start)-start)/1000),call.tokens_total||0,call.model,call.stage]),itemStyle:{color:"#6ee7a0"}}],
+  }, llmCalls.length && Number.isFinite(start));
+}
+async function showTelemetryDetail(jobId){
+  TELEMETRY_STATE.detailJobId = jobId;
+  const detail = $("#telemetry-detail");
+  detail.classList.add("show");
+  detail.dataset.jobId = jobId;
+  detail.innerHTML = '<div class="empty">Loading run detail...</div>';
+  try{
+    const [job, events, profilePayload] = await Promise.all([api(`/runs/${jobId}`), api(`/runs/${jobId}/events`), api(`/telemetry/runs/${jobId}/profile`)]);
+    const profile = profilePayload?.profile || {};
+    const row = (TELEMETRY_STATE.aggregate?.run_rows || []).find(r=>r.id===jobId) || {};
+    const stages = buildWorkflowStages(job, events || []);
+    const opik = job.opik?.dashboard_url ? `<a class="btn link-btn" href="${escapeHtml(job.opik.dashboard_url)}" target="_blank" rel="noreferrer">Open Opik link</a>` : "";
+    detail.innerHTML = `
+      <div class="telemetry-panel-head" style="padding:0 0 12px;border-bottom:none">
+        <div><div class="telemetry-panel-title">${escapeHtml(job.change_id || job.id)}</div><div class="telemetry-panel-meta">${escapeHtml(job.id)} · ${escapeHtml(telemetryCoverageLabel(row.coverage_source || (events.length?"sqlite":"none")))}</div></div>
+        <div class="telemetry-actions" style="padding:0"><button class="btn ghost" id="telemetry-open-run" type="button">Open in Runs tab</button>${opik}</div>
+      </div>
+      <div class="telemetry-grid">
+        <div><div class="section-label">Stage waterfall</div>${stages.map(stage=>`<div class="job-meta">${escapeHtml(stage.label)} · ${escapeHtml(stage.state)} · ${escapeHtml(stage.timerText)}</div>`).join("")}</div>
+        <div><div class="section-label">Token/cost summary</div><div class="job-meta">tokens ${formatNumber(profile.tokens?.tokens_total ?? ((job.tokens_in||0)+(job.tokens_out||0)))} · cost ${formatMoney(profile.tokens?.estimated_cost_usd ?? (row.estimated_cost_usd || row.cost_usd || 0))} · ${escapeHtml(profile.tokens?.source || telemetryCostLabel(row.cost_source))}</div><div class="section-label" style="margin-top:12px">Models used</div><div class="job-meta">${(profile.models_used||[row.model||job.model]).filter(Boolean).map(model=>`<span class="telemetry-badge">${escapeHtml(model)}</span>`).join("") || "—"}</div><div class="section-label" style="margin-top:12px">ACs / loops</div><div class="job-meta">Original ACs ${escapeHtml(profile.original_ac_count ?? "—")} · loops ${formatNumber((profile.loop_instances||[]).length)}</div><div class="section-label" style="margin-top:12px">Error summary</div><div class="job-meta">${escapeHtml(row.error_summary || job.error_message || "No error recorded.")}</div></div>
+      </div>
+      <div class="telemetry-grid" style="margin-top:14px">
+        <div class="telemetry-chart-card"><div class="telemetry-chart-title">Run waterfall</div><div id="telemetry-detail-waterfall" class="telemetry-chart"></div></div>
+        <div class="telemetry-chart-card"><div class="telemetry-chart-title">Tokens by stage</div><div id="telemetry-detail-token-stage" class="telemetry-chart"></div></div>
+      </div>
+      <div class="telemetry-chart-card" style="margin-top:14px"><div class="telemetry-chart-title">LLM call timeline</div><div id="telemetry-detail-llm-timeline" class="telemetry-chart"></div></div>
+      <div class="section-label" style="margin-top:14px">Loop instances</div>
+      <div class="telemetry-table-wrap"><table class="telemetry-table"><thead><tr><th>Loop</th><th>Stage</th><th>UOW</th><th>Iterations</th><th>Max</th><th>Result</th><th>Source</th></tr></thead><tbody>${(profile.loop_instances||[]).length ? (profile.loop_instances||[]).map(loop=>`<tr><td>${escapeHtml(loop.loop_name||"")}</td><td>${escapeHtml(loop.stage||"—")}</td><td>${escapeHtml(loop.uow_id||"—")}</td><td>${formatNumber(loop.actual_iterations)}</td><td>${escapeHtml(loop.max_iterations ?? "—")}</td><td>${escapeHtml(loop.passed == null ? "—" : loop.passed ? "passed" : "failed")}</td><td>${escapeHtml(loop.source||"")}</td></tr>`).join("") : emptyTelemetryRow(7)}</tbody></table></div>
+      <div class="section-label" style="margin-top:14px">User prompts</div>
+      <div class="job-meta">${formatNumber((events||[]).filter(ev=>ev.type==="user.prompt").length)} prompt events</div>
+      <div class="section-label" style="margin-top:14px">Raw events</div>
+      <pre>${escapeHtml(JSON.stringify(events || [], null, 2))}</pre>`;
+    renderTelemetryProfileCharts(profile);
+    $("#telemetry-open-run")?.addEventListener("click", ()=>{
+      document.querySelector('.nav-item[data-view="runs"]')?.click();
+      selectJob(jobId);
+    });
+  }catch(e){
+    detail.innerHTML = `<div class="empty error">${escapeHtml(e.message)}</div>`;
+  }
+}
+async function refreshTelemetry(){
+  if(TELEMETRY_STATE.loading) return;
+  TELEMETRY_STATE.loading = true;
+  try{
+    const filters = telemetryFilters();
+    const runs = await api(telemetryRunsQuery(filters));
+    TELEMETRY_STATE.visibleRuns = runs.items || [];
+    populateTelemetryOptions(runs.filter_options);
+    if(!TELEMETRY_STATE.autoSelected && TELEMETRY_STATE.selectionMode==="all" && TELEMETRY_STATE.selectedIds.size===0){
+      let defaultRun = pickDefaultTelemetryRun(TELEMETRY_STATE.visibleRuns);
+      if(!defaultRun){
+        const current = await api("/telemetry/runs?limit=1&status=running");
+        defaultRun = pickDefaultTelemetryRun(current.items || []);
+      }
+      if(!defaultRun){
+        const latest = await api("/telemetry/runs?limit=1");
+        defaultRun = pickDefaultTelemetryRun(latest.items || []);
+      }
+      if(defaultRun?.id){
+        TELEMETRY_STATE.selectedIds = new Set([defaultRun.id]);
+        TELEMETRY_STATE.selectionMode = "selected";
+        TELEMETRY_STATE.detailJobId = defaultRun.id;
+        TELEMETRY_STATE.autoSelected = true;
+      }
+    }
+    const payload = {
+      selection_mode: TELEMETRY_STATE.selectionMode,
+      job_ids:TELEMETRY_STATE.selectionMode==="selected" ? [...TELEMETRY_STATE.selectedIds] : [],
+      filters,
+      bucket:TELEMETRY_STATE.chartBucket || "day",
+      rollup:TELEMETRY_STATE.rollup || "run",
+    };
+    const data = await api("/telemetry/query", {method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(payload)});
+    TELEMETRY_STATE.lastRefresh = new Date();
+    TELEMETRY_STATE.loaded = true;
+    const content = $(".telemetry-content");
+    const atBottom = content && (content.scrollHeight - content.scrollTop - content.clientHeight) < 100;
+    const savedScrollTop = content ? content.scrollTop : 0;
+    renderTelemetryAggregate(data);
+    const detailAlreadyShown = TELEMETRY_STATE.detailJobId
+      && $("#telemetry-detail")?.classList.contains("show")
+      && $("#telemetry-detail")?.dataset.jobId === TELEMETRY_STATE.detailJobId;
+    if(TELEMETRY_STATE.detailJobId && !detailAlreadyShown && (data.run_rows || []).some(row=>row.id===TELEMETRY_STATE.detailJobId)){
+      showTelemetryDetail(TELEMETRY_STATE.detailJobId);
+    }
+    if(content && savedScrollTop > 0){
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if(atBottom){
+            content.scrollTop = content.scrollHeight;
+          } else {
+            content.scrollTop = Math.min(savedScrollTop, content.scrollHeight - content.clientHeight);
+          }
+        });
+      });
+    }
+  }catch(e){
+    $("#telemetry-meta").textContent = "Telemetry failed";
+    $("#telemetry-cards").innerHTML = `<div class="empty error">${escapeHtml(e.message)}</div>`;
+  }finally{
+    TELEMETRY_STATE.loading = false;
+  }
+}
+function scheduleTelemetryRefresh(){
+  clearTimeout(TELEMETRY_STATE.debounce);
+  TELEMETRY_STATE.debounce = setTimeout(refreshTelemetry, 150);
+}
+function syncTelemetryPolling(){
+  if(telemetryActive()){
+    if(!TELEMETRY_STATE.timer) TELEMETRY_STATE.timer = setInterval(refreshTelemetry, 5000);
+    if(!TELEMETRY_STATE.loaded) refreshTelemetry();
+  }else if(TELEMETRY_STATE.timer){
+    clearInterval(TELEMETRY_STATE.timer);
+    TELEMETRY_STATE.timer = null;
+  }
+}
+function resetTelemetryFilters(){
+  $("#telemetry-range").value = "24h";
+  $("#telemetry-start").value = "";
+  $("#telemetry-end").value = "";
+  $("#telemetry-status").selectedIndex = -1;
+  for(let o of $("#telemetry-status").options) o.selected = false;
+  $("#telemetry-runner").value = "";
+  $("#telemetry-model").value = "";
+  $("#telemetry-run-kind").value = "";
+  $("#telemetry-mode").value = "";
+  $("#telemetry-repo").value = "";
+  $("#telemetry-change").value = "";
+  $("#telemetry-q").value = "";
+  $("#telemetry-sort").value = "newest";
+  TELEMETRY_STATE.selectedIds.clear();
+  TELEMETRY_STATE.selectionMode = "all";
+  scheduleTelemetryRefresh();
+}
+function applyTelemetryPreset(preset){
+  if(preset==="active"){ $("#telemetry-status").value = "running"; }
+  if(preset==="attention" || preset==="awaiting"){ $("#telemetry-status").value = "awaiting_input"; }
+  if(preset==="failed" || preset==="expensive-failures"){ $("#telemetry-status").value = "failed"; }
+  if(preset==="tokens"){ TELEMETRY_STATE.selectedIds.clear(); TELEMETRY_STATE.selectionMode = "all"; }
+  if(preset==="missing"){ TELEMETRY_STATE.selectedIds.clear(); TELEMETRY_STATE.selectionMode = "all"; }
+  if(preset==="slow") $("#telemetry-sort").value = "slowest";
+  if(preset==="tokens") $("#telemetry-sort").value = "tokens";
+  if(preset==="expensive-failures") $("#telemetry-sort").value = "expensive";
+  scheduleTelemetryRefresh();
+}
+function initTelemetry(){
+  ["#telemetry-range","#telemetry-start","#telemetry-end","#telemetry-status","#telemetry-runner","#telemetry-model","#telemetry-run-kind","#telemetry-mode","#telemetry-repo","#telemetry-change","#telemetry-q","#telemetry-sort","#telemetry-chart-bucket","#telemetry-rollup"].forEach(selector=>{
+    const el = $(selector);
+    if(!el) return;
+    el.addEventListener(el.tagName==="INPUT" ? "input" : "change", ()=>{
+      TELEMETRY_STATE.chartBucket = $("#telemetry-chart-bucket")?.value || "day";
+      TELEMETRY_STATE.rollup = $("#telemetry-rollup")?.value || "run";
+      scheduleTelemetryRefresh();
+    });
+  });
+  $("#telemetry-refresh")?.addEventListener("click", refreshTelemetry);
+  $("#telemetry-reset-filters")?.addEventListener("click", resetTelemetryFilters);
+  $("#telemetry-all")?.addEventListener("click", ()=>{ TELEMETRY_STATE.selectedIds.clear(); TELEMETRY_STATE.selectionMode = "all"; refreshTelemetry(); });
+  $("#telemetry-select-visible")?.addEventListener("click", ()=>{ TELEMETRY_STATE.visibleRuns.forEach(row=>TELEMETRY_STATE.selectedIds.add(row.id)); TELEMETRY_STATE.selectionMode = TELEMETRY_STATE.selectedIds.size ? "selected" : "all"; refreshTelemetry(); });
+  $("#telemetry-clear")?.addEventListener("click", ()=>{ TELEMETRY_STATE.selectedIds.clear(); TELEMETRY_STATE.selectionMode = "all"; refreshTelemetry(); });
+  $$("#telemetry-presets .telemetry-chip").forEach(btn=>btn.addEventListener("click", ()=>applyTelemetryPreset(btn.dataset.preset)));
+}
+initTelemetry();
+window.addEventListener("resize", ()=>{
+  Object.values(TELEMETRY_STATE.charts || {}).forEach(chart=>chart.resize());
+});
+
 // Navigation
 $$("#nav .nav-item").forEach(item=>{
   item.addEventListener("click", ()=>{
@@ -2018,9 +2695,11 @@ $$("#nav .nav-item").forEach(item=>{
     /* Show sidebar workflow rail only on Runs tab */
     const sidebarWF = $("#sidebar-workflow");
     if(sidebarWF) sidebarWF.classList.toggle("is-visible", v==="runs");
+    syncTelemetryPolling();
     if(v==="agents") loadAgents();
     if(v==="corpus") loadCorpus();
     if(v==="evaluate") loadEvaluate();
+    if(v==="telemetry") refreshTelemetry();
     if(v==="settings") loadSettings();
   });
 });
@@ -2121,6 +2800,19 @@ function buildAgentDefaultsUI(agentDefaults) {
       selectWrap.className = "set-select-help-wrap";
       selectWrap.appendChild(select);
       selectWrap.appendChild(createSettingsHelpTrigger("agent-default-cell", {agentName, runner}, `Help: model override for ${agentName} on ${runner}`));
+
+      if (runner === "openai-compat") {
+        // Replace select with text input + datalist for openai-compat
+        const input = document.createElement("input");
+        input.type = "text";
+        input.id = select.id;
+        input.setAttribute("list", "openai-compat-model-suggestions");
+        input.placeholder = "Enter model name";
+        input.className = select.className;
+        input.value = currentDefault;
+        selectWrap.replaceChild(input, selectWrap.firstChild);
+      }
+
       td.appendChild(selectWrap);
       tr.appendChild(td);
     });
@@ -2171,6 +2863,16 @@ function updateOpikSettingsStatus(opik){
 async function loadSettings(){
   const cfg = await api("/settings");
   RUNNER_MODELS = cfg.runner_models || RUNNER_MODELS;
+  // Populate openai-compat datalist with preset suggestions
+  const datalist = document.getElementById("openai-compat-model-suggestions");
+  if (datalist) {
+    datalist.innerHTML = "";
+    (RUNNER_MODELS["openai-compat"] || []).forEach(m => {
+      const o = document.createElement("option");
+      o.value = m;
+      datalist.appendChild(o);
+    });
+  }
   REPO_PATH_OPTIONS = arrayValues(cfg.repo_path_options);
   REPO_CUSTOM_VALUES = uniqueSorted(arrayValues(cfg.repo_paths?.custom_values));
   REPO_BASE_DIR = cfg.repo_paths?.base_dir || "";
@@ -2382,10 +3084,42 @@ $("#s-opik-connect").addEventListener("click", async ()=>{
 
 function syncModelSelectFor(runnerSelector, modelSelector){
   const r = $(runnerSelector).value;
-  const sel = $(modelSelector); sel.innerHTML="";
+  const existingEl = $(modelSelector);
+  const parent = existingEl.parentNode;
+  const currentValue = existingEl.value || "";
+
+  if (r === "openai-compat") {
+    if (existingEl.tagName !== "INPUT") {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.id = existingEl.id;
+      input.setAttribute("list", "openai-compat-model-suggestions");
+      input.placeholder = "Enter model name";
+      input.className = existingEl.className;
+      input.value = currentValue;
+      parent.replaceChild(input, existingEl);
+    }
+    return;
+  }
+
+  // Closed runner: restore <select> if currently an <input>
+  if (existingEl.tagName !== "SELECT") {
+    const select = document.createElement("select");
+    select.id = existingEl.id;
+    select.className = existingEl.className;
+    parent.replaceChild(select, existingEl);
+  }
+
+  const sel = $(modelSelector);
+  sel.innerHTML = "";
   (RUNNER_MODELS[r]||[]).forEach(m=>{
     const o = document.createElement("option"); o.value=m; o.textContent=m; sel.appendChild(o);
   });
+  // Restore previous value if it matches a known option
+  const selEl = $(modelSelector);
+  if (currentValue && [...selEl.options].some(o => o.value === currentValue)) {
+    selEl.value = currentValue;
+  }
 }
 function syncRunConfigSelects(){
   syncModelSelectFor("#f-runner", "#f-model");

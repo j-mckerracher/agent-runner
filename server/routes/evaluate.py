@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from .. import evaluate
 from ..jobs import manager
-from core.runner_models import KNOWN_RUNNERS
+from core.runner_models import KNOWN_RUNNERS, resolve_runner_model
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,12 @@ async def submit_benchmark_run(payload: BenchmarkRunSubmit) -> dict:
     if payload.runner not in valid_runners:
         logger.warning("submit_benchmark_run: invalid runner=%s", payload.runner)
         raise HTTPException(400, f"runner must be one of: {', '.join(sorted(valid_runners))}")
+    if payload.model:
+        try:
+            resolve_runner_model(payload.runner, payload.model, cfg)
+        except ValueError as exc:
+            logger.warning("submit_benchmark_run: invalid model=%s for runner=%s: %s", payload.model, payload.runner, exc)
+            raise HTTPException(400, str(exc))
     difficulties = payload.difficulties or ["easy", "medium", "hard"]
     invalid = [item for item in difficulties if item not in {"easy", "medium", "hard"}]
     if invalid:

@@ -215,7 +215,7 @@ def validate_config(cfg: dict) -> list[str]:
                     )
                 elif not isinstance(model, str):
                     errors.append(f"agent_model_defaults[{agent_name}][{runner_key}] model must be a string")
-                elif runner_key in RUNNER_MODEL_CHOICES:
+                elif runner_key in RUNNER_MODEL_CHOICES and runner_key != "openai-compat":
                     valid_models = RUNNER_MODEL_CHOICES[runner_key]
                     if model not in valid_models:
                         errors.append(

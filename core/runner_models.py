@@ -44,16 +44,32 @@ COPILOT_MODEL_CHOICES = (
 
 DEFAULT_COPILOT_MODEL = "gpt-5-mini"
 
+# Suggested presets for the openai-compat runner. Any model name is accepted;
+# these appear as suggestions in the UI and are not an allowlist.
+OPENAI_COMPAT_MODEL_CHOICES = (
+    "gemma4:31b-cloud",
+    "deepseek-v4-pro:cloud",
+    "deepseek-v4-flash:cloud",
+    "qwen3.5:397b-cloud",
+    "glm-5.1:cloud",
+    "minimax-m2.7:cloud",
+    "kimi-k2.6:cloud"
+)
+
+DEFAULT_OPENAI_COMPAT_MODEL = "deepseek-v4-pro:cloud"
+
 RUNNER_MODEL_CHOICES: dict[str, tuple[str, ...]] = {
     "claude": CLAUDE_MODEL_CHOICES,
     "copilot": COPILOT_MODEL_CHOICES,
     "gemini": GEMINI_MODEL_CHOICES,
+    "openai-compat": OPENAI_COMPAT_MODEL_CHOICES,
 }
 
 RUNNER_DEFAULT_MODELS: dict[str, str] = {
     "claude": DEFAULT_CLAUDE_MODEL,
     "copilot": DEFAULT_COPILOT_MODEL,
     "gemini": DEFAULT_GEMINI_MODEL,
+    "openai-compat": DEFAULT_OPENAI_COMPAT_MODEL,
 }
 
 RUNNER_MODEL_PROVIDERS: dict[str, str] = {}
@@ -129,7 +145,8 @@ def is_copilot_runner(runner: str | None) -> bool:
     """Return True for the base Copilot runner and any 'copilot-<alias>' variant."""
     if not runner:
         return False
-    return runner == "copilot" or runner.startswith("copilot-")
+    runner_lower = runner.lower()
+    return runner_lower == "copilot" or runner_lower.startswith("copilot-")
 
 
 def _resolve_alias_model(
@@ -147,7 +164,7 @@ def resolve_runner_transport_config(
     runner: str,
     config: dict | None = None,
 ) -> dict[str, Any]:
-    alias = _resolve_alias(runner, config)
+    alias = _resolve_alias(runner, config) or _resolve_alias(runner.lower(), config)
     if alias is None:
         return {}
 
@@ -176,20 +193,22 @@ def resolve_runner_model(
     config: dict | None = None,
 ) -> str:
     """Resolve the model string for a given runner (provider or custom alias)."""
-    alias = _resolve_alias(runner, config)
+    alias = _resolve_alias(runner, config) or _resolve_alias(runner.lower(), config)
     if alias is not None:
         return _resolve_alias_model(alias, explicit_model)
 
-    if runner in RUNNER_DEFAULT_MODELS:
+    runner_lower = runner.lower()
+    if runner_lower in RUNNER_DEFAULT_MODELS:
         if explicit_model is not None:
-            allowed = RUNNER_MODEL_CHOICES.get(runner, ())
-            if allowed and explicit_model not in allowed:
-                raise ValueError(
-                    f"Model '{explicit_model}' is not valid for runner '{runner}'. "
-                    f"Valid models: {', '.join(allowed)}"
-                )
-            return _qualify_model_for_runner(runner, explicit_model, config)
-        return _qualify_model_for_runner(runner, RUNNER_DEFAULT_MODELS[runner], config)
+            if runner_lower != "openai-compat":
+                allowed = RUNNER_MODEL_CHOICES.get(runner_lower, ())
+                if allowed and explicit_model not in allowed:
+                    raise ValueError(
+                        f"Model '{explicit_model}' is not valid for runner '{runner_lower}'. "
+                        f"Valid models: {', '.join(allowed)}"
+                    )
+            return _qualify_model_for_runner(runner_lower, explicit_model, config)
+        return _qualify_model_for_runner(runner_lower, RUNNER_DEFAULT_MODELS[runner_lower], config)
 
     raise ValueError(
         f"Unknown runner: '{runner}'. Must be a known provider "

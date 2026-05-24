@@ -210,6 +210,8 @@ def resolve_model_override(
     if not inherited_model:
         return None
 
+    if runner == "openai-compat":
+        return inherited_model
     allowed = builtin_model_choices_for_runner(runner)
     if allowed is None or inherited_model in allowed:
         return inherited_model

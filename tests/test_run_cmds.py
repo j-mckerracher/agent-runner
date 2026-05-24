@@ -8,6 +8,7 @@ Difficulty rubric for this file:
 """
 
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -135,6 +136,23 @@ class CliSessionLogTests(unittest.TestCase):
 
 
 class LlmCallOpikTelemetryTests(unittest.TestCase):
+    def test_easy__emit_event_inherits_current_stage(self):
+        from server import events
+        from server.events import read_all
+
+        with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as fh:
+            path = fh.name
+        events._default = None
+        try:
+            with patch.dict(os.environ, {"AGENT_RUNNER_EVENT_LOG": path, "AGENT_RUNNER_CURRENT_STAGE": "execution"}, clear=False):
+                run_cmds._emit_event("llm.call", runner="claude")
+
+            rows = read_all(path)
+            self.assertEqual(rows[0]["stage"], "execution")
+        finally:
+            events._default = None
+            Path(path).unlink(missing_ok=True)
+
     def test_medium__llm_call_event_updates_opik_with_usage_metadata_without_raw_prompt(self):
         with (
             patch("core.run_cmds._emit_event") as emit_event,
@@ -271,6 +289,201 @@ class OpenaiCompatRunnerTests(unittest.TestCase):
                 self.assertEqual(result, "Done.")
                 self.assertTrue(target_file.is_file())
                 self.assertEqual(target_file.read_text(encoding="utf-8"), "hello from openai-compat\n")
+
+
+class RunAgentCmdDispatchMatrixTests(unittest.TestCase):
+    """For every (runner, model) in RUNNER_MODEL_CHOICES, verify run_agent_cmd
+    dispatches to the correct runner function with the exact selected model."""
+
+    @classmethod
+    def setUpClass(cls):
+        from core.runner_models import RUNNER_MODEL_CHOICES as _choices
+        cls._choices = _choices
+
+    def test_medium__claude_dispatch_passes_model(self):
+        for model in self._choices["claude"]:
+            with self.subTest(model=model):
+                with patch("core.run_cmds.run_claude_cmd", return_value="OK") as run_fn:
+                    result = run_cmds.run_agent_cmd(
+                        runner="claude",
+                        prompt="Say OK",
+                        agent="qa-evaluator",
+                        runner_model=model,
+                    )
+                self.assertEqual(result, "OK")
+                run_fn.assert_called_once()
+                self.assertEqual(run_fn.call_args.kwargs.get("model"), model)
+
+    def test_medium__copilot_dispatch_passes_model(self):
+        for model in self._choices["copilot"]:
+            with self.subTest(model=model):
+                with patch("core.run_cmds.run_copilot_cmd", return_value="OK") as run_fn:
+                    result = run_cmds.run_agent_cmd(
+                        runner="copilot",
+                        prompt="Say OK",
+                        agent="qa-evaluator",
+                        runner_model=model,
+                    )
+                self.assertEqual(result, "OK")
+                run_fn.assert_called_once()
+                self.assertEqual(run_fn.call_args.kwargs.get("model"), model)
+                self.assertEqual(run_fn.call_args.kwargs.get("cli_cmd"), "copilot")
+
+    def test_medium__gemini_dispatch_passes_model(self):
+        for model in self._choices["gemini"]:
+            with self.subTest(model=model):
+                with patch("core.run_cmds.run_gemini_cmd", return_value="OK") as run_fn:
+                    result = run_cmds.run_agent_cmd(
+                        runner="gemini",
+                        prompt="Say OK",
+                        agent="qa-evaluator",
+                        runner_model=model,
+                    )
+                self.assertEqual(result, "OK")
+                run_fn.assert_called_once()
+                self.assertEqual(run_fn.call_args.kwargs.get("model"), model)
+
+    def test_medium__openai_compat_dispatch_passes_model(self):
+        for model in self._choices["openai-compat"]:
+            with self.subTest(model=model):
+                with patch("core.run_cmds.run_openai_compat_cmd", return_value="OK") as run_fn:
+                    result = run_cmds.run_agent_cmd(
+                        runner="openai-compat",
+                        prompt="Say OK",
+                        agent="qa-evaluator",
+                        runner_model=model,
+                        repo="/tmp/repo",
+                        change_id="CHANGE-1",
+                    )
+                self.assertEqual(result, "OK")
+                run_fn.assert_called_once()
+                self.assertEqual(run_fn.call_args.kwargs.get("model"), model)
+                self.assertEqual(run_fn.call_args.kwargs.get("runner"), "openai-compat")
+                self.assertEqual(run_fn.call_args.kwargs.get("repo"), "/tmp/repo")
+                self.assertEqual(run_fn.call_args.kwargs.get("change_id"), "CHANGE-1")
+
+
+class RunnerCommandPayloadMatrixTests(unittest.TestCase):
+    """For every model in RUNNER_MODEL_CHOICES, verify the lower-level runner
+    function constructs the correct CLI command or API payload with that model."""
+
+    @classmethod
+    def setUpClass(cls):
+        from core.runner_models import RUNNER_MODEL_CHOICES as _choices
+        cls._choices = _choices
+
+    # -- claude ----------------------------------------------------------------
+
+    def test_medium__claude_includes_model_in_command(self):
+        for model in self._choices["claude"]:
+            with self.subTest(model=model):
+                fake_result = subprocess.CompletedProcess(
+                    args=[],
+                    returncode=0,
+                    stdout=json.dumps({
+                        "result": "OK",
+                        "total_input_tokens": 1,
+                        "total_output_tokens": 1,
+                        "cost_usd": 0.0,
+                    }),
+                    stderr="",
+                )
+                with patch("core.run_cmds._run_cli", return_value=fake_result) as run_cli:
+                    result = run_cmds.run_claude_cmd(
+                        prompt="Say OK",
+                        agent="qa-evaluator",
+                        model=model,
+                    )
+                self.assertEqual(result, "OK")
+                run_cli.assert_called_once()
+                cmd = run_cli.call_args.args[0]
+                self.assertIn("--model", cmd)
+                model_idx = cmd.index("--model")
+                self.assertLess(model_idx + 1, len(cmd))
+                self.assertEqual(cmd[model_idx + 1], model)
+
+    # -- copilot ---------------------------------------------------------------
+
+    def test_medium__copilot_includes_model_in_command(self):
+        for model in self._choices["copilot"]:
+            with self.subTest(model=model):
+                fake_result = subprocess.CompletedProcess(
+                    args=["copilot"],
+                    returncode=0,
+                    stdout="OK",
+                    stderr="",
+                )
+                with (
+                    patch.dict(run_cmds._COPILOT_EMBEDDED_AGENT_FALLBACK, {}, clear=True),
+                    patch("core.run_cmds._run_cli", return_value=fake_result) as run_cli,
+                ):
+                    result = run_cmds.run_copilot_cmd(
+                        prompt="Say OK",
+                        agent="qa-evaluator",
+                        model=model,
+                        cli_cmd="copilot",
+                    )
+                self.assertEqual(result, "OK")
+                run_cli.assert_called_once()
+                cmd = run_cli.call_args.args[0]
+                self.assertIn("--model", cmd)
+                model_idx = cmd.index("--model")
+                self.assertLess(model_idx + 1, len(cmd))
+                self.assertEqual(cmd[model_idx + 1], model)
+
+    # -- gemini ----------------------------------------------------------------
+
+    def test_medium__gemini_includes_model_in_command(self):
+        for model in self._choices["gemini"]:
+            with self.subTest(model=model):
+                fake_result = subprocess.CompletedProcess(
+                    args=["gemini"],
+                    returncode=0,
+                    stdout="OK",
+                    stderr="",
+                )
+                with (
+                    patch("core.run_cmds._build_gemini_prompt", return_value="SYSTEM\n\nSay OK"),
+                    patch("core.run_cmds._run_cli", return_value=fake_result) as run_cli,
+                ):
+                    result = run_cmds.run_gemini_cmd(
+                        prompt="Say OK",
+                        agent="qa-evaluator",
+                        model=model,
+                    )
+                self.assertEqual(result, "OK")
+                run_cli.assert_called_once()
+                cmd = run_cli.call_args.args[0]
+                self.assertIn("--model", cmd)
+                model_idx = cmd.index("--model")
+                self.assertLess(model_idx + 1, len(cmd))
+                self.assertEqual(cmd[model_idx + 1], model)
+
+    # -- openai-compat ---------------------------------------------------------
+
+    def test_medium__openai_compat_passes_model_to_chat_api(self):
+        for model in self._choices["openai-compat"]:
+            with self.subTest(model=model):
+                chat_response = {
+                    "message": {"role": "assistant", "content": "OK"},
+                }
+                with (
+                    tempfile.TemporaryDirectory() as tmpdir,
+                    patch("core.run_cmds.build_runner_agent_instructions", return_value="AGENT SPEC"),
+                    patch("core.run_cmds._openai_compat_show_capabilities", return_value=["completion", "tools"]),
+                    patch("core.run_cmds._openai_compat_chat", return_value=chat_response) as chat_fn,
+                ):
+                    result = run_cmds.run_openai_compat_cmd(
+                        prompt="Say OK",
+                        agent="qa-evaluator",
+                        model=model,
+                        runner="openai-compat",
+                        repo=tmpdir,
+                        change_id="CHANGE-1",
+                    )
+                self.assertEqual(result, "OK")
+                chat_fn.assert_called()
+                self.assertEqual(chat_fn.call_args.kwargs.get("model"), model)
 
 
 if __name__ == "__main__":

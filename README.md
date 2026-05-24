@@ -190,6 +190,7 @@ Current built-in default models are:
 - `claude` → `claude-haiku-4-5-20251001`
 - `copilot` → `gpt-5-mini`
 - `gemini` → `gemini-2.5-flash`
+- `openai-compat` → `deepseek-v4-pro:cloud` (any model name accepted; presets are suggestions only)
 
 Want to create a custom alias for a local or third-party LLM endpoint (for example, LM Studio, OpenRouter, or a LiteLLM proxy)? See [`docs/openai-compat-setup.md`](docs/openai-compat-setup.md).
 
@@ -210,8 +211,8 @@ python3 run.py \
 | `--change-id ID` | derived from input | Stable identifier for this workflow run. Derived automatically from the story fixture or ADO item when omitted; only required when you need to override the value embedded in the input. |
 | `--ado-url URL` | none | Azure DevOps work item URL (`https://dev.azure.com/<org>/<project>/_workitems/edit/<id>`). Triggers live ADO intake mode. Mutually exclusive with `--story-file`. |
 | `--story-file PATH` | `workflow-fixtures/synthetic_story.json` | Path to a local synthetic story fixture JSON file. Used for offline / test runs. Falls back to the bundled `TEST-AC-001` fixture when neither `--ado-url` nor `--story-file` is provided. |
-| `--runner NAME` | `claude` | LLM backend to use: `claude` (Anthropic), `copilot` (OpenAI/GitHub), `gemini` (Google), or a custom alias defined in `~/.agent-runner/config.json` under `runner_aliases`. |
-| `--model NAME` | runner default | Model name to pass to the selected runner. Defaults to the runner's built-in default (`claude-haiku-4-5-20251001`, `gpt-5-mini`, or `gemini-2.5-flash`) when omitted. |
+| `--runner NAME` | `claude` | LLM backend to use: `claude` (Anthropic), `copilot` (OpenAI/GitHub), `gemini` (Google), `openai-compat` (any OpenAI-compatible endpoint), or a custom alias defined in `~/.agent-runner/config.json` under `runner_aliases`. |
+| `--model NAME` | runner default | Model name to pass to the selected runner. Defaults to the runner's built-in default when omitted. For `openai-compat`, any model name is accepted; `claude`/`copilot`/`gemini` require a known model from their allowlists. |
 | `--extra-context TEXT` | none | Free-form text appended verbatim to the intake agent's prompt. Useful for passing a reference PR URL, design notes, or other supplemental context. |
 | `--skip-lessons-optimizer` | off | Skip the lessons-optimizer stage at the end of the workflow. Saves time when you don't need the metacognitive improvement pass. |
 | `--skip-materialize` | off | Skip copying agent/skill source files into runner-specific directories before the workflow starts. Use only when assets are already up-to-date. |

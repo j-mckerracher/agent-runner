@@ -7,8 +7,9 @@ Sets up Opik from environment variables and provides helpers for:
 - Calling evaluator agents via Anthropic SDK or Gemini SDK with @opik.track
 
 Required environment variables:
-    ANTHROPIC_API_KEY           — Anthropic SDK key (required when runner != "gemini")
+    ANTHROPIC_API_KEY           — Anthropic SDK key (required when runner is "claude")
     GEMINI_API_KEY              — Gemini API key (required when runner == "gemini")
+    OPENAI_COMPAT_API_KEY       — OpenAI-compat API key (set via runner_aliases[].api_key_env in config)
     OPIK_API_KEY                — Opik Cloud key  (omit when using a local instance)
     OPIK_WORKSPACE              — Opik workspace name (optional, Cloud only)
     OPIK_URL_OVERRIDE           — Self-hosted Opik URL, e.g. http://localhost:5173/api
@@ -126,6 +127,7 @@ def call_evaluator_sdk(
     When runner=="copilot", uses Copilot CLI with the selected model.
     When runner=="gemini", uses the Gemini API (GEMINI_API_KEY required).
     When runner=="claude", uses the Anthropic API (ANTHROPIC_API_KEY required).
+    When runner=="openai-compat", uses the OpenAI-compatible chat API.
     Unknown runners raise ValueError.
 
     1. Loads the agent's system prompt from .claude/agents/*.agent.md
@@ -137,8 +139,8 @@ def call_evaluator_sdk(
     Args:
         context:       The evaluator prompt / instruction string.
         agent_name:    Slug used to locate the .agent.md file (e.g. "task-plan-evaluator").
-        model:         Model ID (Anthropic, Copilot, or Gemini depending on runner).
-        runner:        One of "copilot", "claude", or "gemini".
+        model:         Model ID (Anthropic, Copilot, Gemini, or OpenAI-compat depending on runner).
+        runner:        One of "copilot", "claude", "gemini", or "openai-compat".
         runner_model:  Explicit model name to use (overrides *model* when runner=="gemini").
 
     Returns:
@@ -177,7 +179,7 @@ def call_evaluator_sdk(
         # Token metrics are emitted directly by run_copilot_cmd
         return text
 
-    elif provider == "openai-compat":
+    elif runner == "openai-compat" or provider == "openai-compat":
         logger.info("call_evaluator_sdk: using OpenAI-compatible chat API model=%s agent=%s runner=%s", model, agent_name, runner)
         logger.debug("call_evaluator_sdk: openai-compat system_prompt len=%d, user_message len=%d", len(system_prompt), len(user_message))
         try:
@@ -271,7 +273,7 @@ def call_evaluator_sdk(
         return text
 
     else:
-        raise ValueError(f"Unknown runner={runner} for call_evaluator_sdk; must be one of 'copilot', 'claude', 'gemini', or a copilot alias (copilot-<name>)")
+        raise ValueError(f"Unknown runner={runner} for call_evaluator_sdk; must be one of 'copilot', 'claude', 'gemini', 'openai-compat', or a copilot alias (copilot-<name>)")
 
 
 def _load_runtime_config_for_provider() -> dict:

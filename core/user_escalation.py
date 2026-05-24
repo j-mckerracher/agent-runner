@@ -77,6 +77,9 @@ def _emit_event(type: str, **fields: Any) -> None:
         return
     try:
         from server.events import emit
+        stage = fields.get("stage") or os.environ.get("AGENT_RUNNER_CURRENT_STAGE")
+        if stage:
+            fields["stage"] = stage
         emit(type, **fields)
     except Exception:
         pass
@@ -487,6 +490,5 @@ def list_pending_escalations(change_id: str) -> list[dict]:
                 except (json.JSONDecodeError, OSError) as exc:
                     logger.warning("list_pending_escalations: error reading %s: %s", req_file, exc)
     return pending
-
 
 
