@@ -862,7 +862,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .telemetry-chart-card{border:1px solid var(--br);border-radius:12px;background:rgba(7,8,11,.38);padding:14px;min-height:318px;overflow:hidden}
 .telemetry-chart-card.model-comparison,.telemetry-chart-card.model-run-counts,.telemetry-chart-card.loop-comparison{min-height:392px}
 .telemetry-chart-card.wide{grid-column:1 / -1;min-height:378px}
-.telemetry-chart-card.stage-boxplot{min-height:430px}
+.telemetry-chart-card.stage-boxplot,.telemetry-chart-card.stage-token-boxplot{min-height:430px}
 .telemetry-chart-copy{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}
 .telemetry-chart-title{font-size:13px;font-weight:700;color:var(--t1);line-height:1.2}
 .telemetry-chart-subtitle{font-family:var(--mono);font-size:10px;color:var(--t2);line-height:1.45;margin-top:4px}
@@ -870,7 +870,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .telemetry-chart{width:100%;height:286px}
 .telemetry-chart-card.model-comparison .telemetry-chart,.telemetry-chart-card.model-run-counts .telemetry-chart,.telemetry-chart-card.loop-comparison .telemetry-chart{height:346px}
 .telemetry-chart-card.wide .telemetry-chart{height:326px}
-.telemetry-chart-card.stage-boxplot .telemetry-chart{height:372px}
+.telemetry-chart-card.stage-boxplot .telemetry-chart,.telemetry-chart-card.stage-token-boxplot .telemetry-chart{height:372px}
 .status.awaiting_input{background:rgba(180,140,255,0.15);color:#c4adff}
 @media (max-width:1280px){
   .view[data-view="telemetry"] #telemetry-cards.cards{grid-template-columns:repeat(2,minmax(220px,1fr))}
@@ -1463,6 +1463,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
             <div class="telemetry-chart-card wide is-primary run-duration-card"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">Run duration trend</div><div class="telemetry-chart-subtitle">Each dot is a run; median and P95 trend lines expose drift. Drag the bottom time-window slider to zoom the visible range.</div></div><span class="telemetry-chart-guide">⇤ time zoom slider ⇥</span></div><div id="telemetry-chart-duration" class="telemetry-chart"></div></div>
             <div class="telemetry-chart-card wide is-primary"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">Token usage trend</div><div class="telemetry-chart-subtitle">Stacked bars split input/output tokens; the line shows tokens per run.</div></div></div><div id="telemetry-chart-tokens" class="telemetry-chart"></div></div>
             <div class="telemetry-chart-card wide stage-boxplot"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">Stage duration box plot</div><div class="telemetry-chart-subtitle">Each row is one stage across the currently filtered runs. Box = P25-P75, center line = median, whiskers = min/max, marker = P95.</div></div></div><div id="telemetry-chart-stage-boxplot" class="telemetry-chart"></div></div>
+            <div class="telemetry-chart-card wide stage-token-boxplot"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">Stage token use box plot</div><div class="telemetry-chart-subtitle">Log scale distribution of total tokens per stage per run. Box = P25-P75, center line = median, whiskers = min/max, marker = P95.</div></div></div><div id="telemetry-chart-stage-token-boxplot" class="telemetry-chart"></div></div>
             <div class="telemetry-chart-card model-comparison"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">Model comparison</div><div class="telemetry-chart-subtitle">Each point aggregates one runner/model across the current filters. Color is stable per model; point size is fixed so nearby models stay readable.</div></div></div><div id="telemetry-chart-models" class="telemetry-chart"></div></div>
             <div class="telemetry-chart-card model-run-counts"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">Runs per model</div><div class="telemetry-chart-subtitle">Counts how many currently filtered runs used each model. Bar colors match the model comparison chart.</div></div></div><div id="telemetry-chart-model-counts" class="telemetry-chart"></div></div>
             <div class="telemetry-chart-card"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">AC complexity</div><div class="telemetry-chart-subtitle">Acceptance criteria count compared with elapsed time.</div></div></div><div id="telemetry-chart-ac" class="telemetry-chart"></div></div>
@@ -3043,21 +3044,25 @@ function renderTelemetryCharts(charts){
   });
 
   const tokenSeries = payload.token_series || [];
+  const positiveLogValue = value=>{
+    const n = Number(value);
+    return n > 0 ? n : null;
+  };
   renderTelemetryChart("telemetry-chart-tokens", {
     legend:{top:0,right:8},
     grid:{left:62,right:70,top:54,bottom:44,containLabel:true},
     tooltip:{trigger:"axis",confine:true,backgroundColor:"#141720",borderColor:"rgba(255,255,255,.13)",textStyle:{color:"#e2ddd5"}},
     xAxis:{type:"category",data:tokenSeries.map(row=>row.bucket),axisLabel:{hideOverlap:true}},
     yAxis:[
-      {type:"value",name:"Total tokens",nameGap:18,splitLine:{lineStyle:{color:"rgba(255,255,255,.06)"}}},
-      {type:"value",name:"Tokens/run",nameGap:18,splitLine:{show:false}},
+      {type:"log",name:"Total tokens",nameGap:18,min:1,splitLine:{lineStyle:{color:"rgba(255,255,255,.06)"}}},
+      {type:"log",name:"Tokens/run",nameGap:18,min:1,splitLine:{show:false}},
     ],
     series:[
-      {name:"Input",type:"bar",stack:"tokens",barMaxWidth:34,data:tokenSeries.map(row=>row.tokens_in||0),itemStyle:{color:"#4a9dd4"}},
-      {name:"Output",type:"bar",stack:"tokens",barMaxWidth:34,data:tokenSeries.map(row=>row.tokens_out||0),itemStyle:{color:"#c4873a"}},
-      {name:"Tokens/run",type:"line",yAxisIndex:1,showSymbol:true,data:tokenSeries.map(row=>row.tokens_per_run||0),lineStyle:{color:"#52c97b",width:2},itemStyle:{color:"#52c97b"}},
+      {name:"Input",type:"bar",stack:"tokens",barMaxWidth:34,data:tokenSeries.map(row=>positiveLogValue(row.tokens_in)),itemStyle:{color:"#4a9dd4"}},
+      {name:"Output",type:"bar",stack:"tokens",barMaxWidth:34,data:tokenSeries.map(row=>positiveLogValue(row.tokens_out)),itemStyle:{color:"#c4873a"}},
+      {name:"Tokens/run",type:"line",yAxisIndex:1,showSymbol:true,data:tokenSeries.map(row=>positiveLogValue(row.tokens_per_run)),lineStyle:{color:"#52c97b",width:2},itemStyle:{color:"#52c97b"}},
     ],
-  }, tokenSeries.length);
+  }, tokenSeries.some(row=>Number(row.tokens_in) > 0 || Number(row.tokens_out) > 0 || Number(row.tokens_per_run) > 0));
 
   const stageBoxRows = payload.stage_duration_boxplot || [];
   const stageBoxEl = $("#telemetry-chart-stage-boxplot");
@@ -3074,12 +3079,12 @@ function renderTelemetryCharts(charts){
   };
   renderTelemetryChart("telemetry-chart-stage-boxplot", {
     legend:{top:0,right:8,textStyle:{color:"#8a8580"}},
-    grid:{left:168,right:44,top:46,bottom:48,containLabel:false},
+    grid:{left:168,right:44,top:46,bottom:72,containLabel:false},
     tooltip:{trigger:"item",confine:true,backgroundColor:"#141720",borderColor:"rgba(255,255,255,.13)",textStyle:{color:"#e2ddd5"},formatter:params=>{
       if(params?.seriesType === "scatter") return stageBoxTooltip(params?.data?.[2]);
       return stageBoxTooltip(params?.data?.row || stageBoxRows[params?.dataIndex]);
     }},
-    xAxis:{type:"value",name:"Duration (s)",nameGap:18,splitLine:{lineStyle:{color:"rgba(255,255,255,.06)"}}},
+    xAxis:{type:"value",name:"Duration (s)",nameGap:34,nameLocation:"middle",nameTextStyle:{color:"#e2ddd5",fontWeight:700,padding:[12,0,0,0]},splitLine:{lineStyle:{color:"rgba(255,255,255,.06)"}}},
     yAxis:{type:"category",data:stageBoxLabels,inverse:true,axisLabel:{interval:0,color:"#c9c2b7",fontSize:11,margin:14}},
     series:[
       {
@@ -3103,6 +3108,51 @@ function renderTelemetryCharts(charts){
       },
     ],
   }, stageBoxRows.length);
+
+  const stageTokenRows = payload.stage_token_boxplot || [];
+  const stageTokenBoxEl = $("#telemetry-chart-stage-token-boxplot");
+  if(stageTokenBoxEl) stageTokenBoxEl.style.height = stageTokenRows.length ? `${Math.max(372, stageTokenRows.length * 38 + 124)}px` : "";
+  const stageTokenLabels = stageTokenRows.map(row=>row.stage || "unattributed");
+  const stageTokenTooltip = row=>{
+    const safe = row || {};
+    return `<strong>${escapeHtml(safe.stage || "unattributed")}</strong><br>` +
+      `Runs observed: ${formatNumber(safe.runs_observed || 0)}<br>` +
+      `Min: ${formatNumber(safe.min_tokens)} · P25: ${formatNumber(safe.q1_tokens)}<br>` +
+      `Median: ${formatNumber(safe.median_tokens)} · P75: ${formatNumber(safe.q3_tokens)}<br>` +
+      `P95: ${formatNumber(safe.p95_tokens)} · P99: ${formatNumber(safe.p99_tokens)}<br>` +
+      `Max: ${formatNumber(safe.max_tokens)} · Total: ${formatNumber(safe.total_tokens || 0)}`;
+  };
+  renderTelemetryChart("telemetry-chart-stage-token-boxplot", {
+    legend:{top:0,right:8,textStyle:{color:"#8a8580"}},
+    grid:{left:168,right:44,top:46,bottom:72,containLabel:false},
+    tooltip:{trigger:"item",confine:true,backgroundColor:"#141720",borderColor:"rgba(255,255,255,.13)",textStyle:{color:"#e2ddd5"},formatter:params=>{
+      if(params?.seriesType === "scatter") return stageTokenTooltip(params?.data?.[2]);
+      return stageTokenTooltip(params?.data?.row || stageTokenRows[params?.dataIndex]);
+    }},
+    xAxis:{type:"log",name:"Tokens",nameGap:34,nameLocation:"middle",nameTextStyle:{color:"#e2ddd5",fontWeight:700,padding:[12,0,0,0]},min:1,splitLine:{lineStyle:{color:"rgba(255,255,255,.06)"}}},
+    yAxis:{type:"category",data:stageTokenLabels,inverse:true,axisLabel:{interval:0,color:"#c9c2b7",fontSize:11,margin:14}},
+    series:[
+      {
+        name:"Token distribution",
+        type:"boxplot",
+        layout:"horizontal",
+        data:stageTokenRows.map(row=>({
+          value:[row.min_tokens,row.q1_tokens,row.median_tokens,row.q3_tokens,row.max_tokens].map(value=>positiveLogValue(value)),
+          row,
+        })),
+        itemStyle:{color:"rgba(82,201,123,.14)",borderColor:"#52c97b",borderWidth:1.3},
+        emphasis:{itemStyle:{borderColor:"#e2ddd5",borderWidth:1.8}},
+      },
+      {
+        name:"P95 marker",
+        type:"scatter",
+        data:stageTokenRows.map(row=>[positiveLogValue(row.p95_tokens), row.stage || "unattributed", row]),
+        symbolSize:8,
+        itemStyle:{color:"#d4a832"},
+        emphasis:{scale:1.4},
+      },
+    ],
+  }, stageTokenRows.length);
 
   const modelRows = payload.model_points || [];
   const modelNames = [...new Set(modelRows.map(row=>row.model_key || row.model || row.label || "unknown model"))];

@@ -351,6 +351,11 @@ class TelemetryRouteTests(unittest.TestCase):
         self.assertEqual(charts["stage_duration_boxplot"][0]["q1_seconds"], 240.0)
         self.assertEqual(charts["stage_duration_boxplot"][0]["q3_seconds"], 240.0)
         self.assertEqual(charts["stage_duration_boxplot"][0]["max_seconds"], 240.0)
+        self.assertEqual(charts["stage_token_boxplot"][0]["stage"], "execution")
+        self.assertEqual(charts["stage_token_boxplot"][0]["median_tokens"], 100.0)
+        self.assertEqual(charts["stage_token_boxplot"][0]["q1_tokens"], 100.0)
+        self.assertEqual(charts["stage_token_boxplot"][0]["q3_tokens"], 100.0)
+        self.assertEqual(charts["stage_token_boxplot"][0]["max_tokens"], 100.0)
         model_point = charts["model_points"][0]
         self.assertEqual(model_point["label"], "claude / claude-sonnet")
         self.assertEqual(model_point["runner"], "claude")
@@ -362,6 +367,60 @@ class TelemetryRouteTests(unittest.TestCase):
         loop_by_name = {row["loop_name"]: row for row in charts["loop_iteration_series"]}
         self.assertEqual(loop_by_name["eval-optimizer"]["total_iterations"], 3)
         self.assertEqual(loop_by_name["uow-eval"]["total_iterations"], 1)
+
+    def test_medium__stage_token_boxplot_omits_zero_token_stages_for_log_axis(self):
+        from server import db
+
+        self._insert_job(
+            "job_stage_tokens_one",
+            change_id="CHART-STAGE-TOKENS",
+            status="succeeded",
+            submitted_at="2026-05-23T00:00:00Z",
+            started_at="2026-05-23T00:01:00Z",
+            finished_at="2026-05-23T00:04:00Z",
+            tokens_in=120,
+            tokens_out=30,
+        )
+        self._insert_job(
+            "job_stage_tokens_two",
+            change_id="CHART-STAGE-TOKENS",
+            status="succeeded",
+            submitted_at="2026-05-23T01:00:00Z",
+            started_at="2026-05-23T01:01:00Z",
+            finished_at="2026-05-23T01:04:00Z",
+            tokens_in=220,
+            tokens_out=30,
+        )
+        self._insert_job(
+            "job_stage_tokens_zero",
+            change_id="CHART-STAGE-TOKENS",
+            status="succeeded",
+            submitted_at="2026-05-23T02:00:00Z",
+            started_at="2026-05-23T02:01:00Z",
+            finished_at="2026-05-23T02:04:00Z",
+            tokens_in=0,
+            tokens_out=0,
+        )
+        db.insert_telemetry_event("job_stage_tokens_one", {"seq": 1, "ts": "2026-05-23T00:01:30Z", "type": "llm.call", "stage": "execution", "tokens_in": 100, "tokens_out": 50})
+        db.insert_telemetry_event("job_stage_tokens_two", {"seq": 1, "ts": "2026-05-23T01:01:30Z", "type": "llm.call", "stage": "execution", "tokens_in": 200, "tokens_out": 50})
+        db.insert_telemetry_event("job_stage_tokens_zero", {"seq": 1, "ts": "2026-05-23T02:01:30Z", "type": "llm.call", "stage": "planning", "tokens_in": 0, "tokens_out": 0})
+
+        r = self.client.post(
+            "/telemetry/query",
+            json={
+                "selection_mode": "selected",
+                "job_ids": ["job_stage_tokens_one", "job_stage_tokens_two", "job_stage_tokens_zero"],
+            },
+        )
+
+        self.assertEqual(r.status_code, 200)
+        rows = r.json()["charts"]["stage_token_boxplot"]
+        self.assertEqual([row["stage"] for row in rows], ["execution"])
+        self.assertEqual(rows[0]["runs_observed"], 2)
+        self.assertEqual(rows[0]["min_tokens"], 150.0)
+        self.assertEqual(rows[0]["median_tokens"], 150.0)
+        self.assertEqual(rows[0]["p95_tokens"], 250.0)
+        self.assertEqual(rows[0]["max_tokens"], 250.0)
 
     def test_medium__telemetry_profile_endpoint_backfills_jsonl_events(self):
         events_path = Path(self.tmpdir) / "profile-events.jsonl"

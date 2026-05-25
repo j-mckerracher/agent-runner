@@ -512,10 +512,12 @@ def build_chart_payload(
     stage_duration_heatmap = []
     stage_duration_boxplot = []
     stage_token_heatmap = []
+    stage_token_boxplot = []
     loop_iteration_series = []
     stage_box_durations: dict[str, list[float]] = defaultdict(list)
     stage_box_failures: Counter[str] = Counter()
     stage_box_active: Counter[str] = Counter()
+    stage_box_tokens: dict[str, list[float]] = defaultdict(list)
     for profile in profiles:
         for span in profile.get("stage_spans") or []:
             stage = str(span.get("stage") or "unattributed")
@@ -525,6 +527,11 @@ def build_chart_payload(
                 stage_box_failures[stage] += 1
             if span.get("active"):
                 stage_box_active[stage] += 1
+        for row in profile.get("token_by_stage") or []:
+            stage = str(row.get("stage") or "unattributed")
+            tokens_total = int(row.get("tokens_total") or 0)
+            if tokens_total > 0:
+                stage_box_tokens[stage].append(float(tokens_total))
     for key in sorted(grouped):
         bucket_profiles = grouped[key]
         elapsed = [float(p["complete_elapsed_seconds"]) for p in bucket_profiles if p.get("complete_elapsed_seconds") is not None]
@@ -647,6 +654,22 @@ def build_chart_payload(
             **distribution_summary(values),
         })
 
+    for stage, values in sorted(stage_box_tokens.items(), key=_stage_box_sort, reverse=True):
+        summary = distribution_summary(values)
+        stage_token_boxplot.append({
+            "stage": stage,
+            "runs_observed": len(values),
+            "total_tokens": int(sum(values)),
+            "min_tokens": summary["min_seconds"],
+            "q1_tokens": summary["q1_seconds"],
+            "median_tokens": summary["median_seconds"],
+            "q3_tokens": summary["q3_seconds"],
+            "max_tokens": summary["max_seconds"],
+            "p95_tokens": summary["p95_seconds"],
+            "p99_tokens": summary["p99_seconds"],
+            "mean_tokens": summary["mean_seconds"],
+        })
+
     model_groups: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     model_run_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     parent_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -758,6 +781,7 @@ def build_chart_payload(
         "stage_duration_heatmap": stage_duration_heatmap,
         "stage_duration_boxplot": stage_duration_boxplot,
         "stage_token_heatmap": stage_token_heatmap,
+        "stage_token_boxplot": stage_token_boxplot,
         "model_points": model_points,
         "model_run_counts": model_run_counts,
         "ac_complexity_points": ac_points,

@@ -40,6 +40,12 @@ class GuiTelemetryRegressionTests(unittest.TestCase):
         self.assertIn('bucket:TELEMETRY_STATE.chartBucket || "day"', html)
         self.assertIn('api(`/telemetry/runs/${jobId}/profile`)', html)
         self.assertIn('function telemetryChartsAvailable()', html)
+        self.assertIn('Stage token use box plot', html)
+        self.assertIn('id="telemetry-chart-stage-token-boxplot"', html)
+        self.assertIn('payload.stage_token_boxplot || []', html)
+        self.assertIn('{type:"log",name:"Total tokens"', html)
+        self.assertIn('{type:"log",name:"Tokens/run"', html)
+        self.assertIn('nameTextStyle:{color:"#e2ddd5",fontWeight:700', html)
 
     def test_medium__pick_default_telemetry_run_prefers_active_then_newest(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
