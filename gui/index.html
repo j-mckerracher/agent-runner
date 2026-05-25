@@ -762,6 +762,14 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .eval-ac{margin:8px 0;padding:10px 12px;border:1px solid var(--br);border-radius:6px;background:rgba(20,23,32,.55)}
 .eval-ac.pass{border-color:rgba(82,201,123,.22)} .eval-ac.fail{border-color:rgba(224,90,70,.28)}
 .eval-ac-head{font-family:var(--mono);font-size:11px;color:var(--t1);margin-bottom:5px}
+.eval-story-preview{margin:8px 0 0;padding:12px;border:1px solid var(--br);border-radius:6px;background:rgba(20,23,32,.45);font-size:12px;color:var(--t2);line-height:1.5}
+.eval-story-preview h4{font-size:13px;color:var(--t1);margin:8px 0 4px}
+.eval-story-preview h4:first-child{margin-top:0}
+.corpus-detail{display:none;margin:14px 20px 0;padding:16px;border:1px solid var(--br);border-radius:8px;background:rgba(13,15,20,.58)}
+.corpus-detail.show{display:block}
+.corpus-detail h3{font-size:16px;margin-bottom:8px;color:var(--t1)}
+.corpus-detail h4{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--acc);margin:14px 0 7px}
+.corpus-detail p,.corpus-detail li{color:var(--t2);line-height:1.55}
 @media (max-width:1320px){
   .workflow-title{font-size:16px}
   .history-toggle-label{display:none}
@@ -1541,6 +1549,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
             <input type="text" id="eval-sha-custom" placeholder="enter a different commit SHA" autocomplete="off" spellcheck="false" style="margin-top:6px" hidden>
           </div>
           <div class="field"><label>Benchmarks</label><select id="eval-difficulty" multiple size="3"><option value="easy" selected>Easy</option><option value="medium" selected>Medium</option><option value="hard" selected>Hard</option></select></div>
+          <div id="eval-story-preview" class="eval-story-preview" hidden></div>
           <div class="row2">
             <div class="field"><label>Runner</label><select id="eval-runner"><option value="claude">Claude</option><option value="copilot">Copilot</option><option value="gemini">Gemini</option></select></div>
             <div class="field"><label>Model</label><select id="eval-model"></select></div>
@@ -1598,6 +1607,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
     <section class="view" data-view="corpus">
       <div class="view-header"><span class="view-title">Evaluation Results</span><span class="view-meta" id="corpus-meta"></span></div>
       <div class="simple-list" id="corpus-list"></div>
+      <div id="corpus-detail" class="corpus-detail"></div>
     </section>
 
     <!-- SETTINGS -->
@@ -4741,14 +4751,49 @@ async function loadAgents(){
 // Corpus
 async function loadCorpus(){
   const r = await api("/corpus"); const wrap = $("#corpus-list"); wrap.innerHTML="";
-  if(!r.items.length){ wrap.innerHTML = '<div class="empty">No stories found in corpus.</div>'; }
+  if(!r.items.length){ wrap.innerHTML = '<div class="empty">No evaluation results found. Run an evaluation to see results here.</div>'; }
   r.items.forEach(s=>{
-    const d = document.createElement("div"); d.className = "item";
-    const pr = s.pass_rate==null ? "—" : (Math.round(s.pass_rate*100)+"%");
-    d.innerHTML = `<h3>${s.id}</h3><div class="meta">${s.title||""} · runs: ${s.runs||0} · pass rate: ${pr} · ACs: ${s.ac_count||0}</div>`;
+    const d = document.createElement("div"); d.className = "item"; d.style.cursor = "pointer";
+    const pr = s.pass_rate==null ? "—" : (Math.round(s.pass_rate)+"%");
+    const difficulty = s.difficulty ? `${escapeHtml(s.difficulty.toUpperCase())} · ` : "";
+    const lastStatus = s.last_status ? ` · last: ${escapeHtml(s.last_status)}` : "";
+    d.innerHTML = `<h3>${escapeHtml(s.title || s.id)}</h3><div class="meta">${difficulty}runs: ${s.runs||0} · pass rate: ${pr} · ACs: ${s.ac_count||0}${lastStatus}</div>`;
+    d.addEventListener("click", ()=>loadCorpusDetail(s.id));
     wrap.appendChild(d);
   });
   $("#corpus-meta").textContent = `${r.count} stories`;
+}
+async function loadCorpusDetail(changeId){
+  const detail = $("#corpus-detail");
+  if(!detail) return;
+  try{
+    const story = await api(`/corpus/${changeId}`);
+    const history = (story.history || []).slice(0, 5);
+    const acs = (story.acceptance_criteria || []).map(ac=>{
+      const id = escapeHtml(ac.id || "AC-?");
+      const text = escapeHtml(ac.text || String(ac));
+      return `<li><strong>${id}:</strong> ${text}</li>`;
+    }).join("");
+    const historyHtml = history.map(h=>
+      `<tr><td class="mono">${escapeHtml(h.status||"unknown")}</td><td class="mono">${escapeHtml(h.submitted_at||"—")}</td><td class="mono">${escapeHtml(h.id||"—")}</td></tr>`
+    ).join("");
+    detail.innerHTML = `
+      <h3>${escapeHtml(story.title || story.id)}</h3>
+      <p>${escapeHtml(story.description || "No description available.")}</p>
+      <div class="row2" style="margin:12px 0">
+        <div><span style="color:var(--t3)">Runs:</span> <strong>${story.runs||0}</strong></div>
+        <div><span style="color:var(--t3)">Pass rate:</span> <strong>${story.pass_rate!=null ? Math.round(story.pass_rate)+"%" : "—"}</strong></div>
+      </div>
+      <h4>Acceptance criteria</h4>
+      <ul>${acs || "<li>No criteria recorded.</li>"}</ul>
+      <h4>Recent job history</h4>
+      ${historyHtml ? `<table style="width:100%;font-size:11px;color:var(--t2)"><tr><th>Status</th><th>Submitted</th><th>Job ID</th></tr>${historyHtml}</table>` : "<p>No job history available.</p>"}
+    `;
+    detail.classList.add("show");
+  }catch(e){
+    detail.innerHTML = `<div class="empty error">Failed to load story detail: ${escapeHtml(e.message)}</div>`;
+    detail.classList.add("show");
+  }
 }
 
 // Evaluate
@@ -4827,8 +4872,26 @@ function updateEvalShaOptions(bootstrapSha){
   }
   syncEvalShaCustomInput();
 }
+let _evalStories = [];
+function renderEvalStoryPreview(){
+  const preview = $("#eval-story-preview");
+  if(!preview) return;
+  const sel = $("#eval-difficulty");
+  if(!sel) return;
+  const selected = Array.from(sel.selectedOptions).map(o=>o.value);
+  const stories = _evalStories.filter(s=>selected.includes(s.difficulty));
+  if(!stories.length){ preview.hidden = true; return; }
+  preview.hidden = false;
+  preview.innerHTML = stories.map(s=>`
+    <h4>${escapeHtml(s.difficulty.toUpperCase())}: ${escapeHtml(s.title)}</h4>
+    <p>${escapeHtml(s.description)}</p>
+  `).join("");
+}
 async function loadEvaluate(){
   const [r, cfg] = await Promise.all([api("/evaluate/summary"), api("/settings")]);
+  try{ const sr = await api("/evaluate/stories"); _evalStories = sr.items || []; }catch(e){ _evalStories = []; }
+  const diffSel = $("#eval-difficulty");
+  if(diffSel){ diffSel.addEventListener("change", renderEvalStoryPreview); renderEvalStoryPreview(); }
   updateEvaluateOpikLink(cfg);
   updateEvalShaOptions(cfg.eval_bootstrap?.target_sha || "");
   updateEvalBaselineSelect(r.reports || []);

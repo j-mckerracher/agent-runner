@@ -36,6 +36,13 @@ async def get_summary() -> dict:
     return result
 
 
+@router.get("/stories")
+async def get_benchmark_stories() -> dict:
+    logger.debug("get_benchmark_stories: listing benchmark story definitions")
+    stories = evaluate.list_benchmark_stories()
+    return {"items": stories}
+
+
 @router.get("/reports")
 async def get_eval_reports() -> dict:
     reports = evaluate.list_eval_reports()

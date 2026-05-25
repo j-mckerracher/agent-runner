@@ -197,48 +197,171 @@ def _job_summary(change_id: str) -> dict[str, Any]:
     return {"runs": total, "pass_rate": rate, "last_status": last}
 
 
+def _list_stories_from_reports() -> list[dict[str, Any]]:
+    """Aggregate benchmark story definitions with eval report results."""
+    from eval.runner import DEFAULT_BENCHMARKS, DEFAULT_REPORTS
+
+    stories_map: dict[str, dict[str, Any]] = {}
+    for difficulty in ("easy", "medium", "hard"):
+        story_path = DEFAULT_BENCHMARKS / difficulty / "story.json"
+        if not story_path.is_file():
+            continue
+        try:
+            data = json.loads(story_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        cid = data.get("change_id", "")
+        if not cid:
+            continue
+        stories_map[cid] = {
+            "id": cid,
+            "title": data.get("title", cid),
+            "difficulty": difficulty,
+            "ac_count": len(data.get("acceptance_criteria") or []),
+            "description": data.get("description", ""),
+            "acceptance_criteria": data.get("acceptance_criteria", []),
+            "passed": 0,
+            "total": 0,
+            "last_score": None,
+        }
+
+    reports_dir = DEFAULT_REPORTS
+    if reports_dir.is_dir():
+        for path in sorted(reports_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+            if path.name == "latest.json":
+                continue
+            try:
+                report = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            for result in report.get("results") or []:
+                story = result.get("story") or {}
+                cid = story.get("change_id")
+                if not cid or cid not in stories_map:
+                    continue
+                stories_map[cid]["total"] += 1
+                if result.get("status") == "PASS":
+                    stories_map[cid]["passed"] += 1
+                score = (result.get("quality") or {}).get("weighted_score")
+                if score is not None:
+                    stories_map[cid]["last_score"] = score
+
+    out: list[dict[str, Any]] = []
+    for cid, info in stories_map.items():
+        summary = _job_summary(cid)
+        info["runs"] = info.pop("total", 0)
+        info["pass_rate"] = round(100.0 * info.pop("passed", 0) / info["runs"]) if info["runs"] else summary.get("pass_rate")
+        info["last_status"] = summary.get("last_status")
+        out.append(info)
+
+    out.sort(key=lambda s: s["id"])
+    logger.debug("_list_stories_from_reports: %d stories from reports", len(out))
+    return out
+
+
+def _get_story_from_reports(change_id: str) -> dict[str, Any] | None:
+    """Look up a single story from benchmarks + eval reports."""
+    from eval.runner import DEFAULT_BENCHMARKS, DEFAULT_REPORTS
+
+    story_def = None
+    difficulty = None
+    for d in ("easy", "medium", "hard"):
+        story_path = DEFAULT_BENCHMARKS / d / "story.json"
+        if not story_path.is_file():
+            continue
+        try:
+            data = json.loads(story_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if data.get("change_id") == change_id:
+            story_def = data
+            difficulty = d
+            break
+
+    if not story_def:
+        return None
+
+    passed = 0
+    total = 0
+    reports_dir = DEFAULT_REPORTS
+    if reports_dir.is_dir():
+        for path in sorted(reports_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+            if path.name == "latest.json":
+                continue
+            try:
+                report = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            for result in report.get("results") or []:
+                s = result.get("story") or {}
+                if s.get("change_id") != change_id:
+                    continue
+                total += 1
+                if result.get("status") == "PASS":
+                    passed += 1
+
+    pass_rate = round(100.0 * passed / total) if total else None
+    rows = db.list_jobs(change_id=change_id, run_kind="evaluation", limit=20)
+    history = [
+        {"id": r["id"], "submitted_at": r["submitted_at"], "status": r["status"]}
+        for r in rows
+    ]
+
+    return {
+        "id": change_id,
+        "title": story_def.get("title", change_id),
+        "difficulty": difficulty,
+        "runs": total,
+        "pass_rate": pass_rate,
+        "ac_count": len(story_def.get("acceptance_criteria") or []),
+        "last_status": rows[0]["status"] if rows else ("PASS" if passed > 0 else None),
+        "description": story_def.get("description") or "",
+        "acceptance_criteria": _normalize_acs(story_def.get("acceptance_criteria")),
+        "history": history,
+    }
+
+
 def list_stories() -> list[dict[str, Any]]:
     logger.debug("list_stories: EVAL_STORIES_ROOT=%s", EVAL_STORIES_ROOT)
     out: list[dict[str, Any]] = []
-    if not EVAL_STORIES_ROOT.is_dir():
-        logger.warning("list_stories: EVAL_STORIES_ROOT does not exist: %s", EVAL_STORIES_ROOT)
+    if EVAL_STORIES_ROOT.is_dir():
+        suite_index = _load_suite_index()
+        for path in sorted(EVAL_STORIES_ROOT.glob("*.json")):
+            data = _load_story(path)
+            if data is None or not _validate_story_payload(data, path):
+                continue
+            out.append(_story_record(path, data, suite_index))
+    if out:
+        logger.debug("list_stories: %d story(ies) returned from eval/stories", len(out))
         return out
-    suite_index = _load_suite_index()
-    for path in sorted(EVAL_STORIES_ROOT.glob("*.json")):
-        data = _load_story(path)
-        if data is None or not _validate_story_payload(data, path):
-            continue
-        out.append(_story_record(path, data, suite_index))
-    logger.debug("list_stories: %d story(ies) returned", len(out))
-    return out
+    logger.info("list_stories: no stories in eval/stories, aggregating from eval reports")
+    return _list_stories_from_reports()
 
 
 def get_story(change_id: str) -> dict[str, Any] | None:
     logger.debug("get_story: change_id=%s", change_id)
-    if not EVAL_STORIES_ROOT.is_dir():
-        logger.warning("get_story: EVAL_STORIES_ROOT does not exist: %s", EVAL_STORIES_ROOT)
-        return None
-    for path in sorted(EVAL_STORIES_ROOT.glob("*.json")):
-        data = _load_story(path)
-        if not data or not _validate_story_payload(data, path):
-            continue
-        if (data.get("change_id") or path.stem) != change_id:
-            continue
-        logger.debug("get_story: matched %s in file %s", change_id, path.name)
-        record = _story_record(path, data, _load_suite_index())
-        rows = db.list_jobs(change_id=change_id, run_kind="evaluation", limit=20)
-        history = [
-            {"id": r["id"], "submitted_at": r["submitted_at"], "status": r["status"]}
-            for r in rows
-        ]
-        return {
-            **record,
-            "description": data.get("description") or "",
-            "acceptance_criteria": _normalize_acs(data.get("acceptance_criteria")),
-            "history": history,
-        }
-    logger.debug("get_story: change_id=%s not found in corpus", change_id)
-    return None
+    if EVAL_STORIES_ROOT.is_dir():
+        for path in sorted(EVAL_STORIES_ROOT.glob("*.json")):
+            data = _load_story(path)
+            if not data or not _validate_story_payload(data, path):
+                continue
+            if (data.get("change_id") or path.stem) != change_id:
+                continue
+            logger.debug("get_story: matched %s in file %s", change_id, path.name)
+            record = _story_record(path, data, _load_suite_index())
+            rows = db.list_jobs(change_id=change_id, run_kind="evaluation", limit=20)
+            history = [
+                {"id": r["id"], "submitted_at": r["submitted_at"], "status": r["status"]}
+                for r in rows
+            ]
+            return {
+                **record,
+                "description": data.get("description") or "",
+                "acceptance_criteria": _normalize_acs(data.get("acceptance_criteria")),
+                "history": history,
+            }
+    logger.info("get_story: story not found in eval/stories, trying reports for change_id=%s", change_id)
+    return _get_story_from_reports(change_id)
 
 
 def story_path_for(change_id: str) -> Path | None:

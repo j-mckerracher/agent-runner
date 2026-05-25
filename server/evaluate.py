@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from eval.runner import DEFAULT_REPORTS
+from eval.runner import DEFAULT_BENCHMARKS, DEFAULT_REPORTS
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,27 @@ def list_eval_reports(root: Path | None = None) -> list[dict[str, Any]]:
             }
         )
     return reports
+
+
+def list_benchmark_stories(root: Path | None = None) -> list[dict[str, Any]]:
+    root = root or DEFAULT_BENCHMARKS
+    stories: list[dict[str, Any]] = []
+    for difficulty in ("easy", "medium", "hard"):
+        story_path = root / difficulty / "story.json"
+        if not story_path.is_file():
+            continue
+        try:
+            data = json.loads(story_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        stories.append({
+            "difficulty": difficulty,
+            "change_id": data.get("change_id", ""),
+            "title": data.get("title", ""),
+            "description": data.get("description", ""),
+            "acceptance_criteria": data.get("acceptance_criteria", []),
+        })
+    return stories
 
 
 def _mean(values: list[float]) -> float | None:
