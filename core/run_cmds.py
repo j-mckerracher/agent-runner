@@ -13,6 +13,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+import yaml
 from opik import opik_context
 
 from .agent_prompts import load_agent_system_prompt
@@ -680,7 +681,7 @@ class _OpenaiCompatToolRuntime:
                 "type": "function",
                 "function": {
                     "name": "write_file",
-                    "description": "Write a UTF-8 text file to an allowed path, creating parent directories when needed.",
+                    "description": "Write a UTF-8 text file to an allowed path, creating parent directories when needed. Do not use for protected workflow artifacts; use the matching typed writer instead.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -688,6 +689,77 @@ class _OpenaiCompatToolRuntime:
                             "content": {"type": "string"},
                         },
                         "required": ["path", "content"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "write_task_plan",
+                    "description": "Write planning/tasks.yaml as canonical YAML from a structured JSON object.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "artifact": {"type": "object"},
+                        },
+                        "required": ["artifact"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "write_assignments",
+                    "description": "Write planning/assignments.json as canonical JSON from a structured JSON object.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "artifact": {"type": "object"},
+                        },
+                        "required": ["artifact"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "write_impl_report",
+                    "description": "Write the current UoW implementation report as canonical YAML. The report argument must be a JSON object; this tool owns the impl_report.yaml path and YAML formatting.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "uow_id": {"type": "string"},
+                            "report": {"type": "object"},
+                        },
+                        "required": ["uow_id", "report"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "write_qa_report",
+                    "description": "Write qa/qa_report.yaml as canonical YAML from a structured JSON object.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "report": {"type": "object"},
+                        },
+                        "required": ["report"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "write_lessons_optimizer_report",
+                    "description": "Write summary/lessons_optimizer_report.yaml as canonical YAML from a structured JSON object.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "report": {"type": "object"},
+                        },
+                        "required": ["report"],
                     },
                 },
             },
@@ -757,6 +829,21 @@ class _OpenaiCompatToolRuntime:
                 raise ValueError(forbidden_reason)
         return resolved
 
+    def _protected_workflow_artifact_tool(self, path: Path) -> str | None:
+        if not self.change_dir:
+            return None
+        protected_paths = {
+            self.change_dir / "planning" / "tasks.yaml": "write_task_plan",
+            self.change_dir / "planning" / "assignments.json": "write_assignments",
+            self.change_dir / "qa" / "qa_report.yaml": "write_qa_report",
+            self.change_dir / "summary" / "lessons_optimizer_report.yaml": "write_lessons_optimizer_report",
+        }
+        if path in protected_paths:
+            return protected_paths[path]
+        if path.name == "impl_report.yaml" and path.parent.parent == self.change_dir / "execution":
+            return "write_impl_report"
+        return None
+
     def _list_dir(self, args: dict) -> dict:
         path = self._resolve_path(str(args.get("path") or ""), allow_write=False)
         if not path.exists():
@@ -803,6 +890,9 @@ class _OpenaiCompatToolRuntime:
 
     def _write_file(self, args: dict) -> dict:
         path = self._resolve_path(str(args.get("path") or ""), allow_write=True)
+        protected_tool = self._protected_workflow_artifact_tool(path)
+        if protected_tool:
+            raise ValueError(f"{path.name} must be written with {protected_tool}, not write_file")
         content = args.get("content")
         if not isinstance(content, str):
             raise ValueError("content must be a string")
@@ -812,6 +902,100 @@ class _OpenaiCompatToolRuntime:
             "path": str(path),
             "bytes_written": len(content.encode("utf-8")),
         }
+
+    def _require_change_context(self, artifact_name: str) -> None:
+        if not self.change_dir or not self.change_id:
+            raise ValueError(f"change_id is required to write {artifact_name}")
+
+    def _simple_dir_name(self, value: object, *, name: str) -> str:
+        simple_name = str(value or "").strip()
+        if not simple_name:
+            raise ValueError(f"{name} must be a non-empty string")
+        if "/" in simple_name or "\\" in simple_name or simple_name in {".", ".."}:
+            raise ValueError(f"{name} must be a simple directory name")
+        return simple_name
+
+    def _structured_payload(self, args: dict, key: str) -> dict:
+        payload = args.get(key)
+        if not isinstance(payload, dict):
+            raise ValueError(f"{key} must be an object")
+        return dict(payload)
+
+    def _ensure_identity(self, payload: dict, key: str, expected: str, *, default_if_missing: bool = True) -> None:
+        actual = payload.get(key)
+        if actual is None:
+            if default_if_missing:
+                payload[key] = expected
+            return
+        if str(actual) != expected:
+            raise ValueError(f"{key} {actual!r} does not match current {key} {expected!r}")
+
+    def _write_structured_yaml(self, *, path: Path, payload: dict) -> dict:
+        path = self._resolve_path(str(path), allow_write=True)
+        content = yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
+        yaml.safe_load(content)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        return {
+            "path": str(path),
+            "bytes_written": len(content.encode("utf-8")),
+            "format": "yaml",
+        }
+
+    def _write_structured_json(self, *, path: Path, payload: dict) -> dict:
+        path = self._resolve_path(str(path), allow_write=True)
+        content = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+        json.loads(content)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        return {
+            "path": str(path),
+            "bytes_written": len(content.encode("utf-8")),
+            "format": "json",
+        }
+
+    def _write_task_plan(self, args: dict) -> dict:
+        self._require_change_context("tasks.yaml")
+        artifact = self._structured_payload(args, "artifact")
+        self._ensure_identity(artifact, "story_id", self.change_id)
+        return self._write_structured_yaml(path=self.change_dir / "planning" / "tasks.yaml", payload=artifact)
+
+    def _write_assignments(self, args: dict) -> dict:
+        self._require_change_context("assignments.json")
+        artifact = self._structured_payload(args, "artifact")
+        self._ensure_identity(artifact, "story_id", self.change_id)
+        return self._write_structured_json(path=self.change_dir / "planning" / "assignments.json", payload=artifact)
+
+    def _write_impl_report(self, args: dict) -> dict:
+        self._require_change_context("impl_report.yaml")
+        uow_id = str(args.get("uow_id") or "").strip()
+        uow_id = self._simple_dir_name(uow_id, name="uow_id")
+        report = self._structured_payload(args, "report")
+        self._ensure_identity(report, "uow_id", uow_id)
+        self._ensure_identity(report, "change_id", self.change_id)
+        return self._write_structured_yaml(
+            path=self.change_dir / "execution" / uow_id / "impl_report.yaml",
+            payload=report,
+        )
+
+    def _write_qa_report(self, args: dict) -> dict:
+        self._require_change_context("qa_report.yaml")
+        report = self._structured_payload(args, "report")
+        self._ensure_identity(report, "story_id", self.change_id)
+        return self._write_structured_yaml(path=self.change_dir / "qa" / "qa_report.yaml", payload=report)
+
+    def _write_lessons_optimizer_report(self, args: dict) -> dict:
+        self._require_change_context("lessons_optimizer_report.yaml")
+        report = self._structured_payload(args, "report")
+        run_id = report.get("run_id")
+        if run_id is None:
+            report["run_id"] = f"{self.change_id}-lessons-optimizer-001"
+        elif not str(run_id).startswith(self.change_id):
+            raise ValueError(f"run_id {run_id!r} must start with current change_id {self.change_id!r}")
+        return self._write_structured_yaml(
+            path=self.change_dir / "summary" / "lessons_optimizer_report.yaml",
+            payload=report,
+        )
 
     def _run_shell(self, args: dict) -> dict:
         command = str(args.get("command") or "").strip()
@@ -869,6 +1053,16 @@ class _OpenaiCompatToolRuntime:
                 result = self._read_file(arguments)
             elif tool_name == "write_file":
                 result = self._write_file(arguments)
+            elif tool_name == "write_task_plan":
+                result = self._write_task_plan(arguments)
+            elif tool_name == "write_assignments":
+                result = self._write_assignments(arguments)
+            elif tool_name == "write_impl_report":
+                result = self._write_impl_report(arguments)
+            elif tool_name == "write_qa_report":
+                result = self._write_qa_report(arguments)
+            elif tool_name == "write_lessons_optimizer_report":
+                result = self._write_lessons_optimizer_report(arguments)
             elif tool_name == "run_shell":
                 result = self._run_shell(arguments)
             elif tool_name == "request_user_input":
@@ -899,6 +1093,7 @@ def _openai_compat_agent_instructions(*, agent: str, runner: str, extra_skills: 
         "- You only have the attached function tools for side effects. Use them instead of describing hypothetical actions.\n"
         "- If the original prompt mentions native CLI features or sub-agents that are unavailable here, perform the work yourself with the provided tools.\n"
         f"- Allowed write roots: {write_scope}\n"
+        "- For protected workflow artifacts, use the matching typed writer with structured data: `write_task_plan` for planning/tasks.yaml, `write_assignments` for planning/assignments.json, `write_impl_report` for execution/*/impl_report.yaml, `write_qa_report` for qa/qa_report.yaml, and `write_lessons_optimizer_report` for summary/lessons_optimizer_report.yaml. Use `write_file` only for source files, evidence files, logs, and non-schema artifacts; if `write_file` rejects a protected artifact, retry with the matching typed writer.\n"
         "- Do not make network requests or access secrets.\n"
         "- Before your final answer, ensure required files are actually written to disk.\n"
         "\n"

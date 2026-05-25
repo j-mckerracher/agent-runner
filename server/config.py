@@ -14,6 +14,31 @@ from core.runner_models import KNOWN_RUNNERS, RUNNER_ALIAS_LLM_OPTION_KEYS, RUNN
 logger = logging.getLogger(__name__)
 
 MAX_REPO_CUSTOM_VALUES = 200
+DEFAULT_RUNNER_WHEN_ALIAS_DISABLED = "copilot"
+
+
+def _disabled_runner_aliases() -> set[str]:
+    raw = os.environ.get("AGENT_RUNNER_DISABLED_ALIASES", "")
+    return {item.strip() for item in raw.split(",") if item.strip()}
+
+
+def _apply_runtime_overrides(cfg: dict) -> dict:
+    disabled_aliases = _disabled_runner_aliases()
+    if not disabled_aliases:
+        return cfg
+
+    cfg = deepcopy(cfg)
+    runner_aliases = cfg.get("runner_aliases")
+    if isinstance(runner_aliases, dict):
+        for alias_name in disabled_aliases:
+            runner_aliases.pop(alias_name, None)
+
+    defaults = cfg.get("defaults")
+    if isinstance(defaults, dict) and defaults.get("runner") in disabled_aliases:
+        defaults["runner"] = DEFAULT_RUNNER_WHEN_ALIAS_DISABLED
+        defaults["model"] = None
+
+    return cfg
 
 
 def _default_opik_config() -> dict[str, str]:
@@ -73,6 +98,10 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 def load_config() -> dict:
+    return _load_config(apply_runtime_overrides=True)
+
+
+def _load_config(*, apply_runtime_overrides: bool) -> dict:
     path = config_path()
     logger.debug("load_config: reading from %s", path)
     if not path.exists():
@@ -80,7 +109,7 @@ def load_config() -> dict:
         cfg = deepcopy(DEFAULTS)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(cfg, indent=2, sort_keys=True), encoding="utf-8")
-        return cfg
+        return _apply_runtime_overrides(cfg) if apply_runtime_overrides else cfg
     try:
         on_disk = json.loads(path.read_text(encoding="utf-8"))
         logger.debug("load_config: successfully parsed %s", path)
@@ -89,7 +118,7 @@ def load_config() -> dict:
         on_disk = {}
     merged = _deep_merge(DEFAULTS, on_disk if isinstance(on_disk, dict) else {})
     logger.debug("load_config: merged config api.port=%s", merged.get("api", {}).get("port"))
-    return merged
+    return _apply_runtime_overrides(merged) if apply_runtime_overrides else merged
 
 
 def validate_config(cfg: dict) -> list[str]:
@@ -275,10 +304,10 @@ def save_config(cfg: dict) -> dict:
     Returns the merged config that was saved.
     """
     logger.info("save_config: merging and persisting config changes")
-    current = load_config()
+    current = _load_config(apply_runtime_overrides=False)
     merged = _deep_merge(current, cfg) if cfg else current
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(merged, indent=2, sort_keys=True), encoding="utf-8")
     logger.info("save_config: config written to %s", path)
-    return merged
+    return _apply_runtime_overrides(merged)

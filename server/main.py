@@ -11,9 +11,11 @@ import webbrowser
 from typing import Any, cast
 
 import uvicorn
+from dotenv import load_dotenv
 
 from core.cli_logging import DEFAULT_LOG_FORMAT, normalize_log_level
 from server.config import load_config
+from server.paths import RUNNER_ROOT
 
 # ---------------------------------------------------------------------------
 # Logging bootstrap — configure before any other module emits records.
@@ -81,6 +83,10 @@ def parse_args(argv: list[str] | None = None, *, api_cfg: dict | None = None) ->
 
 
 def main(argv: list[str] | None = None) -> None:
+    # Ensure repo-local .env settings (for example AGENT_RUNNER_DATA_DIR) are
+    # applied when launching the GUI server directly via server_main.py.
+    load_dotenv(RUNNER_ROOT / ".env", override=False)
+
     cfg = load_config()
     api_cfg = cfg.get("api", {})
     args = parse_args(argv, api_cfg=api_cfg)

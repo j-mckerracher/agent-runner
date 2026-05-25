@@ -15,6 +15,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import yaml
+
 import core.run_cmds as run_cmds
 
 
@@ -289,6 +291,319 @@ class OpenaiCompatRunnerTests(unittest.TestCase):
                 self.assertEqual(result, "Done.")
                 self.assertTrue(target_file.is_file())
                 self.assertEqual(target_file.read_text(encoding="utf-8"), "hello from openai-compat\n")
+
+
+class OpenaiCompatToolRuntimeTests(unittest.TestCase):
+    def _runtime(self, tmpdir: str):
+        context_root = Path(tmpdir) / "agent-context"
+        patcher = patch("core.run_cmds._OPENAI_COMPAT_AGENT_CONTEXT_ROOT", context_root)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return run_cmds._OpenaiCompatToolRuntime(repo=None, change_id="CHANGE-1"), context_root
+
+    def test_medium__openai_compat_tool_specs_include_protected_artifact_writers(self):
+        runtime = run_cmds._OpenaiCompatToolRuntime(repo=None, change_id="CHANGE-1")
+        tool_names = {spec["function"]["name"] for spec in runtime.tool_specs}
+
+        self.assertTrue(
+            {
+                "write_task_plan",
+                "write_assignments",
+                "write_impl_report",
+                "write_qa_report",
+                "write_lessons_optimizer_report",
+            }.issubset(tool_names)
+        )
+
+    def test_medium__write_task_plan_serializes_parseable_yaml_and_injects_story_id(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runtime, context_root = self._runtime(tmpdir)
+            result = json.loads(
+                runtime.execute(
+                    "write_task_plan",
+                    {
+                        "artifact": {
+                            "tasks": [
+                                {
+                                    "id": "T1",
+                                    "title": "Render summary",
+                                    "description": "Handles values with punctuation.\nFields: tasks, ACs, dependencies.",
+                                    "ac_mapping": ["AC1"],
+                                    "dependencies": [],
+                                }
+                            ]
+                        }
+                    },
+                )
+            )
+
+            self.assertNotIn("error", result)
+            self.assertEqual(result["format"], "yaml")
+            report_path = context_root / "CHANGE-1" / "planning" / "tasks.yaml"
+            artifact = yaml.safe_load(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(artifact["story_id"], "CHANGE-1")
+            self.assertIn("Fields: tasks", artifact["tasks"][0]["description"])
+
+    def test_medium__write_assignments_serializes_canonical_json_and_injects_story_id(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runtime, context_root = self._runtime(tmpdir)
+            result = json.loads(
+                runtime.execute(
+                    "write_assignments",
+                    {
+                        "artifact": {
+                            "batches": [
+                                {
+                                    "batch_id": 1,
+                                    "uows": [
+                                        {
+                                            "uow_id": "UOW-001",
+                                            "source_task_id": "T1",
+                                            "rationale": "Order: dependency first.",
+                                        }
+                                    ],
+                                }
+                            ]
+                        }
+                    },
+                )
+            )
+
+            self.assertNotIn("error", result)
+            self.assertEqual(result["format"], "json")
+            assignments_path = context_root / "CHANGE-1" / "planning" / "assignments.json"
+            artifact = json.loads(assignments_path.read_text(encoding="utf-8"))
+            self.assertEqual(artifact["story_id"], "CHANGE-1")
+            self.assertEqual(artifact["batches"][0]["uows"][0]["rationale"], "Order: dependency first.")
+
+    def test_medium__write_impl_report_serializes_colon_continuation_text_as_parseable_yaml(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runtime, context_root = self._runtime(tmpdir)
+            result = json.loads(
+                runtime.execute(
+                    "write_impl_report",
+                    {
+                        "uow_id": "UOW-004",
+                        "report": {
+                            "status": "complete",
+                            "implementation_summary": (
+                                "Verified empty handling.\n"
+                                "Handles all four list fields: changed_files, commands_tests, decisions_rationale."
+                            ),
+                            "definition_of_done_status": [
+                                {
+                                    "item": "Empty fields render placeholders: no raw values",
+                                    "met": True,
+                                    "evidence": "pytest passed",
+                                }
+                            ],
+                        },
+                    },
+                )
+            )
+
+            self.assertNotIn("error", result)
+            report_path = context_root / "CHANGE-1" / "execution" / "UOW-004" / "impl_report.yaml"
+            report = yaml.safe_load(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(report["uow_id"], "UOW-004")
+            self.assertEqual(report["change_id"], "CHANGE-1")
+            self.assertIn("fields: changed_files", report["implementation_summary"])
+            self.assertEqual(result["format"], "yaml")
+
+    def test_medium__write_impl_report_rejects_mismatched_identity(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runtime, context_root = self._runtime(tmpdir)
+            result = json.loads(
+                runtime.execute(
+                    "write_impl_report",
+                    {
+                        "uow_id": "UOW-004",
+                        "report": {
+                            "uow_id": "UOW-999",
+                            "change_id": "CHANGE-1",
+                            "status": "complete",
+                        },
+                    },
+                )
+            )
+
+            self.assertIn("error", result)
+            self.assertIn("does not match", result["error"])
+            self.assertFalse((context_root / "CHANGE-1" / "execution" / "UOW-004" / "impl_report.yaml").exists())
+
+            result = json.loads(
+                runtime.execute(
+                    "write_impl_report",
+                    {
+                        "uow_id": "UOW-004",
+                        "report": {
+                            "uow_id": "UOW-004",
+                            "change_id": "CHANGE-999",
+                            "status": "complete",
+                        },
+                    },
+                )
+            )
+
+            self.assertIn("error", result)
+            self.assertIn("does not match", result["error"])
+            self.assertFalse((context_root / "CHANGE-1" / "execution" / "UOW-004" / "impl_report.yaml").exists())
+
+    def test_medium__write_qa_report_serializes_parseable_yaml_and_injects_story_id(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runtime, context_root = self._runtime(tmpdir)
+            result = json.loads(
+                runtime.execute(
+                    "write_qa_report",
+                    {
+                        "report": {
+                            "qa_status": "pass",
+                            "acceptance_criteria_validation": {
+                                "AC1": {
+                                    "status": "pass",
+                                    "notes": "Evidence: pytest output.",
+                                }
+                            },
+                            "final_recommendation": "approve",
+                        }
+                    },
+                )
+            )
+
+            self.assertNotIn("error", result)
+            report_path = context_root / "CHANGE-1" / "qa" / "qa_report.yaml"
+            report = yaml.safe_load(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(report["story_id"], "CHANGE-1")
+            self.assertEqual(report["acceptance_criteria_validation"]["AC1"]["notes"], "Evidence: pytest output.")
+
+    def test_medium__write_lessons_optimizer_report_serializes_parseable_yaml_and_injects_run_id(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runtime, context_root = self._runtime(tmpdir)
+            result = json.loads(
+                runtime.execute(
+                    "write_lessons_optimizer_report",
+                    {
+                        "report": {
+                            "session_review": {"lessons_reviewed": 1},
+                            "recommended_rules": [
+                                {
+                                    "target_agent": "software-engineer",
+                                    "rule": "Use typed artifact writers.",
+                                }
+                            ],
+                        }
+                    },
+                )
+            )
+
+            self.assertNotIn("error", result)
+            report_path = context_root / "CHANGE-1" / "summary" / "lessons_optimizer_report.yaml"
+            report = yaml.safe_load(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(report["run_id"], "CHANGE-1-lessons-optimizer-001")
+            self.assertEqual(report["recommended_rules"][0]["rule"], "Use typed artifact writers.")
+
+    def test_medium__protected_writers_reject_mismatched_change_identity(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runtime, context_root = self._runtime(tmpdir)
+            cases = [
+                ("write_task_plan", {"artifact": {"story_id": "CHANGE-999", "tasks": []}}),
+                ("write_assignments", {"artifact": {"story_id": "CHANGE-999", "batches": []}}),
+                ("write_qa_report", {"report": {"story_id": "CHANGE-999", "qa_status": "pass"}}),
+                ("write_lessons_optimizer_report", {"report": {"run_id": "CHANGE-999-lessons-optimizer-001"}}),
+            ]
+
+            for tool_name, arguments in cases:
+                with self.subTest(tool_name=tool_name):
+                    result = json.loads(runtime.execute(tool_name, arguments))
+                    self.assertIn("error", result)
+                    self.assertIn("CHANGE-999", result["error"])
+
+            self.assertFalse((context_root / "CHANGE-1" / "planning" / "tasks.yaml").exists())
+            self.assertFalse((context_root / "CHANGE-1" / "planning" / "assignments.json").exists())
+            self.assertFalse((context_root / "CHANGE-1" / "qa" / "qa_report.yaml").exists())
+            self.assertFalse((context_root / "CHANGE-1" / "summary" / "lessons_optimizer_report.yaml").exists())
+
+    def test_medium__write_file_rejects_protected_workflow_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runtime, context_root = self._runtime(tmpdir)
+            protected_paths = {
+                context_root / "CHANGE-1" / "planning" / "tasks.yaml": "write_task_plan",
+                context_root / "CHANGE-1" / "planning" / "assignments.json": "write_assignments",
+                context_root / "CHANGE-1" / "execution" / "UOW-004" / "impl_report.yaml": "write_impl_report",
+                context_root / "CHANGE-1" / "qa" / "qa_report.yaml": "write_qa_report",
+                context_root / "CHANGE-1" / "summary" / "lessons_optimizer_report.yaml": "write_lessons_optimizer_report",
+            }
+
+            for protected_path, expected_tool in protected_paths.items():
+                with self.subTest(path=protected_path):
+                    result = json.loads(
+                        runtime.execute(
+                            "write_file",
+                            {
+                                "path": str(protected_path),
+                                "content": "status: complete\n",
+                            },
+                        )
+                    )
+
+                    self.assertIn("error", result)
+                    self.assertIn(expected_tool, result["error"])
+                    self.assertFalse(protected_path.exists())
+
+    def test_medium__write_file_allows_unprotected_similar_names(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runtime, context_root = self._runtime(tmpdir)
+            target_path = context_root / "CHANGE-1" / "qa" / "evidence" / "logs" / "qa_report.yaml"
+            result = json.loads(
+                runtime.execute(
+                    "write_file",
+                    {
+                        "path": str(target_path),
+                        "content": "status: complete\n",
+                    },
+                )
+            )
+
+            self.assertNotIn("error", result)
+            self.assertEqual(target_path.read_text(encoding="utf-8"), "status: complete\n")
+
+    def test_medium__write_file_rejects_protected_artifact_relative_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runtime, context_root = self._runtime(tmpdir)
+            result = json.loads(
+                runtime.execute(
+                    "write_file",
+                    {
+                        "path": "planning/tasks.yaml",
+                        "content": "tasks: []\n",
+                    },
+                )
+            )
+
+            self.assertIn("error", result)
+            self.assertIn("write_task_plan", result["error"])
+            self.assertFalse((context_root / "CHANGE-1" / "planning" / "tasks.yaml").exists())
+
+    def test_medium__write_file_still_writes_regular_repo_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir) / "repo"
+            repo.mkdir()
+            context_root = Path(tmpdir) / "agent-context"
+            with patch("core.run_cmds._OPENAI_COMPAT_AGENT_CONTEXT_ROOT", context_root):
+                runtime = run_cmds._OpenaiCompatToolRuntime(repo=str(repo), change_id="CHANGE-1")
+                target_file = repo / "notes" / "result.txt"
+                result = json.loads(
+                    runtime.execute(
+                        "write_file",
+                        {
+                            "path": str(target_file),
+                            "content": "hello\n",
+                        },
+                    )
+                )
+
+                self.assertNotIn("error", result)
+                self.assertEqual(target_file.read_text(encoding="utf-8"), "hello\n")
 
 
 class RunAgentCmdDispatchMatrixTests(unittest.TestCase):
