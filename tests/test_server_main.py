@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import logging
 import unittest
 from unittest.mock import patch
 
+from core.cli_logging import LocalTimezoneFormatter
 from server import main as server_main
 
 
@@ -33,6 +35,16 @@ class ServerMainTests(unittest.TestCase):
         self.assertEqual(config["root"]["level"], "ERROR")
         self.assertEqual(config["loggers"]["uvicorn"]["level"], "ERROR")
         self.assertEqual(config["loggers"]["uvicorn.access"]["level"], "ERROR")
+        self.assertEqual(config["formatters"]["standard"]["()"], "core.cli_logging.LocalTimezoneFormatter")
+
+    def test_medium__local_timezone_formatter_emits_explicit_offset(self) -> None:
+        formatter = LocalTimezoneFormatter("%(asctime)s %(message)s")
+        record = logging.LogRecord("test.logger", logging.INFO, __file__, 1, "hello", (), None)
+        record.created = 0
+
+        rendered = formatter.format(record)
+
+        self.assertRegex(rendered, r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2} hello$")
 
 
 if __name__ == "__main__":

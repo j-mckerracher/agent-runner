@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import logging
 
 VALID_LOG_LEVELS: tuple[str, ...] = ("debug", "info", "warning", "error", "critical")
@@ -8,6 +9,7 @@ LOG_LEVEL_ALIASES: dict[str, str] = {
     "warn": "warning",
     "fatal": "critical",
 }
+DEFAULT_LOG_FORMAT = "%(asctime)s [%(levelname)-8s] %(name)s: %(message)s"
 
 
 def normalize_log_level(value: str) -> str:
@@ -22,6 +24,15 @@ def normalize_log_level(value: str) -> str:
 
 
 
+class LocalTimezoneFormatter(logging.Formatter):
+    """Render log timestamps with an explicit local UTC offset."""
+
+    def formatTime(self, record: logging.LogRecord, datefmt: str | None = None) -> str:
+        local_dt = datetime.fromtimestamp(record.created, tz=timezone.utc).astimezone()
+        if datefmt:
+            return local_dt.strftime(datefmt)
+        return local_dt.isoformat(timespec="seconds")
+
+
 def to_logging_level(level: str) -> int:
     return getattr(logging, normalize_log_level(level).upper())
-

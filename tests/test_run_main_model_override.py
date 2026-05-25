@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import json
 import tempfile
 from types import SimpleNamespace
@@ -7,6 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from core.cli_logging import DEFAULT_LOG_FORMAT, LocalTimezoneFormatter
 import run
 
 
@@ -109,6 +111,18 @@ class RunMainStagePlumbingTests(unittest.TestCase):
             )
 
         configure_logging_mock.assert_called_once_with("debug")
+
+    def test_easy__configure_logging_uses_local_timezone_formatter(self) -> None:
+        with patch.dict(run.os.environ, {}, clear=True), patch.object(run.logging, "basicConfig") as basic_config_mock:
+            run.configure_logging("info")
+
+        kwargs = basic_config_mock.call_args.kwargs
+        self.assertEqual(kwargs["level"], logging.INFO)
+        self.assertTrue(kwargs["force"])
+        self.assertEqual(len(kwargs["handlers"]), 1)
+        handler = kwargs["handlers"][0]
+        self.assertIsInstance(handler.formatter, LocalTimezoneFormatter)
+        self.assertEqual(handler.formatter._style._fmt, DEFAULT_LOG_FORMAT)
 
     def test_medium__explicit_model_flows_through_runner_model_kwargs(self) -> None:
         workflow_input = SimpleNamespace(

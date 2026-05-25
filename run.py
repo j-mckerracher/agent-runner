@@ -13,7 +13,7 @@ import yaml
 
 from dotenv import load_dotenv
 
-from core.cli_logging import normalize_log_level, to_logging_level
+from core.cli_logging import DEFAULT_LOG_FORMAT, LocalTimezoneFormatter, normalize_log_level, to_logging_level
 from core.workspace_cleanup import clean_change_workspace
 from core.ssl_compat import configure_system_ssl
 from core.runner_models import (
@@ -646,10 +646,11 @@ def _load_runner_config() -> dict:
 # ====================== CLI ====================== #
 
 def configure_logging(log_level: str) -> None:
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(LocalTimezoneFormatter(DEFAULT_LOG_FORMAT))
     logging.basicConfig(
         level=to_logging_level(log_level),
-        format="%(asctime)s [%(levelname)-8s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%S",
+        handlers=[console_handler],
         force=True,
     )
     if os.environ.get("AGENT_RUNNER_EVENT_LOG"):

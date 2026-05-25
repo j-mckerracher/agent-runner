@@ -12,7 +12,7 @@ from typing import Any, cast
 
 import uvicorn
 
-from core.cli_logging import normalize_log_level
+from core.cli_logging import DEFAULT_LOG_FORMAT, normalize_log_level
 from server.config import load_config
 
 # ---------------------------------------------------------------------------
@@ -23,8 +23,8 @@ _LOGGING_CONFIG = {
     "disable_existing_loggers": False,
     "formatters": {
         "standard": {
-            "format": "%(asctime)s [%(levelname)-8s] %(name)s: %(message)s",
-            "datefmt": "%Y-%m-%dT%H:%M:%S",
+            "()": "core.cli_logging.LocalTimezoneFormatter",
+            "format": DEFAULT_LOG_FORMAT,
         },
     },
     "handlers": {

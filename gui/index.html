@@ -3967,6 +3967,12 @@ function fmtLocalTime(isoStr){
   if(Number.isNaN(d.getTime())) return isoStr;
   return d.toLocaleString([], {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false, timeZoneName:"short"});
 }
+function fmtLocalClockTime(isoStr){
+  if(!isoStr) return "";
+  const d = new Date(isoStr);
+  if(Number.isNaN(d.getTime())) return isoStr;
+  return d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false, timeZoneName:"short"});
+}
 
 // History
 const STATUS_ICON = {failed:"✕ ", succeeded:"✓ ", cancelled:"⊘ ", running:"● ", queued:"◌ ", awaiting_input:"? "};
@@ -4358,7 +4364,7 @@ function collectTraceEvent(ev, surface="runs"){
   updateTraceSummary(surface);
 }
 function formatEventTime(ts){
-  return ts ? new Date(ts).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false}) : "";
+  return fmtLocalClockTime(ts);
 }
 function buildEventRow(cls, tag, msg, ts, indent=0){
   const div = document.createElement("div");

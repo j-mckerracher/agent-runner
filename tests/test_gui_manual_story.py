@@ -46,6 +46,8 @@ class GuiManualStorySmokeTests(unittest.TestCase):
         self.assertIn('RUN_HISTORY_STATE = {items:[], status:"all", range:"all", runner:"all", density:"comfortable", collapsed:false}', html)
         self.assertIn('button.setAttribute("aria-label", expanded ? "Collapse Past Runs" : "Expand Past Runs")', html)
         self.assertIn('label.textContent = expanded ? "Collapse" : "Expand"', html)
+        self.assertIn('function fmtLocalClockTime(isoStr){', html)
+        self.assertIn('return fmtLocalClockTime(ts);', html)
         self.assertIn('timeZoneName:"short"', html)
         self.assertIn('toast("Submitted "+r.job_id, false, "success")', html)
 
