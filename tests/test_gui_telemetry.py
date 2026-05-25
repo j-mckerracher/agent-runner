@@ -32,8 +32,11 @@ class GuiTelemetryRegressionTests(unittest.TestCase):
         html = (repo_root / "gui" / "index.html").read_text(encoding="utf-8")
 
         self.assertIn('/static/vendor/echarts.min.js', html)
+        self.assertIn('<option value="all" selected>All time</option>', html)
         self.assertIn('chartBucket:"day"', html)
         self.assertIn('rollup:"run"', html)
+        self.assertIn('const range = $("#telemetry-range")?.value || "all";', html)
+        self.assertIn('$("#telemetry-range").value = "all";', html)
         self.assertIn('bucket:TELEMETRY_STATE.chartBucket || "day"', html)
         self.assertIn('api(`/telemetry/runs/${jobId}/profile`)', html)
         self.assertIn('function telemetryChartsAvailable()', html)

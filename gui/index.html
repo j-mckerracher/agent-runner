@@ -1415,7 +1415,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
             </div>
           </div>
           <div class="telemetry-filters">
-            <div class="field"><label>Time range</label><select id="telemetry-range"><option value="1h">Last hour</option><option value="24h" selected>Last 24 hours</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="all">All time</option><option value="custom">Custom</option></select></div>
+            <div class="field"><label>Time range</label><select id="telemetry-range"><option value="1h">Last hour</option><option value="24h">Last 24 hours</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="all" selected>All time</option><option value="custom">Custom</option></select></div>
             <div class="field"><label>Custom start</label><input type="text" id="telemetry-start" placeholder="YYYY-MM-DDTHH:mm:ssZ"></div>
             <div class="field"><label>Custom end</label><input type="text" id="telemetry-end" placeholder="YYYY-MM-DDTHH:mm:ssZ"></div>
             <div class="field"><label>Status</label><select id="telemetry-status" multiple size="4"></select></div>
@@ -2590,7 +2590,7 @@ function telemetryActive(){
   return $('.view[data-view="telemetry"]')?.classList.contains("active");
 }
 function telemetryRangeBounds(){
-  const range = $("#telemetry-range")?.value || "24h";
+  const range = $("#telemetry-range")?.value || "all";
   if(range==="custom"){
     return {submitted_after:$("#telemetry-start").value.trim(), submitted_before:$("#telemetry-end").value.trim()};
   }
@@ -3002,7 +3002,7 @@ function renderTelemetryCharts(charts){
     grid:{left:62,right:28,top:54,bottom:88,containLabel:true},
     tooltip:{trigger:"item",confine:true,backgroundColor:"#141720",borderColor:"rgba(255,255,255,.13)",textStyle:{color:"#e2ddd5"}},
     xAxis:{type:"time",axisLabel:{hideOverlap:true}},
-    yAxis:{type:"value",name:"Duration (s)",nameGap:18,splitLine:{lineStyle:{color:"rgba(255,255,255,.06)"}}},
+    yAxis:{type:"log",name:"Duration (s)",nameGap:18,splitLine:{lineStyle:{color:"rgba(255,255,255,.06)"}},min:1},
     dataZoom:[
       {type:"inside",filterMode:"none",zoomOnMouseWheel:true,moveOnMouseMove:true,moveOnMouseWheel:true},
       {
@@ -3332,7 +3332,7 @@ function syncTelemetryPolling(){
   }
 }
 function resetTelemetryFilters(){
-  $("#telemetry-range").value = "24h";
+  $("#telemetry-range").value = "all";
   $("#telemetry-start").value = "";
   $("#telemetry-end").value = "";
   $("#telemetry-status").selectedIndex = -1;
