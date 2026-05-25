@@ -44,6 +44,7 @@ class TelemetryFilters(BaseModel):
     min_cost_usd: float | None = None
     errors_only: bool = False
     awaiting_input_only: bool = False
+    missing_events_only: bool = False
 
 
 class TelemetryQuery(BaseModel):
@@ -308,6 +309,7 @@ async def telemetry_query(body: TelemetryQuery) -> dict[str, Any]:
         has_post_filters = bool(
             filters.stage or filters.failed_stage or filters.min_tokens is not None
             or filters.min_cost_usd is not None or filters.errors_only or filters.awaiting_input_only
+            or filters.missing_events_only
         )
         matched_jobs = len(matched) if has_post_filters else db_matched_count
         truncated = matched_jobs > MAX_ALL_RUNS
@@ -375,6 +377,8 @@ def _apply_post_filters(
         if filters.min_cost_usd is not None and _display_cost(job) < filters.min_cost_usd:
             continue
         if filters.awaiting_input_only and job.get("status") != "awaiting_input":
+            continue
+        if filters.missing_events_only and events:
             continue
         if filters.errors_only and not _sample_error_message(job, events):
             continue
@@ -488,6 +492,7 @@ def _stage_stats(jobs: list[dict], events_by_job: dict[str, list[dict]], now: da
             "average_duration_seconds": round(sum(durations) / count, 3) if count else None,
             "median_duration_seconds": _percentile(durations, 50),
             "p95_duration_seconds": _percentile(durations, 95),
+            "p99_duration_seconds": _percentile(durations, 99),
             "total_duration_seconds": round(sum(durations), 3),
             "failure_count": failure_count,
             "failure_rate": round(failure_count / count, 4) if count else 0,
@@ -524,6 +529,17 @@ def _error_events(job: dict[str, Any], events: list[dict]) -> list[dict[str, Any
     return out
 
 
+def _error_severity(signature: str, message: str, count: int) -> tuple[str, int]:
+    text = f"{signature} {message}".lower()
+    if count >= 10 or "out of memory" in text or "permission denied" in text:
+        return "critical", 4
+    if count >= 3 or "timeout" in text or "rate limit" in text or "failed" in text:
+        return "high", 3
+    if count >= 1:
+        return "medium", 2
+    return "low", 1
+
+
 def _error_stats(jobs: list[dict], events_by_job: dict[str, list[dict]]) -> list[dict[str, Any]]:
     grouped: dict[str, dict[str, Any]] = {}
     selected_ids = {str(job.get("id")) for job in jobs}
@@ -541,14 +557,25 @@ def _error_stats(jobs: list[dict], events_by_job: dict[str, list[dict]]) -> list
                 "sample_change_id": job.get("change_id"),
                 "sample_message": str(error.get("message") or "")[:500],
                 "recurring": False,
+                "severity": "low",
+                "severity_score": 1,
+                "triage_state": "open",
             })
             item["count"] += 1
             item["recurring"] = item["count"] > 1
+            severity, severity_score = _error_severity(signature, str(item.get("sample_message") or ""), int(item["count"]))
+            item["severity"] = severity
+            item["severity_score"] = severity_score
             if str(job.get("id")) in selected_ids:
                 ts = error.get("ts")
                 if ts and (item["last_seen"] is None or str(ts) > str(item["last_seen"])):
                     item["last_seen"] = ts
-    return sorted(grouped.values(), key=lambda row: (-row["count"], str(row.get("last_seen") or "")))[:100]
+    def sort_key(row: dict[str, Any]) -> tuple[int, int, float]:
+        seen = _parse_ts(row.get("last_seen"))
+        seen_ts = seen.timestamp() if seen is not None else 0.0
+        return (-int(row.get("severity_score") or 0), -int(row.get("count") or 0), -seen_ts)
+
+    return sorted(grouped.values(), key=sort_key)[:100]
 
 
 def _sample_error_message(job: dict[str, Any], events: list[dict]) -> str | None:
@@ -661,8 +688,6 @@ def _active_runs(jobs: list[dict], events_by_job: dict[str, list[dict]], now: da
         badges = []
         if job.get("status") == "awaiting_input":
             badges.append("awaiting user")
-        if not events_by_job.get(str(job.get("id"))):
-            badges.append("no structured events")
         if (row.get("tokens_in") or 0) + (row.get("tokens_out") or 0) >= 100_000:
             badges.append("high token use")
         queue = row.get("queue_seconds")

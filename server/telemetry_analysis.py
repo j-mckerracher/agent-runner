@@ -48,6 +48,31 @@ def percentile(values: list[float], percentile_value: float) -> float | None:
     return round(ordered[index], 3)
 
 
+def distribution_summary(values: list[float]) -> dict[str, float | None]:
+    if not values:
+        return {
+            "min_seconds": None,
+            "q1_seconds": None,
+            "median_seconds": None,
+            "q3_seconds": None,
+            "max_seconds": None,
+            "p95_seconds": None,
+            "p99_seconds": None,
+            "mean_seconds": None,
+        }
+    ordered = sorted(float(value) for value in values)
+    return {
+        "min_seconds": round(ordered[0], 3),
+        "q1_seconds": percentile(ordered, 25),
+        "median_seconds": percentile(ordered, 50),
+        "q3_seconds": percentile(ordered, 75),
+        "max_seconds": round(ordered[-1], 3),
+        "p95_seconds": percentile(ordered, 95),
+        "p99_seconds": percentile(ordered, 99),
+        "mean_seconds": round(sum(ordered) / len(ordered), 3),
+    }
+
+
 def estimate_cost(tokens_in: Any, tokens_out: Any) -> float:
     return round(
         (max(0, int(tokens_in or 0)) / 1_000_000 * 3.0)
@@ -485,8 +510,21 @@ def build_chart_payload(
     duration_series = []
     token_series = []
     stage_duration_heatmap = []
+    stage_duration_boxplot = []
     stage_token_heatmap = []
     loop_iteration_series = []
+    stage_box_durations: dict[str, list[float]] = defaultdict(list)
+    stage_box_failures: Counter[str] = Counter()
+    stage_box_active: Counter[str] = Counter()
+    for profile in profiles:
+        for span in profile.get("stage_spans") or []:
+            stage = str(span.get("stage") or "unattributed")
+            if span.get("duration_seconds") is not None:
+                stage_box_durations[stage].append(float(span.get("duration_seconds") or 0.0))
+            if span.get("status") == "error":
+                stage_box_failures[stage] += 1
+            if span.get("active"):
+                stage_box_active[stage] += 1
     for key in sorted(grouped):
         bucket_profiles = grouped[key]
         elapsed = [float(p["complete_elapsed_seconds"]) for p in bucket_profiles if p.get("complete_elapsed_seconds") is not None]
@@ -503,6 +541,14 @@ def build_chart_payload(
             sum(int(loop.get("actual_iterations") or 0) for loop in p.get("loop_instances") or [])
             for p in bucket_profiles
         ]
+        loop_iterations_by_name: dict[str, list[int]] = defaultdict(list)
+        for profile in bucket_profiles:
+            per_run: Counter[str] = Counter()
+            for loop in profile.get("loop_instances") or []:
+                loop_name = str(loop.get("loop_name") or "unknown")
+                per_run[loop_name] += int(loop.get("actual_iterations") or 0)
+            for loop_name, iterations in per_run.items():
+                loop_iterations_by_name[loop_name].append(int(iterations or 0))
         duration_series.append({
             "bucket": key,
             "run_count": len(bucket_profiles),
@@ -526,13 +572,25 @@ def build_chart_payload(
             "estimated_cost_usd": round(sum(float((p.get("tokens") or {}).get("estimated_cost_usd") or 0.0) for p in bucket_profiles), 6),
             "token_source": _token_source_for_profiles(bucket_profiles),
         })
-        loop_iteration_series.append({
-            "bucket": key,
-            "run_count": len(bucket_profiles),
-            "median_iterations": percentile(loop_iterations, 50),
-            "p95_iterations": percentile(loop_iterations, 95),
-            "total_iterations": sum(loop_iterations),
-        })
+        if loop_iterations_by_name:
+            for loop_name, values in sorted(loop_iterations_by_name.items()):
+                loop_iteration_series.append({
+                    "bucket": key,
+                    "loop_name": loop_name,
+                    "run_count": len(values),
+                    "median_iterations": percentile(values, 50),
+                    "p95_iterations": percentile(values, 95),
+                    "total_iterations": sum(values),
+                })
+        else:
+            loop_iteration_series.append({
+                "bucket": key,
+                "loop_name": "no loop events",
+                "run_count": len(bucket_profiles),
+                "median_iterations": percentile(loop_iterations, 50),
+                "p95_iterations": percentile(loop_iterations, 95),
+                "total_iterations": sum(loop_iterations),
+            })
         stage_durations: dict[str, list[float]] = defaultdict(list)
         stage_failures: Counter[str] = Counter()
         stage_active: Counter[str] = Counter()
@@ -567,22 +625,75 @@ def build_chart_payload(
         for stage, values in sorted(stage_tokens.items()):
             stage_token_heatmap.append({"bucket": key, "stage": stage, **values, "token_source": "mixed"})
 
-    model_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    def _stage_box_sort(item: tuple[str, list[float]]) -> tuple[float, float, float, str]:
+        stage, values = item
+        return (
+            float(percentile(values, 95) or 0.0),
+            float(percentile(values, 50) or 0.0),
+            float(sum(values) if values else 0.0),
+            stage,
+        )
+
+    for stage, values in sorted(stage_box_durations.items(), key=_stage_box_sort, reverse=True):
+        failure_count = stage_box_failures[stage]
+        observed = len(values)
+        stage_duration_boxplot.append({
+            "stage": stage,
+            "runs_observed": observed,
+            "failure_count": failure_count,
+            "failure_rate": round(failure_count / observed, 4) if observed else 0,
+            "active_count": stage_box_active[stage],
+            "total_seconds": round(sum(values), 3),
+            **distribution_summary(values),
+        })
+
+    model_groups: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    model_run_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     parent_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for profile in profiles:
-        model_groups[str(profile.get("model_set") or profile.get("primary_model") or "unknown")].append(profile)
+        runner = str(profile.get("runner") or "unknown runner")
+        model_names = [str(model) for model in (profile.get("models_used") or []) if model]
+        if not model_names and profile.get("primary_model"):
+            model_names = [str(profile.get("primary_model"))]
+        model_names = sorted(set(model_names)) or ["unknown model"]
+        token_rows_by_model = {
+            str(row.get("model") or "unknown model"): row
+            for row in (profile.get("token_by_model") or [])
+        }
+        for model_name in model_names:
+            token_row = token_rows_by_model.get(model_name) or {}
+            model_tokens = int(token_row.get("tokens_total") or 0)
+            model_cost = float(token_row.get("estimated_cost_usd") or 0.0)
+            if not token_rows_by_model and len(model_names) == 1:
+                model_tokens = int((profile.get("tokens") or {}).get("tokens_total") or 0)
+                model_cost = float((profile.get("tokens") or {}).get("estimated_cost_usd") or 0.0)
+            item = {
+                "profile": profile,
+                "model": model_name,
+                "tokens_total": model_tokens,
+                "estimated_cost_usd": model_cost,
+            }
+            model_groups[(runner, model_name)].append(item)
+            model_run_groups[model_name].append(item)
         parent_groups[str(profile.get("root_job_id") or profile.get("job_id") or "unknown")].append(profile)
 
     model_points = []
-    for model_set, group in sorted(model_groups.items()):
-        runtimes = [float(p.get("runtime_seconds")) for p in group if p.get("runtime_seconds") is not None]
-        tokens_total = sum(int((p.get("tokens") or {}).get("tokens_total") or 0) for p in group)
-        cost_total = sum(float((p.get("tokens") or {}).get("estimated_cost_usd") or 0.0) for p in group)
-        successes = sum(1 for p in group if p.get("status") == "succeeded")
-        failures = sum(1 for p in group if p.get("status") == "failed")
+    for (runner, model_key), group in sorted(model_groups.items()):
+        group_profiles = [item["profile"] for item in group]
+        runtimes = [float(p.get("runtime_seconds")) for p in group_profiles if p.get("runtime_seconds") is not None]
+        tokens_total = sum(int(item.get("tokens_total") or 0) for item in group)
+        cost_total = sum(float(item.get("estimated_cost_usd") or 0.0) for item in group)
+        successes = sum(1 for p in group_profiles if p.get("status") == "succeeded")
+        failures = sum(1 for p in group_profiles if p.get("status") == "failed")
         total = len(group) or 1
+        label = f"{runner} / {model_key}"
         model_points.append({
-            "model_set": model_set,
+            "runner": runner,
+            "model": model_key,
+            "model_key": model_key,
+            "runner_model": label,
+            "model_set": label,
+            "label": label,
             "runs": len(group),
             "success_rate": round(successes / total, 4),
             "failure_rate": round(failures / total, 4),
@@ -591,9 +702,31 @@ def build_chart_payload(
             "tokens_per_run": round(tokens_total / total, 3),
             "cost_per_run": round(cost_total / total, 6),
             "cost_per_successful_run": round(cost_total / successes, 6) if successes else None,
-            "most_common_failed_stage": Counter(p.get("failed_stage") for p in group if p.get("failed_stage")).most_common(1)[0][0]
-            if any(p.get("failed_stage") for p in group) else None,
+            "most_common_failed_stage": Counter(p.get("failed_stage") for p in group_profiles if p.get("failed_stage")).most_common(1)[0][0]
+            if any(p.get("failed_stage") for p in group_profiles) else None,
         })
+
+    model_run_counts = []
+    for model_name, group in sorted(model_run_groups.items()):
+        group_profiles = [item["profile"] for item in group]
+        runtimes = [float(p.get("runtime_seconds")) for p in group_profiles if p.get("runtime_seconds") is not None]
+        tokens_total = sum(int(item.get("tokens_total") or 0) for item in group)
+        successes = sum(1 for p in group_profiles if p.get("status") == "succeeded")
+        failures = sum(1 for p in group_profiles if p.get("status") == "failed")
+        total = len(group) or 1
+        model_run_counts.append({
+            "model": model_name,
+            "model_key": model_name,
+            "runs": len(group),
+            "success_count": successes,
+            "failure_count": failures,
+            "success_rate": round(successes / total, 4),
+            "failure_rate": round(failures / total, 4),
+            "tokens_per_run": round(tokens_total / total, 3),
+            "median_runtime_seconds": percentile(runtimes, 50),
+            "runners": sorted({str(p.get("runner") or "unknown runner") for p in group_profiles}),
+        })
+    model_run_counts.sort(key=lambda row: (-int(row.get("runs") or 0), str(row.get("model") or "")))
 
     parent_rollups = []
     for root_id, group in sorted(parent_groups.items()):
@@ -623,8 +756,10 @@ def build_chart_payload(
         "duration_series": duration_series,
         "token_series": token_series,
         "stage_duration_heatmap": stage_duration_heatmap,
+        "stage_duration_boxplot": stage_duration_boxplot,
         "stage_token_heatmap": stage_token_heatmap,
         "model_points": model_points,
+        "model_run_counts": model_run_counts,
         "ac_complexity_points": ac_points,
         "loop_iteration_series": loop_iteration_series,
         "parent_rollups": parent_rollups,

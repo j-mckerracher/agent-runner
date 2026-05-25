@@ -289,7 +289,29 @@ class TelemetryRouteTests(unittest.TestCase):
         self.assertEqual(body["summary"]["top_failed_stage"], "execution")
         self.assertEqual(body["user_input_stats"]["timeout_count"], 1)
         self.assertEqual(body["coverage"]["cost_data_source"], "estimated")
+        execution_stage = next(row for row in body["stage_stats"] if row["stage"] == "execution")
+        self.assertEqual(execution_stage["p99_duration_seconds"], 180.0)
         self.assertEqual(body["error_stats"][0]["count"], 1)
+        self.assertEqual(body["error_stats"][0]["severity"], "high")
+        self.assertEqual(body["error_stats"][0]["triage_state"], "open")
+
+    def test_medium__telemetry_query_filters_telemetry_gaps(self):
+        from server import db
+
+        repo = "/tmp/telemetry-gap-repo"
+        self._insert_job("job_gap_missing", change_id="GAP-MISSING", repo=repo)
+        self._insert_job("job_gap_present", change_id="GAP-PRESENT", repo=repo)
+        db.insert_telemetry_event("job_gap_present", {"seq": 1, "ts": "2026-05-23T00:00:00Z", "type": "log", "msg": "present"})
+
+        r = self.client.post(
+            "/telemetry/query",
+            json={"selection_mode": "all", "filters": {"repo": [repo], "missing_events_only": True}},
+        )
+
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["selected_count"], 1)
+        self.assertEqual(body["run_rows"][0]["id"], "job_gap_missing")
 
     def test_medium__telemetry_query_adds_daily_chart_payload(self):
         from server import db
@@ -307,7 +329,9 @@ class TelemetryRouteTests(unittest.TestCase):
         )
         db.insert_telemetry_event("job_chart", {"seq": 1, "ts": "2026-05-23T00:01:00Z", "type": "stage.start", "stage": "execution"})
         db.insert_telemetry_event("job_chart", {"seq": 2, "ts": "2026-05-23T00:02:00Z", "type": "llm.call", "stage": "execution", "model": "claude-sonnet", "tokens_in": 80, "tokens_out": 20})
-        db.insert_telemetry_event("job_chart", {"seq": 3, "ts": "2026-05-23T00:05:00Z", "type": "stage.end", "stage": "execution", "status": "ok"})
+        db.insert_telemetry_event("job_chart", {"seq": 3, "ts": "2026-05-23T00:03:00Z", "type": "loop.end", "loop_name": "eval-optimizer", "stage": "execution", "actual_iterations": 3, "max_iterations": 3, "passed": False})
+        db.insert_telemetry_event("job_chart", {"seq": 4, "ts": "2026-05-23T00:04:00Z", "type": "loop.end", "loop_name": "uow-eval", "stage": "execution", "actual_iterations": 1, "max_iterations": 3, "passed": True})
+        db.insert_telemetry_event("job_chart", {"seq": 5, "ts": "2026-05-23T00:05:00Z", "type": "stage.end", "stage": "execution", "status": "ok"})
 
         r = self.client.post("/telemetry/query", json={"selection_mode": "selected", "job_ids": ["job_chart"]})
 
@@ -322,6 +346,22 @@ class TelemetryRouteTests(unittest.TestCase):
         self.assertEqual(charts["duration_series"][0]["complete_elapsed_median_seconds"], 300.0)
         self.assertEqual(charts["token_series"][0]["tokens_total"], 100)
         self.assertEqual(charts["stage_duration_heatmap"][0]["stage"], "execution")
+        self.assertEqual(charts["stage_duration_boxplot"][0]["stage"], "execution")
+        self.assertEqual(charts["stage_duration_boxplot"][0]["median_seconds"], 240.0)
+        self.assertEqual(charts["stage_duration_boxplot"][0]["q1_seconds"], 240.0)
+        self.assertEqual(charts["stage_duration_boxplot"][0]["q3_seconds"], 240.0)
+        self.assertEqual(charts["stage_duration_boxplot"][0]["max_seconds"], 240.0)
+        model_point = charts["model_points"][0]
+        self.assertEqual(model_point["label"], "claude / claude-sonnet")
+        self.assertEqual(model_point["runner"], "claude")
+        self.assertEqual(model_point["model_key"], "claude-sonnet")
+        self.assertEqual(model_point["runs"], 1)
+        self.assertEqual(charts["model_run_counts"][0]["model"], "claude-sonnet")
+        self.assertEqual(charts["model_run_counts"][0]["runs"], 1)
+        self.assertEqual(charts["model_run_counts"][0]["runners"], ["claude"])
+        loop_by_name = {row["loop_name"]: row for row in charts["loop_iteration_series"]}
+        self.assertEqual(loop_by_name["eval-optimizer"]["total_iterations"], 3)
+        self.assertEqual(loop_by_name["uow-eval"]["total_iterations"], 1)
 
     def test_medium__telemetry_profile_endpoint_backfills_jsonl_events(self):
         events_path = Path(self.tmpdir) / "profile-events.jsonl"

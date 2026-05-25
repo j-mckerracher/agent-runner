@@ -419,10 +419,18 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .agent-prompt-body hr{border:none;border-top:1px solid var(--br);margin:1.5em 0}
 .agent-prompt-body strong{color:var(--t1);font-weight:600}
 .agent-prompt-body em{color:var(--t2)}
-.submit-section{padding:14px 16px;border-bottom:1px solid var(--br);overflow-y:auto;max-height:60%;flex-shrink:0}
+.submit-section{
+  padding:14px 16px 18px;
+  border-bottom:1px solid rgba(196,135,58,.12);
+  overflow-y:auto;
+  max-height:60%;
+  flex-shrink:0;
+  background:linear-gradient(180deg, rgba(13,15,20,.52) 0%, rgba(13,15,20,.46) 78%, rgba(196,135,58,.05) 100%);
+  box-shadow:inset 0 -1px 0 rgba(255,230,190,.03);
+}
 .section-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
 .field{margin-bottom:8px}
-.field label{display:block;font-size:11px;color:var(--t2);margin-bottom:3px}
+.field label{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2);margin-bottom:3px}
 .field select,.field input[type=text],.field input[type=number],.field textarea{width:100%;background:rgba(28,32,40,.85);border:1px solid var(--input-border);border-radius:4px;color:var(--t1);font-family:var(--font);font-size:12px;padding:5px 8px;outline:none}
 .field textarea{font-family:var(--mono);min-height:54px;resize:vertical}
 .field select:focus,.field input:focus,.field textarea:focus{border-color:var(--acc);background:var(--s4)}
@@ -452,33 +460,101 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .repo-forget-btn{display:none;padding:5px 8px;font-size:11px;white-space:nowrap}
 .row2{display:flex;gap:8px}
 .row2 .field{flex:1}
+.story-source-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
 .story-source-intro{margin:0 0 10px;color:var(--t2);font-size:12px;line-height:1.5}
-.story-source-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.story-source-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;margin-bottom:10px;padding:3px;border:1px solid var(--brb);border-radius:9px;background:rgba(7,8,11,.38)}
 .story-source-tab{
-  border:1px solid var(--brb);background:transparent;color:var(--t1);border-radius:999px;
-  padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer
+  border:0;background:transparent;color:var(--t2);border-radius:6px;
+  padding:7px 6px;font-size:11px;font-weight:700;line-height:1.2;cursor:pointer;text-align:center;min-height:36px
 }
-.story-source-tab.active{background:var(--acc);border-color:var(--acc);color:#07080b}
+.story-source-tab:hover{color:var(--t1);background:rgba(255,255,255,.04)}
+.story-source-tab:focus-visible{outline:1px solid var(--acc);outline-offset:1px}
+.story-source-tab.active{background:rgba(196,135,58,.16);color:#ffe2b7;box-shadow:inset 0 -2px 0 var(--acc),0 0 0 1px rgba(255,225,170,.12) inset}
 .story-source-panel{display:none;padding:10px;border:1px solid var(--br);border-radius:8px;background:rgba(255,255,255,.02);margin-bottom:10px}
 .story-source-panel.active{display:block}
-.story-source-note,.story-source-status{margin:0 0 10px;color:var(--t2);font-size:11px;line-height:1.5}
+.story-source-note,.story-source-status{margin:0 0 10px;color:var(--t2);font-size:11px;line-height:1.5;white-space:normal;overflow:visible;text-overflow:clip}
 .story-source-status strong{color:var(--t1)}
 .story-source-panel .btn{margin-top:4px}
-.field-help{display:block;margin-top:4px;color:var(--t3);font-size:10px;line-height:1.45}
+.shared-options-note{margin:-4px 0 10px;color:var(--t3);font-size:10px;line-height:1.45}
+.optional-tag,.required-tag{display:inline-flex;align-items:center;padding:1px 5px;border:1px solid var(--br);border-radius:999px;color:var(--t3);font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-weight:500}
+.required-tag{border-color:rgba(212,168,50,.28);color:#f0cc5e;background:rgba(212,168,50,.06)}
+.optional-tag{border-color:rgba(74,157,212,.18);color:#9fd4f6;background:rgba(74,157,212,.045)}
+.optional-tag.required{color:#ffe2b7;background:rgba(196,135,58,.12);border-color:rgba(196,135,58,.24)}
+.field-help{display:block;margin-top:4px;color:var(--t3);font-size:10px;line-height:1.45;white-space:normal;overflow:visible;text-overflow:clip}
+.field-help.callout{padding:7px 9px;border:1px solid rgba(196,135,58,.18);border-left:3px solid var(--acc);border-radius:5px;background:rgba(196,135,58,.06);color:#cfc6b7}
 .checkbox{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2);margin-bottom:8px;cursor:pointer}
 .btn{display:inline-block;background:var(--acc);color:#07080b;border:none;border-radius:4px;padding:7px 14px;font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .btn.ghost{background:transparent;color:var(--t1);border:1px solid var(--brb)}
-.history-header{padding:8px 16px 6px;font-size:13px;color:var(--muted);font-weight:500;letter-spacing:.02em;border-bottom:1px solid var(--br);flex-shrink:0}
-.history{flex:1;overflow-y:auto}
+.submit-actions{display:flex;align-items:center;gap:8px;margin-top:4px}
+#submit-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:118px}
+#submit-btn.is-loading .submit-spinner{display:inline-block}
+.submit-spinner{display:none;width:12px;height:12px;border:2px solid rgba(7,8,11,.28);border-top-color:#07080b;border-radius:50%;animation:submit-spin .8s linear infinite}
+@keyframes submit-spin{to{transform:rotate(360deg)}}
+.submit-feedback{display:none;margin-top:8px;padding:8px 10px;border:1px solid var(--br);border-radius:6px;font-size:11px;line-height:1.45;color:var(--t2);background:rgba(255,255,255,.025)}
+.submit-feedback.show{display:block}
+.submit-feedback.info{border-color:rgba(74,157,212,.22);background:rgba(74,157,212,.07);color:#9fd4f6}
+.submit-feedback.success{border-color:rgba(82,201,123,.22);background:rgba(82,201,123,.07);color:#8be8ae}
+.submit-feedback.error{border-color:rgba(224,90,70,.28);background:rgba(224,90,70,.08);color:#ffb0a4}
+.history-section{
+  position:relative;
+  display:flex;
+  flex:1;
+  min-height:0;
+  flex-direction:column;
+  background:linear-gradient(180deg, rgba(196,135,58,.12) 0, rgba(196,135,58,.03) 22px, rgba(10,12,18,.94) 22px, rgba(10,12,18,.98) 100%);
+  box-shadow:0 -18px 28px rgba(0,0,0,.24);
+}
+.history-section::before{
+  content:"";
+  position:absolute;
+  top:0;
+  left:16px;
+  right:16px;
+  height:1px;
+  background:linear-gradient(90deg, rgba(196,135,58,0), rgba(196,135,58,.7) 18%, rgba(196,135,58,.7) 82%, rgba(196,135,58,0));
+  pointer-events:none;
+}
+.history-header{
+  padding:14px 16px 8px;
+  font-size:10px;
+  color:#d8b887;
+  font-weight:600;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  border-bottom:1px solid rgba(196,135,58,.12);
+  flex-shrink:0;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+  background:linear-gradient(180deg, rgba(255,244,220,.02), rgba(255,244,220,0));
+}
+.history-count{font-family:var(--mono);font-size:10px;color:#a8987b;font-weight:500}
+.history-controls{padding:10px 12px 10px;border-bottom:1px solid var(--br);display:flex;flex-direction:column;gap:7px;background:rgba(7,8,11,.22);flex-shrink:0}
+.history-filter-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.history-filter-label{width:42px;flex:0 0 42px;font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--t3)}
+.history-chip{border:1px solid var(--br);background:rgba(28,32,40,.45);color:var(--t2);border-radius:999px;padding:3px 7px;font-size:10px;line-height:1.2;cursor:pointer}
+.history-chip:hover{color:var(--t1);border-color:var(--brb)}
+.history-chip.active{background:var(--acc-lo);border-color:rgba(196,135,58,.35);color:#f0d0a0}
+.history-filter-row select{flex:1;min-width:0;background:rgba(28,32,40,.85);border:1px solid var(--input-border);border-radius:4px;color:var(--t1);font-family:var(--font);font-size:11px;padding:4px 7px;outline:none}
+.history-filter-row select:focus{border-color:var(--acc);background:var(--s4)}
+.history-filter-summary{font-family:var(--mono);font-size:9px;color:var(--t3);line-height:1.35;min-height:12px}
+.history{flex:1;overflow-y:auto;background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0) 44px)}
 .job{padding:10px 14px;border-bottom:1px solid var(--br);cursor:pointer}
 .job:hover{background:var(--acc-lo)}
 .job.active{background:var(--acc-lo);border-left:2px solid var(--acc);padding-left:12px}
 .job-id{font-family:var(--mono);font-size:11px;color:var(--t1)}
-.job-meta{font-size:10px;color:var(--t2);margin-top:2px}
-.status{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;font-weight:500;line-height:1.4}
+.job-main{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.job-meta{font-size:10px;color:var(--t2);margin-top:2px;line-height:1.35}
+.job-time{font-family:var(--mono);color:var(--t3)}
+.history.compact .job{padding:6px 12px}
+.history.compact .job.active{padding-left:10px}
+.history.compact .job-meta{line-height:1.2}
+.status{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;font-weight:500;line-height:1.4;white-space:nowrap}
 .status.running{background:rgba(74,157,212,0.15);color:#7ec8f7}
 .status.queued{background:rgba(212,168,50,0.15);color:#f0cc5e}
+.status.awaiting_input{background:rgba(180,140,255,0.15);color:#d4c2ff}
 .status.succeeded{background:rgba(82,201,123,0.15);color:#6ee7a0}
 .status.failed{background:rgba(248,113,113,0.15);color:#f87171}
 .status.cancelled{background:rgba(248,113,113,0.12);color:#f8a0a0}
@@ -505,6 +581,8 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .trace-pill.error{border-color:rgba(224,90,70,.45);background:rgba(224,90,70,.12);color:var(--er)}
 .trace-pill.running{border-color:rgba(74,157,212,.45);background:rgba(74,157,212,.12);color:var(--in)}
 .term{flex:1;overflow-y:auto;padding:12px 16px;font-family:var(--mono);font-size:11px;line-height:1.6;letter-spacing:0.01em;background:transparent}
+.term .empty{color:var(--t3);border:1px dashed var(--brb);border-radius:10px;padding:16px;background:rgba(255,255,255,.025);font-family:var(--font);font-size:12px;line-height:1.5}
+.term .empty strong{display:block;color:var(--t1);font-size:13px;margin-bottom:3px}
 .term .ev{display:flex;gap:8px;padding:1px 0}
 .term .ev .ts{color:var(--t3);flex-shrink:0;opacity:0.45}
 .term .ev .tag{flex-shrink:0;font-weight:600}
@@ -586,47 +664,124 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 }
 .empty{padding:30px;text-align:center;color:var(--t1);font-weight:600;font-style:italic}
 .empty.error{color:var(--er)}
-.view[data-view="telemetry"]{overflow:hidden}
-.view[data-view="telemetry"] .telemetry-content{flex:1;overflow:auto;padding:14px 24px 28px;scrollbar-gutter:stable}
-.telemetry-panel{border:1px solid var(--br);border-radius:8px;background:rgba(13,15,20,.52);margin-bottom:14px;overflow:hidden}
-.telemetry-panel-head{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--br)}
-.telemetry-panel-title{font-size:12px;color:var(--t1);font-weight:600}
-.telemetry-panel-meta{font-family:var(--mono);font-size:10px;color:var(--t3)}
-.telemetry-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:14px}
+.view[data-view="telemetry"]{
+  overflow:hidden;
+  --tel-ok:#52c97b;
+  --tel-warn:#d4a832;
+  --tel-danger:#e05a46;
+  --tel-info:#4a9dd4;
+  --tel-accent:#c4873a;
+  --tel-neutral:#8a8580;
+  --tel-muted:#64748b;
+  --tel-panel:rgba(13,15,20,.62);
+  --tel-panel-strong:rgba(20,23,32,.76);
+}
+.view[data-view="telemetry"] .telemetry-content{flex:1;overflow:auto;padding:18px 28px 34px;scrollbar-gutter:stable}
+.telemetry-panel{border:1px solid var(--br);border-radius:10px;background:var(--tel-panel);margin-bottom:18px;overflow:hidden;box-shadow:0 16px 44px rgba(0,0,0,.18)}
+.telemetry-panel-head{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--br);background:linear-gradient(180deg,rgba(255,255,255,.025),rgba(255,255,255,0))}
+.telemetry-panel-title{font-size:13px;color:var(--t1);font-weight:700;letter-spacing:.01em}
+.telemetry-panel-meta{font-family:var(--mono);font-size:10px;color:var(--t2);line-height:1.5}
+.telemetry-panel-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.telemetry-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(152px,1fr));gap:12px;padding:16px}
 .telemetry-filters .field{margin-bottom:0}
-.telemetry-actions,.telemetry-presets{display:flex;flex-wrap:wrap;gap:8px;padding:0 14px 14px}
-.telemetry-chip{border:1px solid var(--brb);background:rgba(28,32,40,.72);color:var(--t1);border-radius:999px;padding:5px 10px;font-size:11px;cursor:pointer}
-.telemetry-chip:hover,.telemetry-chip.active{border-color:var(--acc);background:var(--acc-lo)}
-.telemetry-note{margin:0 14px 14px;padding:9px 12px;border:1px solid rgba(212,168,50,.22);border-left:3px solid var(--wa);border-radius:6px;background:rgba(212,168,50,.06);font-family:var(--mono);font-size:11px;color:#f0cc5e}
-.telemetry-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
-.telemetry-table-wrap{overflow:auto;max-height:360px}
+.telemetry-actions,.telemetry-presets{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 16px}
+.telemetry-chip{border:1px solid var(--brb);background:rgba(28,32,40,.72);color:var(--t1);border-radius:999px;padding:5px 10px;font-size:11px;cursor:pointer;transition:border-color .15s,background .15s,color .15s}
+.telemetry-chip:hover,.telemetry-chip.active{border-color:var(--tel-accent);background:var(--acc-lo);color:#ffe0a5}
+.telemetry-chip.is-muted{color:var(--t2);border-color:rgba(255,255,255,.08);background:rgba(28,32,40,.42)}
+.telemetry-note{margin:0 16px 16px;padding:10px 12px;border:1px solid rgba(212,168,50,.22);border-left:3px solid var(--tel-warn);border-radius:7px;background:rgba(212,168,50,.06);font-family:var(--mono);font-size:11px;color:#f0cc5e;line-height:1.5}
+.view[data-view="telemetry"] #telemetry-cards.cards{display:grid;grid-template-columns:repeat(4,minmax(190px,1fr));gap:14px;padding:0 0 18px;border-bottom:none}
+.telemetry-kpi-group{border:1px solid var(--br);border-radius:12px;background:linear-gradient(180deg,rgba(20,23,32,.72),rgba(13,15,20,.56));padding:12px;min-width:0}
+.telemetry-kpi-group-label{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--t2);margin:0 0 10px;display:flex;align-items:center;gap:8px}
+.telemetry-kpi-group-label::before{content:"";width:7px;height:7px;border-radius:999px;background:var(--tel-accent);box-shadow:0 0 14px rgba(196,135,58,.35)}
+.telemetry-kpi-group.is-health .telemetry-kpi-group-label::before{background:var(--tel-danger);box-shadow:0 0 14px rgba(224,90,70,.28)}
+.telemetry-kpi-group.is-performance .telemetry-kpi-group-label::before{background:var(--tel-info);box-shadow:0 0 14px rgba(74,157,212,.28)}
+.telemetry-kpi-group.is-cost .telemetry-kpi-group-label::before{background:var(--tel-warn);box-shadow:0 0 14px rgba(212,168,50,.28)}
+.telemetry-kpi-group-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.telemetry-kpi-card.card{position:relative;min-height:84px;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,.08);background:rgba(7,8,11,.38);overflow:hidden;cursor:pointer;transition:transform .14s ease,border-color .14s ease,background .14s ease,box-shadow .14s ease}
+.telemetry-kpi-card.card:hover{transform:translateY(-1px);border-color:rgba(196,135,58,.36);background:rgba(20,23,32,.78)}
+.telemetry-kpi-card.is-hero{grid-column:1/-1;min-height:122px;padding:16px;background:linear-gradient(135deg,rgba(196,135,58,.15),rgba(20,23,32,.72) 46%,rgba(7,8,11,.48))}
+.telemetry-kpi-card .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--t2);margin-bottom:10px;display:flex;align-items:center;gap:7px}
+.telemetry-kpi-card .lbl::before{content:"";width:6px;height:6px;border-radius:999px;background:currentColor;opacity:.55}
+.telemetry-kpi-card .val{font-family:var(--mono);font-size:22px;color:var(--t1);font-weight:700;line-height:1;letter-spacing:-.03em}
+.telemetry-kpi-card.is-hero .val{font-size:42px}
+.telemetry-kpi-main{display:flex;align-items:flex-end;gap:8px;min-width:0}
+.telemetry-kpi-unit{font-family:var(--mono);font-size:11px;color:var(--t2);padding-bottom:3px;text-transform:uppercase;letter-spacing:.08em}
+.telemetry-kpi-sub{font-family:var(--mono);font-size:10px;color:var(--t2);line-height:1.45;margin-top:8px;min-height:14px}
+.telemetry-card-source{font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:7px}
+.telemetry-kpi-card.tone-good{border-color:rgba(82,201,123,.28);box-shadow:inset 0 0 0 1px rgba(82,201,123,.05)}
+.telemetry-kpi-card.tone-good .val,.telemetry-kpi-card.tone-good .lbl{color:#6ee7a0}
+.telemetry-kpi-card.tone-warn{border-color:rgba(212,168,50,.36);box-shadow:inset 0 0 0 1px rgba(212,168,50,.06)}
+.telemetry-kpi-card.tone-warn .val,.telemetry-kpi-card.tone-warn .lbl{color:#f0cc5e}
+.telemetry-kpi-card.tone-danger{border-color:rgba(224,90,70,.42);box-shadow:0 0 0 1px rgba(224,90,70,.08),0 16px 36px rgba(224,90,70,.07)}
+.telemetry-kpi-card.tone-danger .val,.telemetry-kpi-card.tone-danger .lbl{color:#f87171}
+.telemetry-kpi-card.tone-info{border-color:rgba(74,157,212,.3)}
+.telemetry-kpi-card.tone-info .val,.telemetry-kpi-card.tone-info .lbl{color:#7ec8f7}
+.telemetry-kpi-card.tone-neutral .val{color:var(--t1)}
+.telemetry-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:18px;margin-bottom:18px}
+.telemetry-table-wrap{overflow:auto;max-height:390px}
 .telemetry-table{width:100%;border-collapse:collapse;font-size:12px}
-.telemetry-table th{position:sticky;top:0;background:rgba(13,15,20,.96);z-index:1;text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--t3);padding:8px;border-bottom:1px solid var(--br)}
-.telemetry-table td{padding:8px;border-bottom:1px solid var(--br);color:var(--t1);vertical-align:top}
-.telemetry-table tbody tr:hover{background:rgba(255,255,255,.03)}
+.telemetry-table th{position:sticky;top:0;background:rgba(13,15,20,.97);z-index:1;text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--t3);padding:9px 10px;border-bottom:1px solid var(--br);white-space:nowrap}
+.telemetry-table th.is-emphasis{color:#f0d28c}
+.telemetry-table td{padding:9px 10px;border-bottom:1px solid var(--br);color:var(--t1);vertical-align:top;line-height:1.35}
+.telemetry-table tbody tr:hover{background:rgba(255,255,255,.035)}
 .telemetry-table tbody tr.is-selected{background:var(--acc-lo)}
+.telemetry-table tbody tr.needs-attention{background:linear-gradient(90deg,rgba(224,90,70,.06),transparent 60%)}
 .telemetry-table .mono{font-family:var(--mono);font-size:11px;color:var(--t2)}
-.telemetry-badge{display:inline-block;border:1px solid var(--brb);border-radius:999px;padding:2px 7px;font-family:var(--mono);font-size:10px;color:var(--t2);background:rgba(28,32,40,.65);margin:1px 2px 1px 0}
+.telemetry-table .telemetry-emphasis{font-weight:700;color:#f4dfad;font-family:var(--mono);font-size:12px}
+.telemetry-table .telemetry-emphasis.tone-good{color:#6ee7a0}
+.telemetry-table .telemetry-emphasis.tone-warn{color:#f0cc5e}
+.telemetry-table .telemetry-emphasis.tone-danger{color:#f87171}
+.telemetry-table .telemetry-emphasis.tone-neutral{color:#f4dfad}
+.telemetry-metric-pill{display:inline-flex;align-items:center;justify-content:center;min-width:46px;border-radius:999px;padding:3px 8px;font-family:var(--mono);font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,.08);background:rgba(28,32,40,.58)}
+.telemetry-metric-pill.tone-good{color:#6ee7a0;border-color:rgba(82,201,123,.28);background:rgba(82,201,123,.08)}
+.telemetry-metric-pill.tone-warn{color:#f0cc5e;border-color:rgba(212,168,50,.34);background:rgba(212,168,50,.08)}
+.telemetry-metric-pill.tone-danger{color:#f87171;border-color:rgba(224,90,70,.36);background:rgba(224,90,70,.1)}
+.telemetry-badge{display:inline-flex;align-items:center;border:1px solid var(--brb);border-radius:999px;padding:2px 7px;font-family:var(--mono);font-size:10px;color:var(--t2);background:rgba(28,32,40,.65);margin:1px 2px 1px 0;white-space:nowrap;line-height:1.35}
 .telemetry-badge.warn{border-color:rgba(212,168,50,.3);color:#f0cc5e;background:rgba(212,168,50,.08)}
 .telemetry-badge.error{border-color:rgba(224,90,70,.3);color:#f87171;background:rgba(224,90,70,.08)}
 .telemetry-badge.ok{border-color:rgba(82,201,123,.25);color:#6ee7a0;background:rgba(82,201,123,.08)}
-.telemetry-card-source{font-family:var(--mono);font-size:10px;color:var(--t3);margin-top:6px}
-.telemetry-detail{display:none;padding:14px;border-top:1px solid var(--br);background:rgba(7,8,11,.38)}
+.telemetry-badge.info{border-color:rgba(74,157,212,.25);color:#7ec8f7;background:rgba(74,157,212,.08)}
+.telemetry-badge.muted{border-color:rgba(255,255,255,.06);color:rgba(138,133,128,.72);background:rgba(28,32,40,.28)}
+.telemetry-signature{font-weight:700;color:var(--t1);max-width:360px;white-space:normal;word-break:break-word}
+.telemetry-error-message{margin-top:5px;color:var(--t2);font-size:11px;max-width:420px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.telemetry-triage{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 8px;border:1px solid rgba(255,255,255,.09);font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#f0cc5e;background:rgba(212,168,50,.07)}
+.telemetry-triage::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor}
+.telemetry-detail{display:none;padding:16px;border-top:1px solid var(--br);background:rgba(7,8,11,.38)}
 .telemetry-detail.show{display:block}
 .telemetry-detail pre{white-space:pre-wrap;word-break:break-word;background:rgba(7,8,11,.75);border:1px solid var(--br);border-radius:6px;padding:10px;color:var(--t1);font-family:var(--mono);font-size:11px;max-height:260px;overflow:auto}
-.telemetry-timeseries{display:flex;gap:6px;align-items:end;min-height:70px;padding:12px 14px;overflow:auto}
+.telemetry-timeseries{display:flex;gap:6px;align-items:end;min-height:74px;padding:12px 16px;overflow:auto}
 .telemetry-bar{min-width:34px;background:rgba(196,135,58,.16);border:1px solid rgba(196,135,58,.25);border-radius:4px 4px 0 0;color:var(--t2);font-family:var(--mono);font-size:9px;text-align:center;padding-top:4px}
-.telemetry-chart-controls{display:flex;flex-wrap:wrap;gap:10px;padding:0 14px 14px}
+.telemetry-chart-controls{display:flex;flex-wrap:wrap;gap:10px;padding:0 16px 16px}
 .telemetry-chart-controls .field{min-width:150px;margin:0}
-.telemetry-chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;padding:14px}
-.telemetry-chart-card{border:1px solid var(--br);border-radius:8px;background:rgba(7,8,11,.35);padding:12px;min-height:300px}
-.telemetry-chart-card.wide{grid-column:1 / -1}
-.telemetry-chart-title{font-size:12px;font-weight:600;color:var(--t1);margin-bottom:8px}
-.telemetry-chart{width:100%;height:270px}
+.telemetry-chart-grid{display:grid;grid-template-columns:repeat(2,minmax(320px,1fr));gap:18px;padding:0 16px 18px}
+.telemetry-chart-card{border:1px solid var(--br);border-radius:12px;background:rgba(7,8,11,.38);padding:14px;min-height:318px;overflow:hidden}
+.telemetry-chart-card.model-comparison,.telemetry-chart-card.model-run-counts,.telemetry-chart-card.loop-comparison{min-height:392px}
+.telemetry-chart-card.wide{grid-column:1 / -1;min-height:378px}
+.telemetry-chart-card.stage-boxplot{min-height:430px}
+.telemetry-chart-copy{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}
+.telemetry-chart-title{font-size:13px;font-weight:700;color:var(--t1);line-height:1.2}
+.telemetry-chart-subtitle{font-family:var(--mono);font-size:10px;color:var(--t2);line-height:1.45;margin-top:4px}
+.telemetry-chart-guide{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(74,157,212,.34);border-radius:999px;background:rgba(74,157,212,.08);color:#9fd5ff;font-family:var(--mono);font-size:10px;padding:4px 9px;white-space:nowrap}
+.telemetry-chart{width:100%;height:286px}
+.telemetry-chart-card.model-comparison .telemetry-chart,.telemetry-chart-card.model-run-counts .telemetry-chart,.telemetry-chart-card.loop-comparison .telemetry-chart{height:346px}
+.telemetry-chart-card.wide .telemetry-chart{height:326px}
+.telemetry-chart-card.stage-boxplot .telemetry-chart{height:372px}
+.status.awaiting_input{background:rgba(180,140,255,0.15);color:#c4adff}
+@media (max-width:1280px){
+  .view[data-view="telemetry"] #telemetry-cards.cards{grid-template-columns:repeat(2,minmax(220px,1fr))}
+  .telemetry-chart-grid{grid-template-columns:1fr}
+}
+@media (max-width:760px){
+  .view[data-view="telemetry"] .telemetry-content{padding:14px 16px 28px}
+  .view[data-view="telemetry"] #telemetry-cards.cards{grid-template-columns:1fr}
+  .telemetry-grid{grid-template-columns:1fr}
+  .telemetry-kpi-card.is-hero .val{font-size:34px}
+}
 
 .toast{position:fixed;bottom:20px;right:20px;background:var(--s4);border:1px solid var(--brb);border-radius:4px;padding:10px 16px;color:var(--t1);font-size:12px;z-index:1000;display:none}
 .toast.show{display:block}
 .toast.error{border-color:var(--er);color:var(--er)}
+.toast.success{border-color:rgba(82,201,123,.5);color:#92efb6}
 
 /* ============================================================
    Settings view restyle (scoped to data-view="settings" only)
@@ -1033,44 +1188,46 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
               </div>
             </div>
             <div class="section-label" style="margin-top:12px">Story input</div>
-            <p class="story-source-intro">You can use Agent Workbench manually by pasting story details below. Azure DevOps integration is optional and only needed when you want to fetch from or write back to Azure DevOps.</p>
-            <div class="story-source-tabs" id="story-source-tabs">
-              <button type="button" class="story-source-tab active" data-story-source="manual">Paste story manually</button>
-              <button type="button" class="story-source-tab" data-story-source="ado">Fetch from Azure DevOps</button>
-              <button type="button" class="story-source-tab" data-story-source="story_file">Use local fixture</button>
+            <div class="story-source-label">Input mode</div>
+            <p class="story-source-intro">Choose exactly one story source. Only the fields for the selected source are shown; shared run options stay below.</p>
+            <div class="story-source-tabs" id="story-source-tabs" role="radiogroup" aria-label="Story input mode">
+              <button type="button" role="radio" aria-checked="true" aria-controls="story-source-manual" class="story-source-tab active" data-story-source="manual">Paste story manually</button>
+              <button type="button" role="radio" aria-checked="false" aria-controls="story-source-ado" class="story-source-tab" data-story-source="ado">Fetch from Azure DevOps</button>
+              <button type="button" role="radio" aria-checked="false" aria-controls="story-source-story_file" class="story-source-tab" data-story-source="story_file">Use local fixture</button>
             </div>
             <div class="story-source-panel active" id="story-source-manual">
-              <p class="story-source-note">Use this option when you do not have Azure DevOps CLI or MCP installed, or when you simply want to paste or edit the story yourself.</p>
+              <p class="story-source-note">Paste or edit story details directly. Azure DevOps is not contacted in this mode unless write-back is explicitly enabled elsewhere.</p>
               <div class="row2">
                 <div class="field">
-                  <label for="f-manual-work-item-id">Work item ID / number</label>
-                  <input type="text" id="f-manual-work-item-id" placeholder="Optional">
+                  <label for="f-manual-work-item-id">Work Item Number<span class="optional-tag">Optional</span></label>
+                  <input type="text" id="f-manual-work-item-id" placeholder="e.g. 12345">
                 </div>
                 <div class="field">
-                  <label for="f-manual-work-item-url">Work item URL</label>
-                  <input type="text" id="f-manual-work-item-url" placeholder="Optional reference URL">
+                  <label for="f-manual-work-item-url">Work Item URL <span class="optional-tag">Optional</span></label>
+                  <input type="text" id="f-manual-work-item-url" placeholder="Reference URL only">
                 </div>
               </div>
               <div class="field-help">Adding a work item ID or URL here will not connect to Azure DevOps. It is saved only as reference metadata unless you explicitly enable Azure DevOps write-back.</div>
-              <div class="field"><label for="f-manual-title">Story title</label><input type="text" id="f-manual-title" placeholder="Required"></div>
-              <div class="field"><label for="f-manual-description">Description</label><textarea id="f-manual-description" placeholder="Required"></textarea></div>
-              <div class="field"><label for="f-manual-ac">Acceptance criteria</label><textarea id="f-manual-ac" placeholder="- Criterion one&#10;- Criterion two"></textarea></div>
+              <div class="field"><label for="f-manual-title">Story title <span class="required-tag">Required</span></label><input type="text" id="f-manual-title" placeholder="Short title"></div>
+              <div class="field"><label for="f-manual-description">Description <span class="required-tag">Required</span></label><textarea id="f-manual-description" placeholder="Describe the requested behavior"></textarea></div>
+              <div class="field"><label for="f-manual-ac">Acceptance criteria <span class="required-tag">Required</span></label><textarea id="f-manual-ac" placeholder="- Criterion one&#10;- Criterion two"></textarea></div>
             </div>
-            <div class="story-source-panel" id="story-source-ado">
-              <p class="story-source-note">Use this option only if Azure DevOps CLI or MCP is available on this machine. If you want to review or edit the story first, switch back to manual paste.</p>
+            <div class="story-source-panel" id="story-source-ado" hidden>
+              <p class="story-source-note">Fetch the story from Azure DevOps using a work item URL. Manual title, description, and acceptance criteria fields stay hidden in this mode.</p>
               <p class="story-source-status" id="f-ado-status"><strong>Manual story entry is available.</strong> Azure DevOps integration is optional.</p>
-              <div class="field"><label for="f-ado">ADO Work Item URL</label><input type="text" id="f-ado" placeholder="https://dev.azure.com/.../_workitems/edit/12345"></div>
-              <button type="button" class="btn ghost" id="f-ado-manual-btn">Paste story manually</button>
+              <div class="field"><label for="f-ado">ADO Work Item URL <span class="required-tag">Required</span></label><input type="text" id="f-ado" placeholder="https://dev.azure.com/.../_workitems/edit/12345"></div>
             </div>
-            <div class="story-source-panel" id="story-source-story_file">
-              <p class="story-source-note">Use a local JSON story fixture for offline or repeatable test runs.</p>
-              <div class="field"><label for="f-story-file">Story fixture path</label><input type="text" id="f-story-file" placeholder="/path/to/story.json"></div>
+            <div class="story-source-panel" id="story-source-story_file" hidden>
+              <p class="story-source-note">Use a local JSON story fixture for offline or repeatable test runs. Manual and Azure DevOps fields stay hidden in this mode.</p>
+              <div class="field"><label for="f-story-file">Story fixture path <span class="required-tag">Required</span></label><input type="text" id="f-story-file" placeholder="/path/to/story.json"></div>
             </div>
-            <div class="field"><label for="f-extra">Extra context</label><textarea id="f-extra" placeholder="Optional notes appended to the agent prompt..."></textarea></div>
-            <div class="field">
-              <label for="f-change">Change ID</label>
-              <input type="text" id="f-change" placeholder="Optional for manual stories; inferred if omitted">
-              <span class="field-help">Manual runs infer a change ID from the work item ID or title when you leave this blank.</span>
+            <div class="section-label shared-options-label" style="margin-top:12px">Run options</div>
+            <p class="shared-options-note" id="shared-options-note">These settings apply to every story source.</p>
+            <div class="field"><label for="f-extra">Extra context <span class="optional-tag">Optional</span></label><textarea id="f-extra" placeholder="Notes appended to the agent prompt"></textarea></div>
+            <div class="field change-id-field">
+              <label for="f-change">Change ID <span class="optional-tag">Optional</span></label>
+              <input type="text" id="f-change" placeholder="Auto-generate when blank" aria-describedby="f-change-help">
+              <span class="field-help callout" id="f-change-help">Leave blank to auto-generate from the manual work item ID or story title. Set this explicitly to group related runs in telemetry.</span>
             </div>
             <div class="row2">
               <div class="field"><label>Runner</label><select id="f-runner"><option value="claude">Claude</option><option value="copilot">Copilot</option><option value="gemini">Gemini</option></select></div>
@@ -1080,10 +1237,20 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
               <div class="field"><label>Mode</label><select id="f-mode"><option value="live">Live</option><option value="hermetic">Hermetic (record)</option></select></div>
               <div class="field"><label>Log level</label><select id="f-log-level"><option value="debug">Debug</option><option value="info">Info</option><option value="warning" selected>Warning</option><option value="error">Error</option><option value="critical">Critical</option></select></div>
             </div>
-            <button class="btn" id="submit-btn">Submit run</button>
+            <div class="submit-actions"><button class="btn" id="submit-btn"><span class="submit-btn-text">Submit run</span><span class="submit-spinner" aria-hidden="true"></span></button></div>
+            <div class="submit-feedback" id="submit-feedback" role="status" aria-live="polite"></div>
           </div>
-          <div class="history-header">Past Runs</div>
-          <div class="history" id="history"></div>
+          <div class="history-section">
+            <div class="history-header"><span>Past Runs</span><span class="history-count" id="history-count"></span></div>
+            <div class="history-controls" aria-label="Past run filters">
+              <div class="history-filter-row" role="group" aria-label="Filter by run status"><span class="history-filter-label">Status</span><button type="button" class="history-chip active" data-history-status="all">All</button><button type="button" class="history-chip" data-history-status="active">Active</button><button type="button" class="history-chip" data-history-status="running">Running</button><button type="button" class="history-chip" data-history-status="queued">Queued</button><button type="button" class="history-chip" data-history-status="awaiting_input">Awaiting input</button><button type="button" class="history-chip" data-history-status="failed">Failed</button><button type="button" class="history-chip" data-history-status="succeeded">Succeeded</button><button type="button" class="history-chip" data-history-status="cancelled">Cancelled</button></div>
+              <div class="history-filter-row" role="group" aria-label="Filter by submitted date"><span class="history-filter-label">Date</span><button type="button" class="history-chip" data-history-range="today">Today</button><button type="button" class="history-chip" data-history-range="24h">24h</button><button type="button" class="history-chip" data-history-range="7d">7d</button><button type="button" class="history-chip" data-history-range="30d">30d</button><button type="button" class="history-chip active" data-history-range="all">All</button></div>
+              <div class="history-filter-row"><label class="history-filter-label" for="history-runner-filter">Runner</label><select id="history-runner-filter"><option value="all">Any runner</option></select></div>
+              <div class="history-filter-row" role="group" aria-label="History density"><span class="history-filter-label">Density</span><button type="button" class="history-chip active" data-history-density="comfortable">Comfort</button><button type="button" class="history-chip" data-history-density="compact">Compact</button></div>
+              <div class="history-filter-summary" id="history-filter-summary"></div>
+            </div>
+            <div class="history" id="history"></div>
+          </div>
         </div>
         <div class="runs-right">
           <div class="term-header">
@@ -1106,7 +1273,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
             </div>
             <div class="trace-timeline" id="trace-timeline"></div>
           </div>
-          <div class="term" id="term"><div class="empty">Start by pasting a story manually. Azure DevOps integration is optional.</div></div>
+          <div class="term" id="term"><div class="empty"><strong>Submit a run to see live logs here.</strong>Select a past run to replay captured events. Live stage events, prompts, metrics, and errors will stream into this panel while a run is active.</div></div>
           <div class="metrics" id="metrics"><span>tokens in <b id="m-ti">—</b></span><span class="metrics-sep">|</span><span>tokens out <b id="m-to">—</b></span><span class="metrics-sep">|</span><span>total <b id="m-total">—</b></span><span class="metrics-sep">|</span><span>cost <b id="m-cost">—</b></span><span class="cost-disclaimer">est. $3/$15 per Mtok</span><span class="metrics-sep">|</span><span>stage <b id="m-stage">—</b></span></div>
         </div>
       </div>
@@ -1125,8 +1292,10 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
               <div class="telemetry-panel-title">Filters and selection</div>
               <div class="telemetry-panel-meta" id="telemetry-selection-meta">All matching runs</div>
             </div>
-            <button class="btn" id="telemetry-refresh" type="button">Apply filters</button>
-            <button class="btn ghost" id="telemetry-reset-filters" type="button">Reset filters</button>
+            <div class="telemetry-panel-actions">
+              <button class="btn" id="telemetry-refresh" type="button">Apply filters</button>
+              <button class="btn ghost" id="telemetry-reset-filters" type="button">Reset filters</button>
+            </div>
           </div>
           <div class="telemetry-filters">
             <div class="field"><label>Time range</label><select id="telemetry-range"><option value="1h">Last hour</option><option value="24h" selected>Last 24 hours</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="all">All time</option><option value="custom">Custom</option></select></div>
@@ -1149,7 +1318,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
             <button class="telemetry-chip" data-preset="slow" type="button">Slow runs</button>
             <button class="telemetry-chip" data-preset="tokens" type="button">High token use</button>
             <button class="telemetry-chip" data-preset="awaiting" type="button">Awaiting user</button>
-            <button class="telemetry-chip" data-preset="missing" type="button">No structured events</button>
+            <button class="telemetry-chip is-muted" data-preset="missing" type="button">Telemetry gaps</button>
             <button class="telemetry-chip" data-preset="expensive-failures" type="button">Most expensive failures</button>
           </div>
           <div class="telemetry-actions">
@@ -1174,12 +1343,13 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
             <div class="field"><label>Roll up by</label><select id="telemetry-rollup"><option value="run" selected>Run</option><option value="story">Story/change</option><option value="parent">Parent/suite</option></select></div>
           </div>
           <div class="telemetry-chart-grid">
-            <div class="telemetry-chart-card wide"><div class="telemetry-chart-title">Run duration trend</div><div id="telemetry-chart-duration" class="telemetry-chart"></div></div>
-            <div class="telemetry-chart-card wide"><div class="telemetry-chart-title">Token usage trend</div><div id="telemetry-chart-tokens" class="telemetry-chart"></div></div>
-            <div class="telemetry-chart-card wide"><div class="telemetry-chart-title">Stage duration heatmap</div><div id="telemetry-chart-stage-heatmap" class="telemetry-chart"></div></div>
-            <div class="telemetry-chart-card"><div class="telemetry-chart-title">Model comparison</div><div id="telemetry-chart-models" class="telemetry-chart"></div></div>
-            <div class="telemetry-chart-card"><div class="telemetry-chart-title">AC complexity</div><div id="telemetry-chart-ac" class="telemetry-chart"></div></div>
-            <div class="telemetry-chart-card"><div class="telemetry-chart-title">Loop iterations</div><div id="telemetry-chart-loops" class="telemetry-chart"></div></div>
+            <div class="telemetry-chart-card wide is-primary run-duration-card"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">Run duration trend</div><div class="telemetry-chart-subtitle">Each dot is a run; median and P95 trend lines expose drift. Drag the bottom time-window slider to zoom the visible range.</div></div><span class="telemetry-chart-guide">⇤ time zoom slider ⇥</span></div><div id="telemetry-chart-duration" class="telemetry-chart"></div></div>
+            <div class="telemetry-chart-card wide is-primary"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">Token usage trend</div><div class="telemetry-chart-subtitle">Stacked bars split input/output tokens; the line shows tokens per run.</div></div></div><div id="telemetry-chart-tokens" class="telemetry-chart"></div></div>
+            <div class="telemetry-chart-card wide stage-boxplot"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">Stage duration box plot</div><div class="telemetry-chart-subtitle">Each row is one stage across the currently filtered runs. Box = P25-P75, center line = median, whiskers = min/max, marker = P95.</div></div></div><div id="telemetry-chart-stage-boxplot" class="telemetry-chart"></div></div>
+            <div class="telemetry-chart-card model-comparison"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">Model comparison</div><div class="telemetry-chart-subtitle">Each point aggregates one runner/model across the current filters. Color is stable per model; point size is fixed so nearby models stay readable.</div></div></div><div id="telemetry-chart-models" class="telemetry-chart"></div></div>
+            <div class="telemetry-chart-card model-run-counts"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">Runs per model</div><div class="telemetry-chart-subtitle">Counts how many currently filtered runs used each model. Bar colors match the model comparison chart.</div></div></div><div id="telemetry-chart-model-counts" class="telemetry-chart"></div></div>
+            <div class="telemetry-chart-card"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">AC complexity</div><div class="telemetry-chart-subtitle">Acceptance criteria count compared with elapsed time.</div></div></div><div id="telemetry-chart-ac" class="telemetry-chart"></div></div>
+            <div class="telemetry-chart-card loop-comparison"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">Loop iterations by loop</div><div class="telemetry-chart-subtitle">Grouped by named run.py loop. Bars show total iterations per bucket; use this to spot loops that repeatedly re-run.</div></div></div><div id="telemetry-chart-loops" class="telemetry-chart"></div></div>
           </div>
         </div>
 
@@ -1189,8 +1359,8 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
         </div>
 
         <div class="telemetry-grid">
-          <div class="telemetry-panel"><div class="telemetry-panel-head"><div class="telemetry-panel-title">Stage bottlenecks</div></div><div class="telemetry-table-wrap"><table class="telemetry-table"><thead><tr><th>Stage</th><th>Runs</th><th>Active</th><th>Avg</th><th>Median</th><th>P95</th><th>Total</th><th>Failures</th><th>Failure rate</th></tr></thead><tbody id="telemetry-stages"></tbody></table></div></div>
-          <div class="telemetry-panel"><div class="telemetry-panel-head"><div class="telemetry-panel-title">Error intelligence</div></div><div class="telemetry-table-wrap"><table class="telemetry-table"><thead><tr><th>Signature</th><th>Count</th><th>Last seen</th><th>Stage</th><th>Runner/model</th><th>Sample</th><th>Message</th></tr></thead><tbody id="telemetry-errors"></tbody></table></div></div>
+          <div class="telemetry-panel"><div class="telemetry-panel-head"><div><div class="telemetry-panel-title">Stage bottlenecks</div><div class="telemetry-panel-meta">Median, P95, P99, and failure rate are emphasized for triage.</div></div></div><div class="telemetry-table-wrap"><table class="telemetry-table telemetry-stage-table"><thead><tr><th>Stage</th><th>Runs</th><th>Active</th><th class="is-emphasis">Median</th><th class="is-emphasis">P95</th><th class="is-emphasis">P99</th><th>Total</th><th>Failures</th><th class="is-emphasis">Failure rate</th></tr></thead><tbody id="telemetry-stages"></tbody></table></div></div>
+          <div class="telemetry-panel"><div class="telemetry-panel-head"><div><div class="telemetry-panel-title">Error intelligence</div><div class="telemetry-panel-meta">Sorted by severity, recurrence, and recency.</div></div></div><div class="telemetry-table-wrap"><table class="telemetry-table telemetry-error-table"><thead><tr><th class="is-emphasis">Severity</th><th>Triage</th><th>Signature and context</th><th class="is-emphasis">Count</th><th>Last seen</th><th>Stage</th><th>Sample</th></tr></thead><tbody id="telemetry-errors"></tbody></table></div></div>
         </div>
 
         <div class="telemetry-grid">
@@ -1570,6 +1740,8 @@ let activeRunJob = null;
 let activeRunEvents = [];
 let workflowTicker = null;
 let lastSeq = 0;
+let submitRunInFlight = false;
+const RUN_HISTORY_STATE = {items:[], status:"all", range:"all", runner:"all", density:"comfortable"};
 const ACTIVE_JOB_BY_SURFACE = {runs:null, evaluate:null};
 const TRACE_EVENTS = {runs:[], evaluate:[]};
 const STREAM_EVENT_TYPES = ["job.start","stage.start","stage.end","cli.invoke","cli.exit","log","metrics","opik.start","opik.end","job.end","stream.end","user.prompt","user.response","user.prompt.timeout","user.escalation.resolved"];
@@ -1584,11 +1756,25 @@ const TELEMETRY_STATE = {
   timer:null,
   detailJobId:null,
   failedStage:null,
+  missingEventsOnly:false,
   autoSelected:true,
   charts:{},
   chartBucket:"day",
   rollup:"run",
 };
+const TELEMETRY_MODEL_PALETTE = [
+  "#4a9dd4", "#b48cff", "#52c97b", "#f0cc5e", "#ff8c66",
+  "#64d8cb", "#f472b6", "#a3e635", "#fb7185", "#93c5fd",
+];
+function telemetryStableHash(value){
+  const text = String(value || "unknown");
+  let hash = 0;
+  for(let i=0;i<text.length;i++) hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+  return Math.abs(hash);
+}
+function telemetryColorForModel(model){
+  return TELEMETRY_MODEL_PALETTE[telemetryStableHash(model) % TELEMETRY_MODEL_PALETTE.length];
+}
 const SETTINGS_HELP_COPY = {
   "s-host":"The network interface the API server binds to. Use 127.0.0.1 (default) to keep it local-only. Set to 0.0.0.0 if you need to access the GUI from another machine on your network.",
   "s-port":"TCP port for the API server and GUI. Default is 8742. If another service uses this port, change it here — but you must restart the server for the new port to take effect.",
@@ -1624,8 +1810,11 @@ const SETTINGS_HELP_COPY = {
 };
 let activeSettingsHelpTrigger = null;
 
-function toast(msg, err){
-  const t = $("#toast"); t.textContent = msg; t.className = "toast show" + (err?" error":"");
+function toast(msg, err=false, kind=""){
+  const t = $("#toast");
+  t.textContent = msg;
+  const semantic = err ? " error" : (kind === "success" ? " success" : "");
+  t.className = "toast show" + semantic;
   setTimeout(()=>t.classList.remove("show"), 3000);
 }
 function resolveSettingsHelpText(helpKey, context={}){
@@ -2055,6 +2244,9 @@ function formatPercent(value){
   if(n >= 0 && n <= 1) n *= 100;
   return `${Math.round(n)}%`;
 }
+function formatPct(value){
+  return formatPercent(value);
+}
 function formatMoney(value){
   const n = Number(value);
   if(!Number.isFinite(n)) return "—";
@@ -2065,6 +2257,9 @@ function formatSeconds(value){
   if(value==null || value==="") return "—";
   const n = Number(value);
   return Number.isFinite(n) ? `${Math.round(n)}s` : "—";
+}
+function formatDuration(value){
+  return formatSeconds(value);
 }
 function formatNumber(value){
   if(value==null || value==="") return "—";
@@ -2308,6 +2503,7 @@ function telemetryFilters(){
     min_cost_usd:null,
     errors_only:false,
     awaiting_input_only:false,
+    missing_events_only:!!TELEMETRY_STATE.missingEventsOnly,
   };
 }
 function telemetryRunsQuery(filters){
@@ -2363,48 +2559,181 @@ function telemetryCostLabel(source){
   if(source==="mixed") return "mixed";
   return "unknown";
 }
-function telemetryCostDisplay(rowOrSummary, source){
-  if(source==="unknown") return "—";
+function telemetryCostValue(rowOrSummary, source){
+  if(source==="unknown") return null;
   const actual = Number(rowOrSummary?.cost_usd);
   const estimated = Number(rowOrSummary?.estimated_cost_usd);
-  if(source==="actual" && Number.isFinite(actual) && actual > 0) return formatMoney(actual);
-  if((source==="estimated" || source==="mixed") && Number.isFinite(estimated) && estimated > 0) return formatMoney(estimated);
-  if(Number.isFinite(actual) && actual > 0) return formatMoney(actual);
-  return Number.isFinite(estimated) && estimated > 0 ? formatMoney(estimated) : "—";
+  if(source==="actual" && Number.isFinite(actual) && actual > 0) return actual;
+  if((source==="estimated" || source==="mixed") && Number.isFinite(estimated) && estimated > 0) return estimated;
+  if(Number.isFinite(actual) && actual > 0) return actual;
+  return Number.isFinite(estimated) && estimated > 0 ? estimated : null;
+}
+function telemetryCostDisplay(rowOrSummary, source){
+  const value = telemetryCostValue(rowOrSummary, source);
+  return value == null ? "—" : formatMoney(value);
 }
 function telemetryCoverageLabel(source){
   if(source==="sqlite") return "SQLite telemetry";
   if(source==="jsonl_fallback") return "JSONL fallback";
-  return "No structured events";
+  return "Telemetry gap";
+}
+function telemetrySafeNumber(value){
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+function telemetryToneClass(tone){
+  return `tone-${tone || "neutral"}`;
+}
+function telemetryFailureTone(rate, count=0){
+  const r = telemetrySafeNumber(rate) ?? 0;
+  if(r >= 0.04 || Number(count || 0) >= 3) return "danger";
+  if(r > 0 || Number(count || 0) > 0) return "warn";
+  return "good";
+}
+function telemetrySuccessTone(rate){
+  const r = telemetrySafeNumber(rate);
+  if(r == null) return "neutral";
+  if(r < 0.85) return "danger";
+  if(r < 0.95) return "warn";
+  return "good";
+}
+function telemetryCostTone(cost, selectedCount){
+  const value = telemetrySafeNumber(cost);
+  if(value == null || value <= 0) return "neutral";
+  const perRun = selectedCount ? value / selectedCount : value;
+  if(value >= 20 || perRun >= 1) return "danger";
+  if(value >= 5 || perRun >= 0.25) return "warn";
+  return "good";
+}
+function telemetryDurationTone(seconds, warnAt=300, dangerAt=1200){
+  const value = telemetrySafeNumber(seconds);
+  if(value == null) return "neutral";
+  if(value >= dangerAt) return "danger";
+  if(value >= warnAt) return "warn";
+  return "good";
+}
+function telemetryBadgeClass(label){
+  const text = String(label || "").toLowerCase();
+  if(text.includes("token") || text.includes("queued") || text.includes("await")) return "warn";
+  if(text.includes("fail") || text.includes("error") || text.includes("timeout")) return "error";
+  return "info";
+}
+function renderAttentionBadges(badges){
+  const visible = (badges || []).filter(b=>String(b || "").toLowerCase() !== "no structured events");
+  return visible.map(b=>`<span class="telemetry-badge ${telemetryBadgeClass(b)}">${escapeHtml(b)}</span>`).join("");
+}
+function renderCoverageBadge(source, status){
+  if(source==="none"){
+    return status==="failed" ? `<span class="telemetry-badge muted">telemetry gap</span>` : "";
+  }
+  const cls = source==="jsonl_fallback" ? "warn" : "ok";
+  return `<span class="telemetry-badge ${cls}">${escapeHtml(telemetryCoverageLabel(source))}</span>`;
+}
+function telemetryMetricPill(value, tone){
+  return `<span class="telemetry-metric-pill ${telemetryToneClass(tone)}">${escapeHtml(value)}</span>`;
+}
+function renderStageDuration(value, warnAt=300, dangerAt=1200){
+  const tone = telemetryDurationTone(value, warnAt, dangerAt);
+  return `<span class="telemetry-emphasis ${telemetryToneClass(tone)}">${escapeHtml(formatSeconds(value))}</span>`;
+}
+function renderFailureRatePill(rate, count){
+  return telemetryMetricPill(formatPercent(rate), telemetryFailureTone(rate, count));
+}
+function telemetryErrorSeverity(row){
+  const explicit = String(row?.severity || "").toLowerCase();
+  if(["critical","high","medium","low"].includes(explicit)) return explicit;
+  const count = Number(row?.count || 0);
+  const text = `${row?.sample_message || ""} ${row?.signature || ""}`.toLowerCase();
+  if(count >= 10 || text.includes("out of memory") || text.includes("permission denied")) return "critical";
+  if(count >= 3 || row?.recurring || text.includes("timeout") || text.includes("rate limit")) return "high";
+  if(count >= 1) return "medium";
+  return "low";
+}
+function telemetryErrorSeverityScore(row){
+  const explicit = Number(row?.severity_score);
+  if(Number.isFinite(explicit)) return explicit;
+  return ({critical:4,high:3,medium:2,low:1})[telemetryErrorSeverity(row)] || 0;
+}
+function telemetrySeverityTone(severity){
+  if(severity==="critical" || severity==="high") return "danger";
+  if(severity==="medium") return "warn";
+  return "info";
+}
+function sortTelemetryErrors(rows){
+  const ts = value=>Date.parse(value||"")||0;
+  return [...(rows || [])].sort((a,b)=>
+    telemetryErrorSeverityScore(b)-telemetryErrorSeverityScore(a)
+    || Number(b.count||0)-Number(a.count||0)
+    || ts(b.last_seen)-ts(a.last_seen)
+  );
+}
+function telemetryKpiCard(card){
+  const tone = telemetryToneClass(card.tone);
+  const hero = card.hero ? "is-hero" : "";
+  const unit = card.unit ? `<span class="telemetry-kpi-unit">${escapeHtml(card.unit)}</span>` : "";
+  const source = card.source ? `<div class="telemetry-card-source">${escapeHtml(card.source)}</div>` : "";
+  return `
+    <div class="card telemetry-kpi-card ${hero} ${tone}" data-telemetry-card="${escapeHtml(card.action || card.label)}">
+      <div class="lbl">${escapeHtml(card.label)}</div>
+      <div class="telemetry-kpi-main"><div class="val">${escapeHtml(card.value)}</div>${unit}</div>
+      ${card.sub ? `<div class="telemetry-kpi-sub">${escapeHtml(card.sub)}</div>` : ""}
+      ${source}
+    </div>`;
 }
 function renderTelemetryCards(data){
   const summary = data?.summary || {};
   const coverage = data?.coverage || {};
-  const cards = [
-    ["Selected runs", data?.selected_count ?? 0, `${coverage.aggregated_jobs || 0}/${coverage.matched_jobs ?? coverage.aggregated_jobs ?? 0} aggregated`],
-    ["Active now", summary.active || 0, ""],
-    ["Queued", summary.queued || 0, ""],
-    ["Awaiting input", summary.awaiting_input || 0, ""],
-    ["Success rate", formatPercent(summary.success_rate), ""],
-    ["Failure rate", formatPercent(summary.failure_rate), ""],
-    ["Median runtime", formatSeconds(summary.median_runtime_seconds), ""],
-    ["P95 runtime", formatSeconds(summary.p95_runtime_seconds), ""],
-    ["Median queue", formatSeconds(summary.median_queue_seconds), ""],
-    ["Total tokens", formatNumber(summary.tokens_total), ""],
-    ["Cost", telemetryCostDisplay(summary, coverage.cost_data_source), telemetryCostLabel(coverage.cost_data_source)],
-    ["Top failed stage", summary.top_failed_stage || "—", ""],
-    ["User-blocked time", formatSeconds(summary.user_blocked_seconds), ""],
+  const selectedCount = Number(data?.selected_count || 0);
+  const costValue = telemetryCostValue(summary, coverage.cost_data_source);
+  const costPerRun = costValue != null && selectedCount ? costValue / selectedCount : null;
+  const groups = [
+    {
+      key:"volume",
+      title:"Volume",
+      cards:[
+        {label:"Selected runs", value:formatNumber(selectedCount), unit:"runs", hero:true, tone:"info", sub:`${coverage.aggregated_jobs || 0}/${coverage.matched_jobs ?? coverage.aggregated_jobs ?? 0} aggregated`},
+        {label:"Active now", value:formatNumber(summary.active || 0), unit:"live", tone:(summary.active||0)>0?"info":"neutral", sub:"Running pipelines"},
+        {label:"Queued", value:formatNumber(summary.queued || 0), unit:"queued", tone:(summary.queued||0)>0?"warn":"neutral", sub:"Waiting to start"},
+        {label:"Awaiting input", value:formatNumber(summary.awaiting_input || 0), unit:"blocked", tone:(summary.awaiting_input||0)>0?"warn":"good", sub:"User action needed", action:"Awaiting input"},
+      ],
+    },
+    {
+      key:"health",
+      title:"Health",
+      cards:[
+        {label:"Failure rate", value:formatPercent(summary.failure_rate), unit:"failed", hero:true, tone:telemetryFailureTone(summary.failure_rate), sub:"Green 0%, yellow >0%, red ≥4%", action:"Failure rate"},
+        {label:"Success rate", value:formatPercent(summary.success_rate), unit:"success", tone:telemetrySuccessTone(summary.success_rate), sub:"Target ≥95%"},
+        {label:"Top failed stage", value:summary.top_failed_stage || "—", unit:summary.top_failed_stage?"stage":"", tone:summary.top_failed_stage?"danger":"good", sub:summary.top_failed_stage?"Click to isolate failed runs":"No dominant failed stage", action:"Top failed stage"},
+      ],
+    },
+    {
+      key:"performance",
+      title:"Performance",
+      cards:[
+        {label:"Median runtime", value:formatSeconds(summary.median_runtime_seconds), unit:"median", hero:true, tone:telemetryDurationTone(summary.median_runtime_seconds, 300, 1200), sub:"Green <5m, yellow ≥5m, red ≥20m"},
+        {label:"P95 runtime", value:formatSeconds(summary.p95_runtime_seconds), unit:"p95", tone:telemetryDurationTone(summary.p95_runtime_seconds, 1200, 3600), sub:"Tail latency"},
+        {label:"Median queue", value:formatSeconds(summary.median_queue_seconds), unit:"queue", tone:telemetryDurationTone(summary.median_queue_seconds, 60, 300), sub:"Scheduling delay"},
+        {label:"User-blocked time", value:formatSeconds(summary.user_blocked_seconds), unit:"blocked", tone:telemetryDurationTone(summary.user_blocked_seconds, 300, 1200), sub:"Human wait time"},
+      ],
+    },
+    {
+      key:"cost",
+      title:"Cost",
+      cards:[
+        {label:"Cost", value:telemetryCostDisplay(summary, coverage.cost_data_source), unit:"usd", hero:true, tone:telemetryCostTone(costValue, selectedCount), sub:costPerRun == null ? "No cost signal" : `${formatMoney(costPerRun)} per run`, source:telemetryCostLabel(coverage.cost_data_source)},
+        {label:"Total tokens", value:formatNumber(summary.tokens_total), unit:"tokens", tone:(summary.tokens_total||0)>=100000?"warn":"neutral", sub:"Input + output"},
+      ],
+    },
   ];
-  $("#telemetry-cards").innerHTML = cards.map(([label,value,source])=>`
-    <div class="card" data-telemetry-card="${escapeHtml(label)}">
-      <div class="lbl">${escapeHtml(label)}</div>
-      <div class="val">${escapeHtml(value)}</div>
-      ${source ? `<div class="telemetry-card-source">${escapeHtml(source)}</div>` : ""}
-    </div>`).join("");
+  $("#telemetry-cards").innerHTML = groups.map(group=>`
+    <section class="telemetry-kpi-group is-${escapeHtml(group.key)}" aria-label="${escapeHtml(group.title)} KPIs">
+      <div class="telemetry-kpi-group-label">${escapeHtml(group.title)}</div>
+      <div class="telemetry-kpi-group-grid">${group.cards.map(telemetryKpiCard).join("")}</div>
+    </section>`).join("");
   $$("[data-telemetry-card]").forEach(card=>{
-    card.style.cursor = "pointer";
     card.addEventListener("click", ()=>{
       const label = card.dataset.telemetryCard;
+      TELEMETRY_STATE.missingEventsOnly = false;
       if(label==="Failure rate"){ $("#telemetry-status").value = "failed"; TELEMETRY_STATE.failedStage = null; }
       if(label==="Awaiting input"){ $("#telemetry-status").value = "awaiting_input"; TELEMETRY_STATE.failedStage = null; }
       if(label==="Top failed stage" && summary.top_failed_stage){ $("#telemetry-status").value = "failed"; TELEMETRY_STATE.failedStage = summary.top_failed_stage; }
@@ -2431,11 +2760,19 @@ function renderTelemetryAggregate(data){
   $("#telemetry-meta").textContent = `${data.selected_count || 0} selected · refreshed ${fmtLocalTime(new Date().toISOString())}`;
   $("#telemetry-selection-meta").textContent = TELEMETRY_STATE.selectionMode==="all" ? "All matching runs" : `${TELEMETRY_STATE.selectedIds.size} selected run${TELEMETRY_STATE.selectedIds.size===1?"":"s"}`;
   renderTelemetryTable("#telemetry-live", data.active_runs || [], 9, row=>`
-    <tr><td><span class="status ${escapeHtml(row.status)}">${escapeHtml(row.status)}</span></td><td>${escapeHtml(row.change_id||"")}</td><td class="mono">${escapeHtml(row.repo||"")}</td><td>${escapeHtml(row.runner||"")}/${escapeHtml(row.model||"")}</td><td>${escapeHtml(row.current_stage||"—")}</td><td>${formatSeconds(row.duration_seconds)}</td><td>${formatNumber((row.tokens_in||0)+(row.tokens_out||0))}</td><td>${telemetryCostDisplay(row, row.cost_source)} <span class="telemetry-badge">${escapeHtml(telemetryCostLabel(row.cost_source))}</span></td><td>${(row.attention_badges||[]).map(b=>`<span class="telemetry-badge warn">${escapeHtml(b)}</span>`).join("")}</td></tr>`);
-  renderTelemetryTable("#telemetry-stages", data.stage_stats || [], 9, row=>`
-    <tr><td>${escapeHtml(row.stage)}</td><td>${formatNumber(row.runs_observed)}</td><td>${formatNumber(row.active_count)}</td><td>${formatSeconds(row.average_duration_seconds)}</td><td>${formatSeconds(row.median_duration_seconds)}</td><td>${formatSeconds(row.p95_duration_seconds)}</td><td>${formatSeconds(row.total_duration_seconds)}</td><td>${formatNumber(row.failure_count)}</td><td>${formatPercent(row.failure_rate)}</td></tr>`);
-  renderTelemetryTable("#telemetry-errors", data.error_stats || [], 7, row=>`
-    <tr><td>${escapeHtml(row.signature)}</td><td>${formatNumber(row.count)}</td><td>${escapeHtml(fmtLocalTime(row.last_seen))}</td><td>${escapeHtml(row.affected_stage||"—")}</td><td>${escapeHtml(row.runner_model||"—")}</td><td class="mono">${escapeHtml(row.sample_job_id||"")}<br>${escapeHtml(row.sample_change_id||"")}</td><td>${escapeHtml(row.sample_message||"")}</td></tr>`);
+    <tr><td><span class="status ${escapeHtml(row.status)}">${escapeHtml(row.status)}</span></td><td>${escapeHtml(row.change_id||"")}</td><td class="mono">${escapeHtml(row.repo||"")}</td><td>${escapeHtml(row.runner||"")}/${escapeHtml(row.model||"")}</td><td>${escapeHtml(row.current_stage||"—")}</td><td>${formatSeconds(row.duration_seconds)}</td><td>${formatNumber((row.tokens_in||0)+(row.tokens_out||0))}</td><td>${telemetryCostDisplay(row, row.cost_source)} <span class="telemetry-badge muted">${escapeHtml(telemetryCostLabel(row.cost_source))}</span></td><td>${renderAttentionBadges(row.attention_badges)}</td></tr>`);
+  renderTelemetryTable("#telemetry-stages", data.stage_stats || [], 9, row=>{
+    const failureTone = telemetryFailureTone(row.failure_rate, row.failure_count);
+    const activeCell = row.active_count ? `<span class="telemetry-badge warn">${formatNumber(row.active_count)} active</span>` : formatNumber(row.active_count);
+    return `<tr class="${failureTone==="danger"?"needs-attention":""}"><td>${escapeHtml(row.stage)}</td><td>${formatNumber(row.runs_observed)}</td><td>${activeCell}</td><td>${renderStageDuration(row.median_duration_seconds,300,1200)}</td><td>${renderStageDuration(row.p95_duration_seconds,600,1800)}</td><td>${renderStageDuration(row.p99_duration_seconds ?? row.p95_duration_seconds,600,1800)}</td><td>${formatSeconds(row.total_duration_seconds)}</td><td>${formatNumber(row.failure_count)}</td><td>${renderFailureRatePill(row.failure_rate,row.failure_count)}</td></tr>`;
+  });
+  renderTelemetryTable("#telemetry-errors", sortTelemetryErrors(data.error_stats || []), 7, row=>{
+    const severity = telemetryErrorSeverity(row);
+    const tone = telemetrySeverityTone(severity);
+    const triage = row.triage_state || "open";
+    const recurring = row.recurring ? `<span class="telemetry-badge warn">recurring</span>` : "";
+    return `<tr class="${tone==="danger"?"needs-attention":""}"><td>${telemetryMetricPill(severity.toUpperCase(), tone)}</td><td><span class="telemetry-triage">${escapeHtml(triage)}</span>${recurring}</td><td><div class="telemetry-signature">${escapeHtml(row.signature)}</div><div class="telemetry-error-message">${escapeHtml(row.sample_message||"No sample message captured.")}</div></td><td>${telemetryMetricPill(formatNumber(row.count), tone)}</td><td>${escapeHtml(fmtLocalTime(row.last_seen))}</td><td>${escapeHtml(row.affected_stage||"—")}</td><td class="mono">${escapeHtml(row.sample_job_id||"")}<br>${escapeHtml(row.sample_change_id||"")}<br>${escapeHtml(row.runner_model||"—")}</td></tr>`;
+  });
   const ui = data.user_input_stats || {};
   $("#telemetry-user-summary").textContent = `${ui.total_prompt_count || 0} prompts · ${ui.timeout_count || 0} timeouts · ${formatSeconds(ui.total_blocked_seconds)} blocked · common stage ${ui.most_common_prompting_stage || "—"}`;
   renderTelemetryTable("#telemetry-prompts", ui.active_unresolved_prompts || [], 7, row=>`
@@ -2466,7 +2803,8 @@ function renderTelemetryRuns(rows){
   if(!tbody) return;
   tbody.innerHTML = sorted.length ? sorted.map(row=>{
     const selected = TELEMETRY_STATE.selectedIds.has(row.id);
-    const coverageClass = row.coverage_source==="none" ? "error" : row.coverage_source==="jsonl_fallback" ? "warn" : "ok";
+    const coverageBadge = renderCoverageBadge(row.coverage_source, row.status);
+    const errorCell = [escapeHtml(row.error_summary||""), coverageBadge].filter(Boolean).join("<br>");
     return `<tr class="${selected?"is-selected":""}" data-telemetry-job="${escapeHtml(row.id)}">
       <td><input type="checkbox" class="telemetry-run-check" data-job-id="${escapeHtml(row.id)}" ${selected?"checked":""}></td>
       <td>${escapeHtml(fmtLocalTime(row.submitted_at))}</td><td>${formatSeconds(row.duration_seconds)}</td><td>${formatSeconds(row.queue_seconds)}</td>
@@ -2474,7 +2812,7 @@ function renderTelemetryRuns(rows){
       <td>${escapeHtml(row.runner||"")}</td><td>${escapeHtml(row.model||"")}</td><td>${escapeHtml(row.mode||"")}</td>
       <td><span class="status ${escapeHtml(row.status)}">${escapeHtml(row.status||"")}</span></td><td>${escapeHtml(row.current_stage || row.failed_stage || "—")}</td>
       <td>${formatNumber((row.tokens_in||0)+(row.tokens_out||0))}</td><td>${telemetryCostDisplay(row, row.cost_source)} <span class="telemetry-badge">${escapeHtml(telemetryCostLabel(row.cost_source))}</span></td>
-      <td>${formatNumber(row.user_prompts)}</td><td>${escapeHtml(row.error_summary||"")}<br><span class="telemetry-badge ${coverageClass}">${escapeHtml(telemetryCoverageLabel(row.coverage_source))}</span></td>
+      <td>${formatNumber(row.user_prompts)}</td><td>${errorCell || "—"}</td>
     </tr>`;
   }).join("") : emptyTelemetryRow(16);
   $$(".telemetry-run-check", tbody).forEach(check=>{
@@ -2528,9 +2866,11 @@ function renderTelemetryChart(id, option, hasData){
   if(!chart){ telemetryEmptyChart(id, "Chart library unavailable."); return null; }
   chart.setOption({
     backgroundColor:"transparent",
-    textStyle:{color:"#8a8580",fontFamily:"JetBrains Mono, monospace",fontSize:10},
-    grid:{left:48,right:18,top:28,bottom:42},
-    tooltip:{trigger:"item",backgroundColor:"#141720",borderColor:"rgba(255,255,255,.13)",textStyle:{color:"#e2ddd5"}},
+    color:["#4a9dd4","#c4873a","#52c97b","#d4a832","#e05a46"],
+    textStyle:{color:"#8a8580",fontFamily:"JetBrains Mono, monospace",fontSize:11},
+    grid:{left:58,right:28,top:48,bottom:50,containLabel:true},
+    tooltip:{trigger:"item",confine:true,backgroundColor:"#141720",borderColor:"rgba(255,255,255,.13)",textStyle:{color:"#e2ddd5"}},
+    legend:{textStyle:{color:"#8a8580",fontFamily:"JetBrains Mono, monospace",fontSize:10}},
     ...option,
   }, true);
   chart.resize();
@@ -2541,13 +2881,40 @@ function renderTelemetryCharts(charts){
   const durationPoints = payload.duration_points || [];
   const durationSeries = payload.duration_series || [];
   const durationChart = renderTelemetryChart("telemetry-chart-duration", {
-    xAxis:{type:"time"},
-    yAxis:{type:"value",name:"seconds"},
-    dataZoom:[{type:"inside"},{type:"slider",height:18,bottom:8}],
+    legend:{top:0,right:8},
+    grid:{left:62,right:28,top:54,bottom:88,containLabel:true},
+    tooltip:{trigger:"item",confine:true,backgroundColor:"#141720",borderColor:"rgba(255,255,255,.13)",textStyle:{color:"#e2ddd5"}},
+    xAxis:{type:"time",axisLabel:{hideOverlap:true}},
+    yAxis:{type:"value",name:"Duration (s)",nameGap:18,splitLine:{lineStyle:{color:"rgba(255,255,255,.06)"}}},
+    dataZoom:[
+      {type:"inside",filterMode:"none",zoomOnMouseWheel:true,moveOnMouseMove:true,moveOnMouseWheel:true},
+      {
+        type:"slider",
+        filterMode:"none",
+        height:30,
+        bottom:28,
+        show:true,
+        showDetail:true,
+        showDataShadow:true,
+        realtime:true,
+        brushSelect:true,
+        borderColor:"rgba(74,157,212,.55)",
+        backgroundColor:"rgba(7,8,11,.76)",
+        fillerColor:"rgba(74,157,212,.22)",
+        handleSize:"120%",
+        handleStyle:{color:"#e2ddd5",borderColor:"#4a9dd4",borderWidth:2,shadowBlur:8,shadowColor:"rgba(74,157,212,.25)"},
+        moveHandleSize:7,
+        moveHandleStyle:{color:"#4a9dd4",opacity:.85},
+        dataBackground:{lineStyle:{color:"rgba(255,255,255,.22)"},areaStyle:{color:"rgba(255,255,255,.06)"}},
+        selectedDataBackground:{lineStyle:{color:"#4a9dd4"},areaStyle:{color:"rgba(74,157,212,.18)"}},
+        textStyle:{color:"#c9c2b7"},
+      },
+    ],
+    graphic:[{type:"text",left:"center",bottom:4,silent:true,style:{text:"drag the time-window slider or handles to zoom",fill:"#8a8580",font:"10px JetBrains Mono, monospace"}}],
     series:[
-      {name:"Run",type:"scatter",symbolSize:value=>Math.max(6, Math.min(18, Math.sqrt(Number(value?.[2]||0)/500))),data:durationPoints.filter(p=>p.submitted_at && p.complete_elapsed_seconds!=null).map(p=>[p.submitted_at,p.complete_elapsed_seconds,p.tokens_total||0,p.job_id,p.status]),encode:{x:0,y:1},itemStyle:{color:"#c4873a"}},
-      {name:"Daily median",type:"line",showSymbol:true,data:durationSeries.filter(p=>p.bucket && p.complete_elapsed_median_seconds!=null).map(p=>[p.bucket,p.complete_elapsed_median_seconds]),lineStyle:{color:"#6ee7a0"}},
-      {name:"Daily P95",type:"line",showSymbol:false,data:durationSeries.filter(p=>p.bucket && p.complete_elapsed_p95_seconds!=null).map(p=>[p.bucket,p.complete_elapsed_p95_seconds]),lineStyle:{color:"#f0cc5e",type:"dashed"}},
+      {name:"Run",type:"scatter",symbolSize:value=>Math.max(6, Math.min(18, Math.sqrt(Number(value?.[2]||0)/500))),data:durationPoints.filter(p=>p.submitted_at && p.complete_elapsed_seconds!=null).map(p=>[p.submitted_at,p.complete_elapsed_seconds,p.tokens_total||0,p.job_id,p.status]),encode:{x:0,y:1},itemStyle:{color:"#4a9dd4"}},
+      {name:"Median",type:"line",showSymbol:true,data:durationSeries.filter(p=>p.bucket && p.complete_elapsed_median_seconds!=null).map(p=>[p.bucket,p.complete_elapsed_median_seconds]),lineStyle:{color:"#52c97b",width:2}},
+      {name:"P95",type:"line",showSymbol:false,data:durationSeries.filter(p=>p.bucket && p.complete_elapsed_p95_seconds!=null).map(p=>[p.bucket,p.complete_elapsed_p95_seconds]),lineStyle:{color:"#d4a832",type:"dashed",width:2}},
     ],
   }, durationPoints.length || durationSeries.length);
   durationChart?.off("click");
@@ -2558,46 +2925,150 @@ function renderTelemetryCharts(charts){
 
   const tokenSeries = payload.token_series || [];
   renderTelemetryChart("telemetry-chart-tokens", {
-    legend:{top:0,textStyle:{color:"#8a8580"}},
+    legend:{top:0,right:8},
+    grid:{left:62,right:70,top:54,bottom:44,containLabel:true},
+    tooltip:{trigger:"axis",confine:true,backgroundColor:"#141720",borderColor:"rgba(255,255,255,.13)",textStyle:{color:"#e2ddd5"}},
     xAxis:{type:"category",data:tokenSeries.map(row=>row.bucket),axisLabel:{hideOverlap:true}},
-    yAxis:{type:"value",name:"tokens"},
+    yAxis:[
+      {type:"value",name:"Total tokens",nameGap:18,splitLine:{lineStyle:{color:"rgba(255,255,255,.06)"}}},
+      {type:"value",name:"Tokens/run",nameGap:18,splitLine:{show:false}},
+    ],
     series:[
-      {name:"Input",type:"bar",stack:"tokens",data:tokenSeries.map(row=>row.tokens_in||0),itemStyle:{color:"#8fb4ff"}},
-      {name:"Output",type:"bar",stack:"tokens",data:tokenSeries.map(row=>row.tokens_out||0),itemStyle:{color:"#c4873a"}},
-      {name:"Tokens/run",type:"line",yAxisIndex:0,data:tokenSeries.map(row=>row.tokens_per_run||0),itemStyle:{color:"#6ee7a0"}},
+      {name:"Input",type:"bar",stack:"tokens",barMaxWidth:34,data:tokenSeries.map(row=>row.tokens_in||0),itemStyle:{color:"#4a9dd4"}},
+      {name:"Output",type:"bar",stack:"tokens",barMaxWidth:34,data:tokenSeries.map(row=>row.tokens_out||0),itemStyle:{color:"#c4873a"}},
+      {name:"Tokens/run",type:"line",yAxisIndex:1,showSymbol:true,data:tokenSeries.map(row=>row.tokens_per_run||0),lineStyle:{color:"#52c97b",width:2},itemStyle:{color:"#52c97b"}},
     ],
   }, tokenSeries.length);
 
-  const stageRows = payload.stage_duration_heatmap || [];
-  const stages = [...new Set(stageRows.map(row=>row.stage))];
-  const buckets = [...new Set(stageRows.map(row=>row.bucket))];
-  renderTelemetryChart("telemetry-chart-stage-heatmap", {
-    grid:{left:120,right:24,top:22,bottom:46},
-    xAxis:{type:"category",data:buckets,axisLabel:{hideOverlap:true}},
-    yAxis:{type:"category",data:stages},
-    visualMap:{min:0,max:Math.max(...stageRows.map(row=>Number(row.median_seconds)||0),1),calculable:true,orient:"horizontal",left:"center",bottom:0,textStyle:{color:"#8a8580"}},
-    series:[{type:"heatmap",data:stageRows.map(row=>[buckets.indexOf(row.bucket),stages.indexOf(row.stage),row.median_seconds||0,row]),label:{show:false},itemStyle:{borderColor:"rgba(7,8,11,.6)",borderWidth:1}}],
-  }, stageRows.length);
+  const stageBoxRows = payload.stage_duration_boxplot || [];
+  const stageBoxEl = $("#telemetry-chart-stage-boxplot");
+  if(stageBoxEl) stageBoxEl.style.height = stageBoxRows.length ? `${Math.max(372, stageBoxRows.length * 38 + 124)}px` : "";
+  const stageBoxLabels = stageBoxRows.map(row=>row.stage || "unattributed");
+  const stageBoxTooltip = row=>{
+    const safe = row || {};
+    return `<strong>${escapeHtml(safe.stage || "unattributed")}</strong><br>` +
+      `Runs observed: ${formatNumber(safe.runs_observed || 0)}<br>` +
+      `Min: ${formatSeconds(safe.min_seconds)} · P25: ${formatSeconds(safe.q1_seconds)}<br>` +
+      `Median: ${formatSeconds(safe.median_seconds)} · P75: ${formatSeconds(safe.q3_seconds)}<br>` +
+      `P95: ${formatSeconds(safe.p95_seconds)} · P99: ${formatSeconds(safe.p99_seconds)}<br>` +
+      `Max: ${formatSeconds(safe.max_seconds)} · Failures: ${formatNumber(safe.failure_count || 0)} (${formatPercent(safe.failure_rate || 0)})`;
+  };
+  renderTelemetryChart("telemetry-chart-stage-boxplot", {
+    legend:{top:0,right:8,textStyle:{color:"#8a8580"}},
+    grid:{left:168,right:44,top:46,bottom:48,containLabel:false},
+    tooltip:{trigger:"item",confine:true,backgroundColor:"#141720",borderColor:"rgba(255,255,255,.13)",textStyle:{color:"#e2ddd5"},formatter:params=>{
+      if(params?.seriesType === "scatter") return stageBoxTooltip(params?.data?.[2]);
+      return stageBoxTooltip(params?.data?.row || stageBoxRows[params?.dataIndex]);
+    }},
+    xAxis:{type:"value",name:"Duration (s)",nameGap:18,splitLine:{lineStyle:{color:"rgba(255,255,255,.06)"}}},
+    yAxis:{type:"category",data:stageBoxLabels,inverse:true,axisLabel:{interval:0,color:"#c9c2b7",fontSize:11,margin:14}},
+    series:[
+      {
+        name:"Duration distribution",
+        type:"boxplot",
+        layout:"horizontal",
+        data:stageBoxRows.map(row=>({
+          value:[row.min_seconds,row.q1_seconds,row.median_seconds,row.q3_seconds,row.max_seconds].map(value=>Number(value)||0),
+          row,
+        })),
+        itemStyle:{color:"rgba(74,157,212,.16)",borderColor:"#4a9dd4",borderWidth:1.3},
+        emphasis:{itemStyle:{borderColor:"#e2ddd5",borderWidth:1.8}},
+      },
+      {
+        name:"P95 marker",
+        type:"scatter",
+        data:stageBoxRows.map(row=>[row.p95_seconds || 0, row.stage || "unattributed", row]),
+        symbolSize:8,
+        itemStyle:{color:"#d4a832"},
+        emphasis:{scale:1.4},
+      },
+    ],
+  }, stageBoxRows.length);
 
   const modelRows = payload.model_points || [];
+  const modelNames = [...new Set(modelRows.map(row=>row.model_key || row.model || row.label || "unknown model"))];
   renderTelemetryChart("telemetry-chart-models", {
-    xAxis:{type:"value",name:"runtime"},
-    yAxis:{type:"value",name:"tokens/run"},
-    series:[{type:"scatter",symbolSize:value=>Math.max(7, Math.min(28, Number(value?.[2]||1)*4)),data:modelRows.map(row=>[row.median_runtime_seconds||0,row.tokens_per_run||0,row.runs||1,row.model_set]),itemStyle:{color:"#c4873a"}}],
+    legend:{type:"scroll",top:0,left:8,right:8,textStyle:{color:"#8a8580"}},
+    grid:{left:58,right:38,top:66,bottom:48,containLabel:true},
+    tooltip:{trigger:"item",confine:true,backgroundColor:"#141720",borderColor:"rgba(255,255,255,.13)",textStyle:{color:"#e2ddd5"},formatter:params=>{
+      const row = params?.data?.[4] || {};
+      return `<strong>${escapeHtml(row.label || row.runner_model || "unknown")}</strong><br>` +
+        `Model color: ${escapeHtml(row.model_key || row.model || "unknown")}<br>` +
+        `Runs: ${formatNumber(row.runs || 0)}<br>` +
+        `Median runtime: ${formatDuration(row.median_runtime_seconds)}<br>` +
+        `Tokens/run: ${formatNumber(row.tokens_per_run || 0)}<br>` +
+        `Success: ${formatPct(row.success_rate || 0)} · Failure: ${formatPct(row.failure_rate || 0)}`;
+    }},
+    xAxis:{type:"value",name:"Median runtime (s)",splitLine:{lineStyle:{color:"rgba(255,255,255,.06)"}}},
+    yAxis:{type:"value",name:"Tokens/run",splitLine:{lineStyle:{color:"rgba(255,255,255,.06)"}}},
+    series:modelNames.map(modelName=>({
+      name:modelName,
+      type:"scatter",
+      symbolSize:12,
+      data:modelRows
+        .filter(row=>(row.model_key || row.model || row.label || "unknown model") === modelName)
+        .map(row=>[row.median_runtime_seconds||0,row.tokens_per_run||0,row.runs||1,row.label || row.runner_model || row.model_set,row]),
+      label:{show:true,position:"right",formatter:params=>params?.data?.[3] || "unknown",color:"#c9c2b7",fontSize:10},
+      labelLayout:{hideOverlap:true},
+      itemStyle:{color:telemetryColorForModel(modelName)},
+      emphasis:{focus:"series",scale:1.35},
+    })),
   }, modelRows.length);
+
+  const modelCountRows = (payload.model_run_counts || [])
+    .slice()
+    .sort((a,b)=>(Number(b.runs)||0)-(Number(a.runs)||0) || String(a.model||"").localeCompare(String(b.model||"")));
+  const modelCountEl = $("#telemetry-chart-model-counts");
+  if(modelCountEl) modelCountEl.style.height = modelCountRows.length ? `${Math.max(346, modelCountRows.length * 34 + 104)}px` : "";
+  renderTelemetryChart("telemetry-chart-model-counts", {
+    grid:{left:146,right:42,top:34,bottom:40,containLabel:false},
+    tooltip:{trigger:"item",confine:true,backgroundColor:"#141720",borderColor:"rgba(255,255,255,.13)",textStyle:{color:"#e2ddd5"},formatter:params=>{
+      const row = params?.data?.row || {};
+      return `<strong>${escapeHtml(row.model || "unknown model")}</strong><br>` +
+        `Runs using model: ${formatNumber(row.runs || 0)}<br>` +
+        `Runners: ${escapeHtml((row.runners || []).join(", ") || "unknown")}<br>` +
+        `Success: ${formatPct(row.success_rate || 0)} · Failure: ${formatPct(row.failure_rate || 0)}<br>` +
+        `Median runtime: ${formatDuration(row.median_runtime_seconds)} · Tokens/run: ${formatNumber(row.tokens_per_run || 0)}`;
+    }},
+    xAxis:{type:"value",name:"Runs",minInterval:1,splitLine:{lineStyle:{color:"rgba(255,255,255,.06)"}}},
+    yAxis:{type:"category",data:modelCountRows.map(row=>row.model || "unknown model"),inverse:true,axisLabel:{interval:0,color:"#c9c2b7",fontSize:10,margin:12}},
+    series:[{
+      name:"Runs using model",
+      type:"bar",
+      barMaxWidth:24,
+      data:modelCountRows.map(row=>({value:row.runs || 0,row,itemStyle:{color:telemetryColorForModel(row.model_key || row.model)}})),
+      label:{show:true,position:"right",formatter:params=>formatNumber(params?.value),color:"#c9c2b7",fontSize:10},
+    }],
+  }, modelCountRows.length);
 
   const acRows = (payload.ac_complexity_points || []).filter(row=>row.original_ac_count!=null && row.complete_elapsed_seconds!=null);
   renderTelemetryChart("telemetry-chart-ac", {
-    xAxis:{type:"value",name:"original ACs"},
-    yAxis:{type:"value",name:"seconds"},
-    series:[{type:"scatter",symbolSize:value=>Math.max(6, Math.min(22, Math.sqrt(Number(value?.[2]||0)/500))),data:acRows.map(row=>[row.original_ac_count,row.complete_elapsed_seconds,row.tokens_total||0,row.job_id]),itemStyle:{color:"#8fb4ff"}}],
+    grid:{left:54,right:26,top:34,bottom:42,containLabel:true},
+    xAxis:{type:"value",name:"Original ACs",splitLine:{lineStyle:{color:"rgba(255,255,255,.06)"}}},
+    yAxis:{type:"value",name:"Duration (s)",splitLine:{lineStyle:{color:"rgba(255,255,255,.06)"}}},
+    series:[{type:"scatter",symbolSize:value=>Math.max(6, Math.min(22, Math.sqrt(Number(value?.[2]||0)/500))),data:acRows.map(row=>[row.original_ac_count,row.complete_elapsed_seconds,row.tokens_total||0,row.job_id]),itemStyle:{color:"#d4a832"}}],
   }, acRows.length);
 
   const loopRows = payload.loop_iteration_series || [];
+  const loopBuckets = [...new Set(loopRows.map(row=>row.bucket))];
+  const loopNames = [...new Set(loopRows.map(row=>row.loop_name || "unknown"))];
   renderTelemetryChart("telemetry-chart-loops", {
-    xAxis:{type:"category",data:loopRows.map(row=>row.bucket),axisLabel:{hideOverlap:true}},
-    yAxis:{type:"value",name:"iterations"},
-    series:[{name:"Total iterations",type:"bar",data:loopRows.map(row=>row.total_iterations||0),itemStyle:{color:"#c4873a"}},{name:"Median",type:"line",data:loopRows.map(row=>row.median_iterations||0),itemStyle:{color:"#6ee7a0"}}],
+    legend:{type:"scroll",top:0,right:8,left:8,textStyle:{color:"#8a8580"}},
+    grid:{left:58,right:26,top:62,bottom:48,containLabel:true},
+    tooltip:{trigger:"axis",axisPointer:{type:"shadow"},confine:true,backgroundColor:"#141720",borderColor:"rgba(255,255,255,.13)",textStyle:{color:"#e2ddd5"}},
+    xAxis:{type:"category",data:loopBuckets,axisLabel:{hideOverlap:true}},
+    yAxis:{type:"value",name:"Total iterations",splitLine:{lineStyle:{color:"rgba(255,255,255,.06)"}}},
+    series:loopNames.map((name,index)=>({
+      name,
+      type:"bar",
+      stack:"loop-total",
+      barMaxWidth:38,
+      emphasis:{focus:"series"},
+      data:loopBuckets.map(bucket=>{
+        const row = loopRows.find(item=>item.bucket === bucket && (item.loop_name || "unknown") === name) || {};
+        return {value:row.total_iterations || 0, name:bucket, median_iterations:row.median_iterations, p95_iterations:row.p95_iterations, run_count:row.run_count};
+      }),
+    })),
   }, loopRows.length);
 }
 function renderTelemetryProfileCharts(profile){
@@ -2759,14 +3230,22 @@ function resetTelemetryFilters(){
   $("#telemetry-sort").value = "newest";
   TELEMETRY_STATE.selectedIds.clear();
   TELEMETRY_STATE.selectionMode = "all";
+  TELEMETRY_STATE.failedStage = null;
+  TELEMETRY_STATE.missingEventsOnly = false;
   scheduleTelemetryRefresh();
 }
 function applyTelemetryPreset(preset){
+  TELEMETRY_STATE.failedStage = null;
+  TELEMETRY_STATE.missingEventsOnly = false;
   if(preset==="active"){ $("#telemetry-status").value = "running"; }
   if(preset==="attention" || preset==="awaiting"){ $("#telemetry-status").value = "awaiting_input"; }
   if(preset==="failed" || preset==="expensive-failures"){ $("#telemetry-status").value = "failed"; }
   if(preset==="tokens"){ TELEMETRY_STATE.selectedIds.clear(); TELEMETRY_STATE.selectionMode = "all"; }
-  if(preset==="missing"){ TELEMETRY_STATE.selectedIds.clear(); TELEMETRY_STATE.selectionMode = "all"; }
+  if(preset==="missing"){
+    TELEMETRY_STATE.selectedIds.clear();
+    TELEMETRY_STATE.selectionMode = "all";
+    TELEMETRY_STATE.missingEventsOnly = true;
+  }
   if(preset==="slow") $("#telemetry-sort").value = "slowest";
   if(preset==="tokens") $("#telemetry-sort").value = "tokens";
   if(preset==="expensive-failures") $("#telemetry-sort").value = "expensive";
@@ -2777,6 +3256,7 @@ function initTelemetry(){
     const el = $(selector);
     if(!el) return;
     el.addEventListener(el.tagName==="INPUT" ? "input" : "change", ()=>{
+      if(selector!=="#telemetry-chart-bucket" && selector!=="#telemetry-rollup") TELEMETRY_STATE.missingEventsOnly = false;
       TELEMETRY_STATE.chartBucket = $("#telemetry-chart-bucket")?.value || "day";
       TELEMETRY_STATE.rollup = $("#telemetry-rollup")?.value || "run";
       scheduleTelemetryRefresh();
@@ -2969,16 +3449,33 @@ function updateOpikSettingsStatus(opik){
     : `Opik configured for ${opik.workspace_name}/${opik.project_name}. Workflow traces will fail fast if this endpoint cannot be reached.`;
 }
 
+const STORY_SOURCE_CHANGE_HELP = {
+  manual:"Leave blank to auto-generate from the manual work item ID or story title. Set this explicitly to group related runs in telemetry.",
+  ado:"Leave blank to infer the change ID from the Azure DevOps work item URL. Set this explicitly to group related runs in telemetry.",
+  story_file:"Leave blank to use the fixture's change_id when present; otherwise provide one here to group related runs in telemetry.",
+};
+const STORY_SOURCE_SHARED_NOTE = {
+  manual:"Manual paste selected. Fill in the story fields above; these run options apply after submission.",
+  ado:"Azure DevOps selected. The work item URL is the story source; these run options apply after fetch.",
+  story_file:"Local fixture selected. The JSON fixture is the story source; these run options apply after load.",
+};
 function setStorySource(next){
   ACTIVE_STORY_SOURCE = next || "manual";
   $$(".story-source-tab").forEach(btn => {
     const active = btn.dataset.storySource === ACTIVE_STORY_SOURCE;
     btn.classList.toggle("active", active);
     btn.setAttribute("aria-pressed", active ? "true" : "false");
+    btn.setAttribute("aria-checked", active ? "true" : "false");
   });
   $$(".story-source-panel").forEach(panel => {
-    panel.classList.toggle("active", panel.id === `story-source-${ACTIVE_STORY_SOURCE}`);
+    const active = panel.id === `story-source-${ACTIVE_STORY_SOURCE}`;
+    panel.classList.toggle("active", active);
+    panel.hidden = !active;
   });
+  const help = $("#f-change-help");
+  if(help) help.textContent = STORY_SOURCE_CHANGE_HELP[ACTIVE_STORY_SOURCE] || STORY_SOURCE_CHANGE_HELP.manual;
+  const shared = $("#shared-options-note");
+  if(shared) shared.textContent = STORY_SOURCE_SHARED_NOTE[ACTIVE_STORY_SOURCE] || "These settings apply to every story source.";
 }
 
 function formatAzureDevOpsCliStatus(status){
@@ -3350,28 +3847,109 @@ loadSettings();
 function fmtLocalTime(isoStr){
   if(!isoStr) return "";
   const d = new Date(isoStr);
-  return d.toLocaleString([], {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false});
+  if(Number.isNaN(d.getTime())) return isoStr;
+  return d.toLocaleString([], {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false, timeZoneName:"short"});
 }
 
 // History
-const STATUS_ICON = {failed:"✕ ", succeeded:"✓ ", cancelled:"⊘ ", running:"● "};
+const STATUS_ICON = {failed:"✕ ", succeeded:"✓ ", cancelled:"⊘ ", running:"● ", queued:"◌ ", awaiting_input:"? "};
+function isHistoryRangeMatch(job, range){
+  if(!range || range === "all") return true;
+  const submitted = Date.parse(job.submitted_at || job.updated_at || "");
+  if(!Number.isFinite(submitted)) return false;
+  const ageMs = Date.now() - submitted;
+  if(range === "today"){
+    const d = new Date(submitted);
+    const now = new Date();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  }
+  if(range === "24h") return ageMs <= 24 * 60 * 60 * 1000;
+  if(range === "7d") return ageMs <= 7 * 24 * 60 * 60 * 1000;
+  if(range === "30d") return ageMs <= 30 * 24 * 60 * 60 * 1000;
+  return true;
+}
+function isHistoryStatusMatch(job, status){
+  if(!status || status === "all") return true;
+  if(status === "active") return RUN_ACTIVE_STATUSES.has(job.status);
+  return job.status === status;
+}
+function filteredHistoryItems(){
+  return (RUN_HISTORY_STATE.items || []).filter(job =>
+    isHistoryStatusMatch(job, RUN_HISTORY_STATE.status) &&
+    isHistoryRangeMatch(job, RUN_HISTORY_STATE.range) &&
+    (RUN_HISTORY_STATE.runner === "all" || job.runner === RUN_HISTORY_STATE.runner)
+  );
+}
+function updateHistoryFilterControls(){
+  $$('[data-history-status]').forEach(btn=>btn.classList.toggle("active", btn.dataset.historyStatus === RUN_HISTORY_STATE.status));
+  $$('[data-history-range]').forEach(btn=>btn.classList.toggle("active", btn.dataset.historyRange === RUN_HISTORY_STATE.range));
+  $$('[data-history-density]').forEach(btn=>btn.classList.toggle("active", btn.dataset.historyDensity === RUN_HISTORY_STATE.density));
+  const runnerSelect = $("#history-runner-filter");
+  if(runnerSelect) runnerSelect.value = RUN_HISTORY_STATE.runner;
+}
+function refreshHistoryRunnerOptions(items){
+  const select = $("#history-runner-filter");
+  if(!select) return;
+  const current = RUN_HISTORY_STATE.runner || "all";
+  const runners = [...new Set((items || []).map(job=>job.runner).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  select.innerHTML = '<option value="all">Any runner</option>';
+  runners.forEach(runner=>{
+    const option = document.createElement("option");
+    option.value = runner;
+    option.textContent = runner;
+    select.appendChild(option);
+  });
+  if(runners.includes(current)) select.value = current;
+  else { RUN_HISTORY_STATE.runner = "all"; select.value = "all"; }
+}
+function renderHistory(){
+  const wrap = $("#history");
+  if(!wrap) return;
+  const allItems = RUN_HISTORY_STATE.items || [];
+  refreshHistoryRunnerOptions(allItems);
+  updateHistoryFilterControls();
+  const items = filteredHistoryItems();
+  wrap.innerHTML = "";
+  wrap.classList.toggle("compact", RUN_HISTORY_STATE.density === "compact");
+  if(!allItems.length){
+    wrap.innerHTML = '<div class="empty">No runs yet.</div>';
+  }else if(!items.length){
+    wrap.innerHTML = '<div class="empty">No runs match the current filters.</div>';
+  }
+  items.forEach(j=>{
+    const d = document.createElement("div");
+    d.className = "job" + (j.id===activeJobId?" active":"");
+    const changeId = j.change_id || "no change id";
+    const status = j.status || "unknown";
+    const runnerModel = [j.runner, j.model].filter(Boolean).join("/") || "runner?";
+    d.innerHTML = `<div class="job-main"><div class="job-id">${escapeHtml((j.id || "").slice(0,16))}...</div><span class="status ${escapeHtml(status)}">${STATUS_ICON[status]||""}${escapeHtml(status)}</span></div>
+      <div class="job-meta">${escapeHtml(changeId)} · ${escapeHtml(runnerModel)} · ${escapeHtml(j.log_level || "warning")}</div>
+      <div class="job-meta job-time">${escapeHtml(fmtLocalTime(j.submitted_at))}</div>`;
+    d.addEventListener("click", ()=>selectJob(j.id));
+    wrap.appendChild(d);
+  });
+  const total = allItems.length;
+  const count = items.length;
+  const countText = count === total ? `${total}` : `${count}/${total}`;
+  const countEl = $("#history-count");
+  if(countEl) countEl.textContent = countText;
+  const summary = $("#history-filter-summary");
+  if(summary){
+    const parts = [];
+    if(RUN_HISTORY_STATE.status !== "all") parts.push(`status=${RUN_HISTORY_STATE.status}`);
+    if(RUN_HISTORY_STATE.range !== "all") parts.push(`date=${RUN_HISTORY_STATE.range}`);
+    if(RUN_HISTORY_STATE.runner !== "all") parts.push(`runner=${RUN_HISTORY_STATE.runner}`);
+    summary.textContent = parts.length ? `Showing ${count} of ${total} loaded runs (${parts.join(" · ")})` : `Showing ${total} most recent runs`;
+  }
+  $("#runs-meta").textContent = `${countText} run${count===1?"":"s"}`;
+}
 async function loadHistory(){
   try{
-    const r = await api("/runs?limit=50");
-    const wrap = $("#history"); wrap.innerHTML="";
-    if(!r.items.length){ wrap.innerHTML='<div class="empty">No runs yet.</div>'; }
-    r.items.forEach(j=>{
-      const d = document.createElement("div");
-      d.className = "job" + (j.id===activeJobId?" active":"");
-      d.innerHTML = `<div class="job-id">${j.id.slice(0,16)}…</div>
-        <div class="job-meta">${j.change_id} · ${j.runner} · ${j.log_level || "warning"} · <span class="status ${j.status}">${STATUS_ICON[j.status]||""}${j.status}</span></div>
-        <div class="job-meta">${fmtLocalTime(j.submitted_at)}</div>`;
-      d.addEventListener("click", ()=>selectJob(j.id));
-      wrap.appendChild(d);
-    });
-    $("#runs-meta").textContent = `${r.count} run${r.count===1?"":"s"}`;
+    const r = await api("/runs?limit=500");
+    RUN_HISTORY_STATE.items = r.items || [];
+    renderHistory();
     if(activeJobId && !activeStream && activeRunJob){
-      const fresh = r.items.find(j=>j.id===activeJobId);
+      const fresh = RUN_HISTORY_STATE.items.find(j=>j.id===activeJobId);
       if(fresh && (
         fresh.status!==activeRunJob.status ||
         fresh.current_stage!==activeRunJob.current_stage ||
@@ -3394,10 +3972,35 @@ async function loadHistory(){
     }
   }catch(e){ /* server may be starting */ }
 }
+$$('[data-history-status]').forEach(btn=>btn.addEventListener("click", ()=>{ RUN_HISTORY_STATE.status = btn.dataset.historyStatus || "all"; renderHistory(); }));
+$$('[data-history-range]').forEach(btn=>btn.addEventListener("click", ()=>{ RUN_HISTORY_STATE.range = btn.dataset.historyRange || "all"; renderHistory(); }));
+$$('[data-history-density]').forEach(btn=>btn.addEventListener("click", ()=>{ RUN_HISTORY_STATE.density = btn.dataset.historyDensity || "comfortable"; renderHistory(); }));
+$("#history-runner-filter")?.addEventListener("change", event=>{ RUN_HISTORY_STATE.runner = event.target.value || "all"; renderHistory(); });
 setInterval(loadHistory, 3000); loadHistory();
+
+function setSubmitFeedback(kind="", message=""){
+  const el = $("#submit-feedback");
+  if(!el) return;
+  el.textContent = message || "";
+  el.className = "submit-feedback" + (message ? ` show ${kind || "info"}` : "");
+}
+function setSubmitLoading(loading){
+  const btn = $("#submit-btn");
+  if(!btn) return;
+  btn.disabled = !!loading;
+  btn.classList.toggle("is-loading", !!loading);
+  const label = btn.querySelector(".submit-btn-text");
+  if(label) label.textContent = loading ? "Submitting..." : "Submit run";
+}
+function failSubmitValidation(message){
+  setSubmitFeedback("error", message);
+  toast(message, true);
+}
 
 // Submit
 $("#submit-btn").addEventListener("click", async ()=>{
+  if(submitRunInFlight) return;
+  setSubmitFeedback();
   const source = ACTIVE_STORY_SOURCE || "manual";
   const extraContext = $("#f-extra").value.trim();
   const body = {
@@ -3409,13 +4012,13 @@ $("#submit-btn").addEventListener("click", async ()=>{
     extra_context: extraContext || null,
     mode: $("#f-mode").value,
   };
-  if(!body.repo){ toast("repo is required", true); return; }
+  if(!body.repo){ failSubmitValidation("Repo path is required."); return; }
   if(source === "manual"){
     const title = $("#f-manual-title").value.trim();
     const description = $("#f-manual-description").value.trim();
     const acceptanceCriteria = $("#f-manual-ac").value.trim();
     if(!title || !description || !acceptanceCriteria){
-      toast("manual story title, description, and acceptance criteria are required", true);
+      failSubmitValidation("Manual story title, description, and acceptance criteria are required.");
       return;
     }
     body.manual_story = {
@@ -3429,27 +4032,38 @@ $("#submit-btn").addEventListener("click", async ()=>{
   }else if(source === "ado"){
     body.ado_url = $("#f-ado").value.trim() || null;
     if(!body.ado_url){
-      toast("ADO Work Item URL is required for Azure DevOps runs", true);
+      failSubmitValidation("ADO Work Item URL is required for Azure DevOps runs.");
       return;
     }
   }else{
     body.story_file = $("#f-story-file").value.trim() || null;
     if(!body.story_file){
-      toast("story fixture path is required for local fixture runs", true);
+      failSubmitValidation("Story fixture path is required for local fixture runs.");
       return;
     }
   }
+  submitRunInFlight = true;
+  setSubmitLoading(true);
+  setSubmitFeedback("info", "Submitting run and opening the live log panel...");
   try{
     const r = await api("/runs", {method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(body)});
+    setSubmitFeedback("success", `Submitted ${r.job_id}. Opening live logs now.`);
     try{
       await rememberRepoPath(body.repo);
-      toast("Submitted "+r.job_id);
+      toast("Submitted "+r.job_id, false, "success");
     }catch(saveErr){
       toast(`Submitted ${r.job_id}; repo path was not saved: ${saveErr.message}`, true);
     }
     await loadHistory();
     selectJob(r.job_id);
-  }catch(e){ toast(e.message, true); }
+  }catch(e){
+    const message = e.message || "Run submission failed.";
+    setSubmitFeedback("error", message);
+    toast(message, true);
+  }finally{
+    submitRunInFlight = false;
+    setSubmitLoading(false);
+  }
 });
 
 // Cancel
@@ -3467,7 +4081,6 @@ $("#eval-cancel-btn").addEventListener("click", ()=>{
 $$("#story-source-tabs .story-source-tab").forEach(btn => {
   btn.addEventListener("click", ()=>setStorySource(btn.dataset.storySource));
 });
-$("#f-ado-manual-btn").addEventListener("click", ()=>setStorySource("manual"));
 setStorySource("manual");
 
 // Job selection / SSE
