@@ -91,7 +91,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .view-meta{font-family:var(--mono);font-size:11px;color:var(--t1);font-weight:600}
 .runs-layout{display:flex;flex:1;overflow:hidden;min-width:0}
 .runs-left{width:280px;flex:0 0 280px;border-right:1px solid var(--br);display:flex;flex-direction:column;overflow:hidden;background:rgba(13,15,20,.45)}
-.runs-right{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.runs-right{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:rgba(9,11,16,.28)}
 .workflow-rail{
   position:relative;
   z-index:1;
@@ -423,10 +423,62 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
   padding:14px 16px 18px;
   border-bottom:1px solid rgba(196,135,58,.12);
   overflow-y:auto;
-  max-height:60%;
-  flex-shrink:0;
+  flex:1;
+  min-height:0;
+  position:relative;
+  scrollbar-gutter:stable;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(196,135,58,.68) rgba(7,8,11,.18);
   background:linear-gradient(180deg, rgba(13,15,20,.52) 0%, rgba(13,15,20,.46) 78%, rgba(196,135,58,.05) 100%);
   box-shadow:inset 0 -1px 0 rgba(255,230,190,.03);
+  transition:background .18s ease, box-shadow .18s ease;
+}
+.submit-section::after{
+  content:"";
+  position:absolute;
+  top:0;
+  right:0;
+  bottom:0;
+  width:12px;
+  pointer-events:none;
+  background:linear-gradient(180deg, rgba(196,135,58,.04), rgba(7,8,11,0) 72%);
+  border-left:1px solid rgba(196,135,58,.05);
+  opacity:.42;
+  transition:opacity .18s ease, background .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.submit-section::-webkit-scrollbar{width:10px}
+.submit-section::-webkit-scrollbar-track{
+  background:rgba(7,8,11,.16);
+  border-left:1px solid rgba(196,135,58,.08);
+  transition:background .18s ease, border-color .18s ease;
+}
+.submit-section::-webkit-scrollbar-thumb{
+  background:linear-gradient(180deg, rgba(232,160,48,.9), rgba(196,135,58,.55));
+  border-radius:999px;
+  border:2px solid rgba(13,15,20,.76);
+  box-shadow:inset 0 0 0 1px rgba(255,225,170,.12);
+  transition:background .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.submit-section:hover{
+  scrollbar-color:rgba(245,184,74,.92) rgba(196,135,58,.12);
+  box-shadow:inset 0 -1px 0 rgba(255,230,190,.06), inset -1px 0 0 rgba(255,225,170,.08);
+}
+.submit-section:hover::after{
+  opacity:.96;
+  background:linear-gradient(180deg, rgba(255,220,156,.2), rgba(196,135,58,.12) 34%, rgba(7,8,11,0) 100%);
+  border-left-color:rgba(255,225,170,.2);
+  box-shadow:-10px 0 20px rgba(196,135,58,.08);
+}
+.submit-section:hover::-webkit-scrollbar-track{
+  background:rgba(196,135,58,.12);
+  border-left-color:rgba(255,225,170,.16);
+}
+.submit-section:hover::-webkit-scrollbar-thumb{
+  background:linear-gradient(180deg, rgba(245,184,74,.98), rgba(220,157,60,.78));
+  box-shadow:inset 0 0 0 1px rgba(255,236,195,.18), 0 0 12px rgba(196,135,58,.16);
+}
+.submit-section::-webkit-scrollbar-thumb:hover{
+  background:linear-gradient(180deg, rgba(245,184,74,.96), rgba(212,150,56,.68));
 }
 .section-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
 .field{margin-bottom:8px}
@@ -499,11 +551,15 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .history-section{
   position:relative;
   display:flex;
-  flex:1;
+  flex:0 0 clamp(240px, 34%, 380px);
   min-height:0;
   flex-direction:column;
   background:linear-gradient(180deg, rgba(196,135,58,.12) 0, rgba(196,135,58,.03) 22px, rgba(10,12,18,.94) 22px, rgba(10,12,18,.98) 100%);
   box-shadow:0 -18px 28px rgba(0,0,0,.24);
+}
+.history-section.is-collapsed{
+  flex:0 0 auto;
+  box-shadow:none;
 }
 .history-section::before{
   content:"";
@@ -516,7 +572,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
   pointer-events:none;
 }
 .history-header{
-  padding:14px 16px 8px;
+  padding:12px 16px 10px;
   font-size:10px;
   color:#d8b887;
   font-weight:600;
@@ -530,7 +586,43 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
   gap:8px;
   background:linear-gradient(180deg, rgba(255,244,220,.02), rgba(255,244,220,0));
 }
+.history-title-group{display:flex;align-items:center;gap:10px;min-width:0}
+.history-title-text{white-space:nowrap}
 .history-count{font-family:var(--mono);font-size:10px;color:#a8987b;font-weight:500}
+.history-toggle{
+  margin-left:auto;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border:1px solid rgba(196,135,58,.26);
+  border-radius:999px;
+  background:rgba(196,135,58,.08);
+  color:#f0d7b0;
+  cursor:pointer;
+  font-family:var(--mono);
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  transition:background .15s,border-color .15s,color .15s,transform .15s;
+}
+.history-toggle:hover,.history-toggle:focus-visible{
+  background:rgba(196,135,58,.16);
+  border-color:rgba(196,135,58,.42);
+  color:#fff2d8;
+  outline:none;
+}
+.history-toggle:active{transform:translateY(1px)}
+.history-toggle-icon{
+  font-size:14px;
+  line-height:1;
+  transition:transform .18s ease;
+}
+.history-toggle-label{white-space:nowrap}
+.history-section.is-collapsed .history-toggle-icon{transform:rotate(-90deg)}
+.history-panel{display:flex;flex:1;min-height:0;flex-direction:column}
+.history-panel[hidden]{display:none}
 .history-controls{padding:10px 12px 10px;border-bottom:1px solid var(--br);display:flex;flex-direction:column;gap:7px;background:rgba(7,8,11,.22);flex-shrink:0}
 .history-filter-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
 .history-filter-label{width:42px;flex:0 0 42px;font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--t3)}
@@ -541,6 +633,17 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .history-filter-row select:focus{border-color:var(--acc);background:var(--s4)}
 .history-filter-summary{font-family:var(--mono);font-size:9px;color:var(--t3);line-height:1.35;min-height:12px}
 .history{flex:1;overflow-y:auto;background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0) 44px)}
+.runs-detail-panel{
+  flex:1;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  background:linear-gradient(180deg, rgba(13,15,20,.46), rgba(13,15,20,.66));
+}
+.runs-detail-panel .term{
+  background:linear-gradient(180deg, rgba(255,255,255,.015), rgba(255,255,255,0));
+}
 .job{padding:10px 14px;border-bottom:1px solid var(--br);cursor:pointer}
 .job:hover{background:var(--acc-lo)}
 .job.active{background:var(--acc-lo);border-left:2px solid var(--acc);padding-left:12px}
@@ -661,6 +764,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .eval-ac-head{font-family:var(--mono);font-size:11px;color:var(--t1);margin-bottom:5px}
 @media (max-width:1320px){
   .workflow-title{font-size:16px}
+  .history-toggle-label{display:none}
 }
 .empty{padding:30px;text-align:center;color:var(--t1);font-weight:600;font-style:italic}
 .empty.error{color:var(--er)}
@@ -1240,41 +1344,54 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
             <div class="submit-actions"><button class="btn" id="submit-btn"><span class="submit-btn-text">Submit run</span><span class="submit-spinner" aria-hidden="true"></span></button></div>
             <div class="submit-feedback" id="submit-feedback" role="status" aria-live="polite"></div>
           </div>
-          <div class="history-section">
-            <div class="history-header"><span>Past Runs</span><span class="history-count" id="history-count"></span></div>
-            <div class="history-controls" aria-label="Past run filters">
-              <div class="history-filter-row" role="group" aria-label="Filter by run status"><span class="history-filter-label">Status</span><button type="button" class="history-chip active" data-history-status="all">All</button><button type="button" class="history-chip" data-history-status="active">Active</button><button type="button" class="history-chip" data-history-status="running">Running</button><button type="button" class="history-chip" data-history-status="queued">Queued</button><button type="button" class="history-chip" data-history-status="awaiting_input">Awaiting input</button><button type="button" class="history-chip" data-history-status="failed">Failed</button><button type="button" class="history-chip" data-history-status="succeeded">Succeeded</button><button type="button" class="history-chip" data-history-status="cancelled">Cancelled</button></div>
-              <div class="history-filter-row" role="group" aria-label="Filter by submitted date"><span class="history-filter-label">Date</span><button type="button" class="history-chip" data-history-range="today">Today</button><button type="button" class="history-chip" data-history-range="24h">24h</button><button type="button" class="history-chip" data-history-range="7d">7d</button><button type="button" class="history-chip" data-history-range="30d">30d</button><button type="button" class="history-chip active" data-history-range="all">All</button></div>
-              <div class="history-filter-row"><label class="history-filter-label" for="history-runner-filter">Runner</label><select id="history-runner-filter"><option value="all">Any runner</option></select></div>
-              <div class="history-filter-row" role="group" aria-label="History density"><span class="history-filter-label">Density</span><button type="button" class="history-chip active" data-history-density="comfortable">Comfort</button><button type="button" class="history-chip" data-history-density="compact">Compact</button></div>
-              <div class="history-filter-summary" id="history-filter-summary"></div>
-            </div>
-            <div class="history" id="history"></div>
-          </div>
         </div>
         <div class="runs-right">
-          <div class="term-header">
-            <span id="term-title">Select or submit a run</span>
-            <div class="term-actions">
-              <span class="opik-hint" id="opik-hint" style="display:none"></span>
-              <a class="btn link-btn" id="opik-link" href="#" target="_blank" rel="noreferrer" style="display:none">Open current run in Opik</a>
-              <button class="btn" id="cancel-btn" style="display:none">Cancel</button>
+          <div class="history-section" id="runs-history-section">
+            <div class="history-header">
+              <div class="history-title-group">
+                <span class="history-title-text">Past Runs</span>
+                <span class="history-count" id="history-count"></span>
+              </div>
+              <button class="history-toggle" id="history-toggle" type="button" aria-expanded="true" aria-controls="history-panel" aria-label="Collapse Past Runs">
+                <span class="history-toggle-icon" aria-hidden="true">▾</span>
+                <span class="history-toggle-label" id="history-toggle-label">Collapse</span>
+              </button>
+            </div>
+            <div class="history-panel" id="history-panel">
+              <div class="history-controls" aria-label="Past run filters">
+                <div class="history-filter-row" role="group" aria-label="Filter by run status"><span class="history-filter-label">Status</span><button type="button" class="history-chip active" data-history-status="all">All</button><button type="button" class="history-chip" data-history-status="active">Active</button><button type="button" class="history-chip" data-history-status="running">Running</button><button type="button" class="history-chip" data-history-status="queued">Queued</button><button type="button" class="history-chip" data-history-status="awaiting_input">Awaiting input</button><button type="button" class="history-chip" data-history-status="failed">Failed</button><button type="button" class="history-chip" data-history-status="succeeded">Succeeded</button><button type="button" class="history-chip" data-history-status="cancelled">Cancelled</button></div>
+                <div class="history-filter-row" role="group" aria-label="Filter by submitted date"><span class="history-filter-label">Date</span><button type="button" class="history-chip" data-history-range="today">Today</button><button type="button" class="history-chip" data-history-range="24h">24h</button><button type="button" class="history-chip" data-history-range="7d">7d</button><button type="button" class="history-chip" data-history-range="30d">30d</button><button type="button" class="history-chip active" data-history-range="all">All</button></div>
+                <div class="history-filter-row"><label class="history-filter-label" for="history-runner-filter">Runner</label><select id="history-runner-filter"><option value="all">Any runner</option></select></div>
+                <div class="history-filter-row" role="group" aria-label="History density"><span class="history-filter-label">Density</span><button type="button" class="history-chip active" data-history-density="comfortable">Comfort</button><button type="button" class="history-chip" data-history-density="compact">Compact</button></div>
+                <div class="history-filter-summary" id="history-filter-summary"></div>
+              </div>
+              <div class="history" id="history"></div>
             </div>
           </div>
-          <div class="run-alert" id="run-alert">
-            <div class="alert-title" id="run-alert-title"></div>
-            <div class="alert-msg" id="run-alert-msg"></div>
-            <div class="alert-meta" id="run-alert-meta"></div>
-          </div>
-          <div class="trace-summary" id="trace-summary" aria-live="polite">
-            <div class="trace-summary-head">
-              <span class="trace-summary-title">Opik trace timeline</span>
-              <span class="trace-summary-meta" id="trace-summary-meta"></span>
+          <div class="runs-detail-panel">
+            <div class="term-header">
+              <span id="term-title">Select or submit a run</span>
+              <div class="term-actions">
+                <span class="opik-hint" id="opik-hint" style="display:none"></span>
+                <a class="btn link-btn" id="opik-link" href="#" target="_blank" rel="noreferrer" style="display:none">Open current run in Opik</a>
+                <button class="btn" id="cancel-btn" style="display:none">Cancel</button>
+              </div>
             </div>
-            <div class="trace-timeline" id="trace-timeline"></div>
+            <div class="run-alert" id="run-alert">
+              <div class="alert-title" id="run-alert-title"></div>
+              <div class="alert-msg" id="run-alert-msg"></div>
+              <div class="alert-meta" id="run-alert-meta"></div>
+            </div>
+            <div class="trace-summary" id="trace-summary" aria-live="polite">
+              <div class="trace-summary-head">
+                <span class="trace-summary-title">Opik trace timeline</span>
+                <span class="trace-summary-meta" id="trace-summary-meta"></span>
+              </div>
+              <div class="trace-timeline" id="trace-timeline"></div>
+            </div>
+            <div class="term" id="term"><div class="empty"><strong>Submit a run to see live logs here.</strong>Select a past run to replay captured events. Live stage events, prompts, metrics, and errors will stream into this panel while a run is active.</div></div>
+            <div class="metrics" id="metrics"><span>tokens in <b id="m-ti">—</b></span><span class="metrics-sep">|</span><span>tokens out <b id="m-to">—</b></span><span class="metrics-sep">|</span><span>total <b id="m-total">—</b></span><span class="metrics-sep">|</span><span>cost <b id="m-cost">—</b></span><span class="cost-disclaimer">est. $3/$15 per Mtok</span><span class="metrics-sep">|</span><span>stage <b id="m-stage">—</b></span></div>
           </div>
-          <div class="term" id="term"><div class="empty"><strong>Submit a run to see live logs here.</strong>Select a past run to replay captured events. Live stage events, prompts, metrics, and errors will stream into this panel while a run is active.</div></div>
-          <div class="metrics" id="metrics"><span>tokens in <b id="m-ti">—</b></span><span class="metrics-sep">|</span><span>tokens out <b id="m-to">—</b></span><span class="metrics-sep">|</span><span>total <b id="m-total">—</b></span><span class="metrics-sep">|</span><span>cost <b id="m-cost">—</b></span><span class="cost-disclaimer">est. $3/$15 per Mtok</span><span class="metrics-sep">|</span><span>stage <b id="m-stage">—</b></span></div>
         </div>
       </div>
     </section>
@@ -1741,7 +1858,7 @@ let activeRunEvents = [];
 let workflowTicker = null;
 let lastSeq = 0;
 let submitRunInFlight = false;
-const RUN_HISTORY_STATE = {items:[], status:"all", range:"all", runner:"all", density:"comfortable"};
+const RUN_HISTORY_STATE = {items:[], status:"all", range:"all", runner:"all", density:"comfortable", collapsed:false};
 const ACTIVE_JOB_BY_SURFACE = {runs:null, evaluate:null};
 const TRACE_EVENTS = {runs:[], evaluate:[]};
 const STREAM_EVENT_TYPES = ["job.start","stage.start","stage.end","cli.invoke","cli.exit","log","metrics","opik.start","opik.end","job.end","stream.end","user.prompt","user.response","user.prompt.timeout","user.escalation.resolved"];
@@ -3887,6 +4004,20 @@ function updateHistoryFilterControls(){
   const runnerSelect = $("#history-runner-filter");
   if(runnerSelect) runnerSelect.value = RUN_HISTORY_STATE.runner;
 }
+function syncHistoryDisclosure(){
+  const section = $("#runs-history-section");
+  const panel = $("#history-panel");
+  const button = $("#history-toggle");
+  const label = $("#history-toggle-label");
+  if(!section || !panel || !button) return;
+  const expanded = !RUN_HISTORY_STATE.collapsed;
+  section.classList.toggle("is-collapsed", !expanded);
+  panel.hidden = !expanded;
+  button.setAttribute("aria-expanded", expanded ? "true" : "false");
+  button.setAttribute("aria-label", expanded ? "Collapse Past Runs" : "Expand Past Runs");
+  button.title = expanded ? "Collapse Past Runs" : "Expand Past Runs";
+  if(label) label.textContent = expanded ? "Collapse" : "Expand";
+}
 function refreshHistoryRunnerOptions(items){
   const select = $("#history-runner-filter");
   if(!select) return;
@@ -3976,6 +4107,11 @@ $$('[data-history-status]').forEach(btn=>btn.addEventListener("click", ()=>{ RUN
 $$('[data-history-range]').forEach(btn=>btn.addEventListener("click", ()=>{ RUN_HISTORY_STATE.range = btn.dataset.historyRange || "all"; renderHistory(); }));
 $$('[data-history-density]').forEach(btn=>btn.addEventListener("click", ()=>{ RUN_HISTORY_STATE.density = btn.dataset.historyDensity || "comfortable"; renderHistory(); }));
 $("#history-runner-filter")?.addEventListener("change", event=>{ RUN_HISTORY_STATE.runner = event.target.value || "all"; renderHistory(); });
+$("#history-toggle")?.addEventListener("click", ()=>{
+  RUN_HISTORY_STATE.collapsed = !RUN_HISTORY_STATE.collapsed;
+  syncHistoryDisclosure();
+});
+syncHistoryDisclosure();
 setInterval(loadHistory, 3000); loadHistory();
 
 function setSubmitFeedback(kind="", message=""){
