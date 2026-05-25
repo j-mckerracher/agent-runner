@@ -98,7 +98,8 @@ def _group_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
 
     rows: list[dict[str, Any]] = []
     report_warnings = (report.get("summary") or {}).get("warnings") or []
-    for name, results in sorted(grouped.items()):
+    _DIFFICULTY_ORDER = {"easy": 0, "medium": 1, "hard": 2}
+    for name, results in sorted(grouped.items(), key=lambda item: _DIFFICULTY_ORDER.get(item[0], 99)):
         scores = [float((result.get("quality") or {}).get("weighted_score") or 0.0) for result in results]
         wall_times = [float((result.get("metrics") or {}).get("wall_seconds") or result.get("seconds") or 0.0) for result in results]
         tokens = [float((result.get("metrics") or {}).get("tokens_total") or 0.0) for result in results]

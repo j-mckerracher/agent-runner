@@ -632,7 +632,9 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .history-filter-row select{flex:1;min-width:0;background:rgba(28,32,40,.85);border:1px solid var(--input-border);border-radius:4px;color:var(--t1);font-family:var(--font);font-size:11px;padding:4px 7px;outline:none}
 .history-filter-row select:focus{border-color:var(--acc);background:var(--s4)}
 .history-filter-summary{font-family:var(--mono);font-size:9px;color:var(--t3);line-height:1.35;min-height:12px}
-.history{flex:1;overflow-y:auto;background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0) 44px)}
+.history-select{flex:1;min-height:0;overflow-y:auto;background:rgba(28,32,40,.85);border:1px solid var(--input-border);border-radius:4px;color:var(--t1);font-family:var(--mono);font-size:10px;outline:none}
+.history-select:focus{border-color:var(--acc);background:var(--s4)}
+.history-select option{padding:2px 6px;font-family:var(--mono);font-size:10px;color:var(--t1);background:rgba(20,24,32,.95)}
 .runs-detail-panel{
   flex:1;
   min-height:0;
@@ -644,16 +646,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 .runs-detail-panel .term{
   background:linear-gradient(180deg, rgba(255,255,255,.015), rgba(255,255,255,0));
 }
-.job{padding:10px 14px;border-bottom:1px solid var(--br);cursor:pointer}
-.job:hover{background:var(--acc-lo)}
-.job.active{background:var(--acc-lo);border-left:2px solid var(--acc);padding-left:12px}
-.job-id{font-family:var(--mono);font-size:11px;color:var(--t1)}
-.job-main{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .job-meta{font-size:10px;color:var(--t2);margin-top:2px;line-height:1.35}
-.job-time{font-family:var(--mono);color:var(--t3)}
-.history.compact .job{padding:6px 12px}
-.history.compact .job.active{padding-left:10px}
-.history.compact .job-meta{line-height:1.2}
 .status{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;font-weight:500;line-height:1.4;white-space:nowrap}
 .status.running{background:rgba(74,157,212,0.15);color:#7ec8f7}
 .status.queued{background:rgba(212,168,50,0.15);color:#f0cc5e}
@@ -1370,10 +1363,9 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
                 <div class="history-filter-row" role="group" aria-label="Filter by run status"><span class="history-filter-label">Status</span><button type="button" class="history-chip active" data-history-status="all">All</button><button type="button" class="history-chip" data-history-status="active">Active</button><button type="button" class="history-chip" data-history-status="running">Running</button><button type="button" class="history-chip" data-history-status="queued">Queued</button><button type="button" class="history-chip" data-history-status="awaiting_input">Awaiting input</button><button type="button" class="history-chip" data-history-status="failed">Failed</button><button type="button" class="history-chip" data-history-status="succeeded">Succeeded</button><button type="button" class="history-chip" data-history-status="cancelled">Cancelled</button></div>
                 <div class="history-filter-row" role="group" aria-label="Filter by submitted date"><span class="history-filter-label">Date</span><button type="button" class="history-chip" data-history-range="today">Today</button><button type="button" class="history-chip" data-history-range="24h">24h</button><button type="button" class="history-chip" data-history-range="7d">7d</button><button type="button" class="history-chip" data-history-range="30d">30d</button><button type="button" class="history-chip active" data-history-range="all">All</button></div>
                 <div class="history-filter-row"><label class="history-filter-label" for="history-runner-filter">Runner</label><select id="history-runner-filter"><option value="all">Any runner</option></select></div>
-                <div class="history-filter-row" role="group" aria-label="History density"><span class="history-filter-label">Density</span><button type="button" class="history-chip active" data-history-density="comfortable">Comfort</button><button type="button" class="history-chip" data-history-density="compact">Compact</button></div>
                 <div class="history-filter-summary" id="history-filter-summary"></div>
               </div>
-              <div class="history" id="history"></div>
+              <select class="history-select" id="history" size="15"></select>
             </div>
           </div>
           <div class="runs-detail-panel">
@@ -1868,7 +1860,7 @@ let activeRunEvents = [];
 let workflowTicker = null;
 let lastSeq = 0;
 let submitRunInFlight = false;
-const RUN_HISTORY_STATE = {items:[], status:"all", range:"all", runner:"all", density:"comfortable", collapsed:false};
+const RUN_HISTORY_STATE = {items:[], status:"all", range:"all", runner:"all", collapsed:false};
 const ACTIVE_JOB_BY_SURFACE = {runs:null, evaluate:null};
 const TRACE_EVENTS = {runs:[], evaluate:[]};
 const STREAM_EVENT_TYPES = ["job.start","stage.start","stage.end","cli.invoke","cli.exit","log","metrics","opik.start","opik.end","job.end","stream.end","user.prompt","user.response","user.prompt.timeout","user.escalation.resolved"];
@@ -4016,7 +4008,6 @@ function filteredHistoryItems(){
 function updateHistoryFilterControls(){
   $$('[data-history-status]').forEach(btn=>btn.classList.toggle("active", btn.dataset.historyStatus === RUN_HISTORY_STATE.status));
   $$('[data-history-range]').forEach(btn=>btn.classList.toggle("active", btn.dataset.historyRange === RUN_HISTORY_STATE.range));
-  $$('[data-history-density]').forEach(btn=>btn.classList.toggle("active", btn.dataset.historyDensity === RUN_HISTORY_STATE.density));
   const runnerSelect = $("#history-runner-filter");
   if(runnerSelect) runnerSelect.value = RUN_HISTORY_STATE.runner;
 }
@@ -4057,23 +4048,28 @@ function renderHistory(){
   updateHistoryFilterControls();
   const items = filteredHistoryItems();
   wrap.innerHTML = "";
-  wrap.classList.toggle("compact", RUN_HISTORY_STATE.density === "compact");
   if(!allItems.length){
-    wrap.innerHTML = '<div class="empty">No runs yet.</div>';
+    const opt = document.createElement("option");
+    opt.textContent = "No runs yet.";
+    opt.disabled = true;
+    wrap.appendChild(opt);
   }else if(!items.length){
-    wrap.innerHTML = '<div class="empty">No runs match the current filters.</div>';
+    const opt = document.createElement("option");
+    opt.textContent = "No runs match the current filters.";
+    opt.disabled = true;
+    wrap.appendChild(opt);
   }
   items.forEach(j=>{
-    const d = document.createElement("div");
-    d.className = "job" + (j.id===activeJobId?" active":"");
-    const changeId = j.change_id || "no change id";
+    const opt = document.createElement("option");
+    opt.value = j.id;
     const status = j.status || "unknown";
+    const icon = STATUS_ICON[status] || "";
+    const changeId = j.change_id || "no change id";
     const runnerModel = [j.runner, j.model].filter(Boolean).join("/") || "runner?";
-    d.innerHTML = `<div class="job-main"><div class="job-id">${escapeHtml((j.id || "").slice(0,16))}...</div><span class="status ${escapeHtml(status)}">${STATUS_ICON[status]||""}${escapeHtml(status)}</span></div>
-      <div class="job-meta">${escapeHtml(changeId)} · ${escapeHtml(runnerModel)} · ${escapeHtml(j.log_level || "warning")}</div>
-      <div class="job-meta job-time">${escapeHtml(fmtLocalTime(j.submitted_at))}</div>`;
-    d.addEventListener("click", ()=>selectJob(j.id));
-    wrap.appendChild(d);
+    const time = fmtLocalTime(j.submitted_at);
+    opt.textContent = `${icon} ${(j.id || "").slice(0,16)}...  ${changeId}  ${runnerModel}  ${time}`;
+    if(j.id === activeJobId) opt.selected = true;
+    wrap.appendChild(opt);
   });
   const total = allItems.length;
   const count = items.length;
@@ -4121,8 +4117,8 @@ async function loadHistory(){
 }
 $$('[data-history-status]').forEach(btn=>btn.addEventListener("click", ()=>{ RUN_HISTORY_STATE.status = btn.dataset.historyStatus || "all"; renderHistory(); }));
 $$('[data-history-range]').forEach(btn=>btn.addEventListener("click", ()=>{ RUN_HISTORY_STATE.range = btn.dataset.historyRange || "all"; renderHistory(); }));
-$$('[data-history-density]').forEach(btn=>btn.addEventListener("click", ()=>{ RUN_HISTORY_STATE.density = btn.dataset.historyDensity || "comfortable"; renderHistory(); }));
 $("#history-runner-filter")?.addEventListener("change", event=>{ RUN_HISTORY_STATE.runner = event.target.value || "all"; renderHistory(); });
+$("#history")?.addEventListener("change", (e) => { if(e.target.value) selectJob(e.target.value); });
 $("#history-toggle")?.addEventListener("click", ()=>{
   RUN_HISTORY_STATE.collapsed = !RUN_HISTORY_STATE.collapsed;
   syncHistoryDisclosure();
@@ -4603,7 +4599,8 @@ async function selectJob(id, surface="runs"){
   if(activeStream){ activeStream.close(); activeStream=null; }
   const ui = runSurface(surface);
   activeJobId = id; clearTerm(surface);
-  $$("#history .job").forEach(n=>n.classList.remove("active"));
+  const historySelect = $("#history");
+  if(historySelect && historySelect.value !== id) historySelect.value = id;
   try{
     const job = await api(`/runs/${id}`);
     setActiveSurfaceJob(surface, job);
