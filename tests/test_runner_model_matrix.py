@@ -50,6 +50,11 @@ class RegistryConsistencyTests(unittest.TestCase):
         self.assertIn("openai-compat", RUNNER_MODEL_CHOICES)
         self.assertIn("openai-compat", RUNNER_DEFAULT_MODELS)
 
+    def test_easy__codex_included_in_registries(self):
+        self.assertIn("codex", KNOWN_RUNNERS)
+        self.assertIn("codex", RUNNER_MODEL_CHOICES)
+        self.assertIn("codex", RUNNER_DEFAULT_MODELS)
+
 
 class ResolveRunnerLlmConfigMatrixTests(unittest.TestCase):
     """For every (runner, model) pair: resolve_runner_llm_config resolves
@@ -94,7 +99,7 @@ class ResolveRunnerLlmConfigMatrixTests(unittest.TestCase):
 
     def test_easy__invalid_model_rejected_per_runner(self):
         for runner in KNOWN_RUNNERS:
-            if runner == "openai-compat":
+            if runner in {"codex", "openai-compat"}:
                 continue
             with self.subTest(runner=runner):
                 with self.assertRaises(ValueError):

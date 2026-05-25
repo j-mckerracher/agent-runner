@@ -39,6 +39,15 @@ class EvalRunnerModelOverrideTests(unittest.TestCase):
 
         self.assertEqual(model, inherited)
 
+    def test_codex_inherits_arbitrary_env_model(self):
+        model = eval_runner.resolve_model_override(
+            "codex",
+            None,
+            {"EVAL_MODEL": "future-codex-model"},
+        )
+
+        self.assertEqual(model, "future-codex-model")
+
     def test_explicit_model_is_preserved_for_downstream_validation(self):
         model = eval_runner.resolve_model_override(
             "copilot",

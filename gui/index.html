@@ -1335,7 +1335,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
               <span class="field-help callout" id="f-change-help">Leave blank to auto-generate from the manual work item ID or story title. Set this explicitly to group related runs in telemetry.</span>
             </div>
             <div class="row2">
-              <div class="field"><label>Runner</label><select id="f-runner"><option value="claude">Claude</option><option value="copilot">Copilot</option><option value="gemini">Gemini</option></select></div>
+              <div class="field"><label>Runner</label><select id="f-runner"><option value="claude">Claude</option><option value="codex">Codex</option><option value="copilot">Copilot</option><option value="gemini">Gemini</option></select></div>
               <div class="field"><label>Model</label><select id="f-model"></select></div>
             </div>
             <div class="row2">
@@ -1544,7 +1544,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
           <div class="field"><label>Benchmarks</label><select id="eval-difficulty" multiple size="3"><option value="easy" selected>Easy</option><option value="medium" selected>Medium</option><option value="hard" selected>Hard</option></select></div>
           <div id="eval-story-preview" class="eval-story-preview" hidden></div>
           <div class="row2">
-            <div class="field"><label>Runner</label><select id="eval-runner"><option value="claude">Claude</option><option value="copilot">Copilot</option><option value="gemini">Gemini</option></select></div>
+            <div class="field"><label>Runner</label><select id="eval-runner"><option value="claude">Claude</option><option value="codex">Codex</option><option value="copilot">Copilot</option><option value="gemini">Gemini</option></select></div>
             <div class="field"><label>Model</label><select id="eval-model"></select></div>
           </div>
           <div class="row2">
@@ -1629,7 +1629,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
               </div>
               <div class="set-field">
                 <label class="set-field-label" for="s-runner">Default Runner</label>
-                <select id="s-runner"><option value="claude">Claude</option><option value="copilot">Copilot</option><option value="gemini">Gemini</option></select>
+                <select id="s-runner"><option value="claude">Claude</option><option value="codex">Codex</option><option value="copilot">Copilot</option><option value="gemini">Gemini</option></select>
               </div>
               <div class="set-field">
                 <label class="set-field-label" for="s-model">Default Model</label>
@@ -1837,10 +1837,11 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
 <div class="toast" id="toast"></div>
 <div class="set-help-tooltip" id="settings-help-tooltip" role="tooltip" hidden></div>
 <datalist id="openai-compat-model-suggestions"></datalist>
+<datalist id="codex-model-suggestions"></datalist>
 <script>
 const $ = (s,r=document)=>r.querySelector(s);
 const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
-let RUNNER_MODELS = {claude:[],copilot:[],gemini:[],"openai-compat":[]};
+let RUNNER_MODELS = {claude:[],codex:[],copilot:[],gemini:[],"openai-compat":[]};
 let REPO_PATH_OPTIONS = [];
 let REPO_CUSTOM_VALUES = [];
 let REPO_BASE_DIR = "";
@@ -1898,8 +1899,8 @@ function telemetryColorForModel(model){
 const SETTINGS_HELP_COPY = {
   "s-host":"The network interface the API server binds to. Use 127.0.0.1 (default) to keep it local-only. Set to 0.0.0.0 if you need to access the GUI from another machine on your network.",
   "s-port":"TCP port for the API server and GUI. Default is 8742. If another service uses this port, change it here — but you must restart the server for the new port to take effect.",
-  "s-runner":"Which AI backend to use by default when submitting new runs. Claude, Copilot, and Gemini are built-in; any configured aliases also appear here.",
-  "s-model":"The specific model variant for the selected runner. For example: claude-sonnet-4-20250514 for Claude, or gpt-4o for a Copilot alias. Options update when you change the runner.",
+  "s-runner":"Which AI backend to use by default when submitting new runs. Claude, Codex, Copilot, and Gemini are built-in; any configured aliases also appear here.",
+  "s-model":"The specific model variant for the selected runner. For example: claude-sonnet-4-20250514 for Claude, gpt-5.2-codex for Codex, or gpt-4o for a Copilot alias. Options update when you change the runner.",
   "s-mode":"Live mode makes real LLM calls and costs real tokens. Hermetic mode records or replays cassette files for deterministic testing without API costs.",
   "s-conc":"How many workflow runs can execute simultaneously. Each run spawns a subprocess, so set this based on your machine's resources and API rate limits. Default is 2.",
   "s-data":"Where the server stores jobs.db, cassettes, and memory files. Defaults to ~/.agent-runner/. Change this if you want project-specific isolation or a different disk location.",
@@ -3559,12 +3560,12 @@ function buildAgentDefaultsUI(agentDefaults) {
       selectWrap.appendChild(select);
       selectWrap.appendChild(createSettingsHelpTrigger("agent-default-cell", {agentName, runner}, `Help: model override for ${agentName} on ${runner}`));
 
-      if (runner === "openai-compat") {
-        // Replace select with text input + datalist for openai-compat
+      if (runnerUsesFreeFormModel(runner)) {
+        // Replace select with text input + datalist for free-form model runners.
         const input = document.createElement("input");
         input.type = "text";
         input.id = select.id;
-        input.setAttribute("list", "openai-compat-model-suggestions");
+        input.setAttribute("list", modelDatalistForRunner(runner));
         input.placeholder = "Enter model name";
         input.className = select.className;
         input.value = currentDefault;
@@ -3603,6 +3604,15 @@ function syncRunnerSelectFor(runnerSelectorId, modelSelectorId) {
     sel.value = currentVal;
   }
   if (modelSelectorId) syncModelSelectFor("#" + runnerSelectorId, "#" + modelSelectorId);
+}
+
+function runnerUsesFreeFormModel(runner){
+  return runner === "codex" || runner === "openai-compat";
+}
+
+function modelDatalistForRunner(runner){
+  if(runner === "codex") return "codex-model-suggestions";
+  return "openai-compat-model-suggestions";
 }
 
 function updateOpikSettingsStatus(opik){
@@ -3696,16 +3706,20 @@ async function loadAzureDevOpsStatus(){
 async function loadSettings(){
   const cfg = await api("/settings");
   RUNNER_MODELS = cfg.runner_models || RUNNER_MODELS;
-  // Populate openai-compat datalist with preset suggestions
-  const datalist = document.getElementById("openai-compat-model-suggestions");
-  if (datalist) {
+  // Populate free-form runner datalists with preset suggestions.
+  [
+    ["openai-compat-model-suggestions", "openai-compat"],
+    ["codex-model-suggestions", "codex"],
+  ].forEach(([datalistId, runner]) => {
+    const datalist = document.getElementById(datalistId);
+    if (!datalist) return;
     datalist.innerHTML = "";
-    (RUNNER_MODELS["openai-compat"] || []).forEach(m => {
+    (RUNNER_MODELS[runner] || []).forEach(m => {
       const o = document.createElement("option");
       o.value = m;
       datalist.appendChild(o);
     });
-  }
+  });
   REPO_PATH_OPTIONS = arrayValues(cfg.repo_path_options);
   REPO_CUSTOM_VALUES = uniqueSorted(arrayValues(cfg.repo_paths?.custom_values));
   REPO_BASE_DIR = cfg.repo_paths?.base_dir || "";
@@ -3934,16 +3948,18 @@ function syncModelSelectFor(runnerSelector, modelSelector){
   const parent = existingEl.parentNode;
   const currentValue = existingEl.value || "";
 
-  if (r === "openai-compat") {
+  if (runnerUsesFreeFormModel(r)) {
     if (existingEl.tagName !== "INPUT") {
       const input = document.createElement("input");
       input.type = "text";
       input.id = existingEl.id;
-      input.setAttribute("list", "openai-compat-model-suggestions");
+      input.setAttribute("list", modelDatalistForRunner(r));
       input.placeholder = "Enter model name";
       input.className = existingEl.className;
       input.value = currentValue;
       parent.replaceChild(input, existingEl);
+    }else{
+      existingEl.setAttribute("list", modelDatalistForRunner(r));
     }
     return;
   }

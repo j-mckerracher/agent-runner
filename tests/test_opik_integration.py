@@ -58,6 +58,26 @@ class EvaluatorSdkModelMatrixTests(unittest.TestCase):
                 run_fn.assert_called_once()
                 self.assertEqual(run_fn.call_args.kwargs.get("model"), model)
 
+    # -- codex ----------------------------------------------------------------
+
+    def test_medium__codex_evaluator_passes_model(self):
+        for model in self._choices["codex"]:
+            with self.subTest(model=model):
+                with (
+                    patch("core.opik_integration.build_runner_agent_instructions", return_value="SYSTEM"),
+                    patch("core.opik_integration.inject_file_contents", return_value=""),
+                    patch("core.opik_integration.run_codex_cmd", return_value="OK") as run_fn,
+                ):
+                    result = call_evaluator_sdk(
+                        context="Evaluate the report.",
+                        agent_name="qa-evaluator",
+                        model=model,
+                        runner="codex",
+                    )
+                self.assertEqual(result, "OK")
+                run_fn.assert_called_once()
+                self.assertEqual(run_fn.call_args.kwargs.get("model"), model)
+
     # -- openai-compat ---------------------------------------------------------
 
     def test_medium__openai_compat_evaluator_passes_model(self):

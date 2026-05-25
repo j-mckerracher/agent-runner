@@ -644,6 +644,24 @@ class RunAgentCmdDispatchMatrixTests(unittest.TestCase):
                 self.assertEqual(run_fn.call_args.kwargs.get("model"), model)
                 self.assertEqual(run_fn.call_args.kwargs.get("cli_cmd"), "copilot")
 
+    def test_medium__codex_dispatch_passes_model(self):
+        for model in self._choices["codex"]:
+            with self.subTest(model=model):
+                with patch("core.run_cmds.run_codex_cmd", return_value="OK") as run_fn:
+                    result = run_cmds.run_agent_cmd(
+                        runner="codex",
+                        prompt="Say OK",
+                        agent="qa-evaluator",
+                        runner_model=model,
+                        repo="/tmp/repo",
+                        change_id="CHANGE-1",
+                    )
+                self.assertEqual(result, "OK")
+                run_fn.assert_called_once()
+                self.assertEqual(run_fn.call_args.kwargs.get("model"), model)
+                self.assertEqual(run_fn.call_args.kwargs.get("repo"), "/tmp/repo")
+                self.assertEqual(run_fn.call_args.kwargs.get("change_id"), "CHANGE-1")
+
     def test_medium__gemini_dispatch_passes_model(self):
         for model in self._choices["gemini"]:
             with self.subTest(model=model):
@@ -773,6 +791,41 @@ class RunnerCommandPayloadMatrixTests(unittest.TestCase):
                 model_idx = cmd.index("--model")
                 self.assertLess(model_idx + 1, len(cmd))
                 self.assertEqual(cmd[model_idx + 1], model)
+
+    # -- codex -----------------------------------------------------------------
+
+    def test_medium__codex_includes_model_and_workspace_sandbox_in_command(self):
+        for model in self._choices["codex"]:
+            with self.subTest(model=model):
+                fake_result = subprocess.CompletedProcess(
+                    args=["codex"],
+                    returncode=0,
+                    stdout="OK from stdout",
+                    stderr="",
+                )
+                with (
+                    tempfile.TemporaryDirectory() as tmpdir,
+                    patch("core.run_cmds._build_codex_prompt", return_value="SYSTEM\n\nSay OK"),
+                    patch("core.run_cmds._run_cli", return_value=fake_result) as run_cli,
+                ):
+                    result = run_cmds.run_codex_cmd(
+                        prompt="Say OK",
+                        agent="qa-evaluator",
+                        model=model,
+                        repo=tmpdir,
+                    )
+                self.assertEqual(result, "OK from stdout")
+                run_cli.assert_called_once()
+                cmd = run_cli.call_args.args[0]
+                self.assertEqual(cmd[:2], ["codex", "exec"])
+                self.assertIn("--model", cmd)
+                self.assertEqual(cmd[cmd.index("--model") + 1], model)
+                self.assertIn("--sandbox", cmd)
+                self.assertEqual(cmd[cmd.index("--sandbox") + 1], "workspace-write")
+                self.assertIn("--ask-for-approval", cmd)
+                self.assertEqual(cmd[cmd.index("--ask-for-approval") + 1], "never")
+                self.assertIn("--output-last-message", cmd)
+                self.assertEqual(cmd[-1], "SYSTEM\n\nSay OK")
 
     # -- openai-compat ---------------------------------------------------------
 

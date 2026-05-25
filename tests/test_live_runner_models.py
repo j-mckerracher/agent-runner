@@ -7,6 +7,7 @@ by default in CI. Enable with:
 
 Prerequisites per runner:
   - claude:      `claude` CLI on PATH, ANTHROPIC_API_KEY set
+  - codex:       `codex` CLI on PATH
   - copilot:     `copilot` CLI on PATH
   - gemini:      `gemini` CLI on PATH, GEMINI_API_KEY set
   - openai-compat: local OpenAI-compatible server at OPENAI_COMPAT_HOST
@@ -37,6 +38,7 @@ class LiveRunnerModelSmokeTests(unittest.TestCase):
         import shutil
         known_prereqs = {
             "claude": "claude",
+            "codex": "codex",
             "copilot": "copilot",
             "gemini": "gemini",
             "openai-compat": None,  # Uses HTTP API, no CLI required

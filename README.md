@@ -62,7 +62,7 @@ The current platform is intentionally local-first and workflow-centric. The next
 | Python 3.9+ | Yes      | `run.py`, `server_main.py`, bootstrap, eval tools | Bootstrap creates `.venv/`, but does not install Python. |
 | `git` | Yes      | bootstrap and normal repo workflows | Used for the repo itself and for syncing the local Opik checkout. |
 | Docker Desktop | No       | bundled local Opik stack | Required only if you opt in to the bundled local Opik stack at bootstrap time (the bootstrap script will prompt you). Skip-able by default or via `--no-opik`. |
-| One AI backend CLI | Yes      | actual workflow execution | Install and authenticate at least one of `claude`, `copilot`, or `gemini`. |
+| One AI backend CLI | Yes      | actual workflow execution | Install and authenticate at least one of `claude`, `codex`, `copilot`, or `gemini`. |
 | Azure CLI + `azure-devops` extension | No       | optional live ADO intake mode | Manual story entry and local synthetic stories do not require Azure DevOps tooling. |
 
 ### Optional tooling
@@ -111,7 +111,7 @@ If Opik is skipped, not configured, or temporarily unreachable, workflow runs co
 | `--eval-target-sha` | — | Gold-master commit SHA for generated workflow eval benchmarks. |
 | `--generate-eval-benchmarks` | off | Use an LLM to generate `eval/benchmarks/{easy,medium,hard}` during bootstrap. |
 | `--skip-eval-benchmarks` | off | Do not prompt for or generate eval benchmarks during bootstrap. |
-| `--eval-runner` | configured runner | LLM CLI for benchmark generation: `claude`, `copilot`, `copilot-*` alias, or `gemini`. Can also be set via `EVAL_RUNNER` env var. |
+| `--eval-runner` | configured runner | LLM CLI for benchmark generation: `claude`, `codex`, `copilot`, `copilot-*` alias, `gemini`, or `openai-compat`. Can also be set via `EVAL_RUNNER` env var. |
 | `--eval-model` | runner default | Optional model override for benchmark generation. Can also be set via `EVAL_MODEL` env var. Valid values depend on the runner — see `core/runner_models.py`. |
 | `--force-eval-benchmarks` | off | Overwrite existing generated benchmark folders instead of skipping them. |
 | `--no-verify-eval-gold-fails` | off | Skip running generated hidden tests against the gold-master during benchmark generation. Intended for local debugging only. |
@@ -190,6 +190,7 @@ Choose a runner explicitly:
 
 ```bash
 python3 run.py --repo /absolute/path/to/target/repo --runner claude
+python3 run.py --repo /absolute/path/to/target/repo --runner codex
 python3 run.py --repo /absolute/path/to/target/repo --runner copilot
 python3 run.py --repo /absolute/path/to/target/repo --runner gemini
 python3 run.py --repo /absolute/path/to/target/repo --log-level debug
@@ -198,6 +199,7 @@ python3 run.py --repo /absolute/path/to/target/repo --log-level debug
 Current built-in default models are:
 
 - `claude` → `claude-haiku-4-5-20251001`
+- `codex` → `gpt-5.2-codex` (any model name accepted; presets are suggestions only)
 - `copilot` → `gpt-5-mini`
 - `gemini` → `gemini-2.5-flash`
 - `openai-compat` → `deepseek-v4-pro:cloud` (any model name accepted; presets are suggestions only)
@@ -222,8 +224,8 @@ python3 run.py \
 | `--ado-url URL` | none | Azure DevOps work item URL (`https://dev.azure.com/<org>/<project>/_workitems/edit/<id>`). Triggers live ADO intake mode. Mutually exclusive with `--story-file` and `--manual-story-file`. |
 | `--story-file PATH` | `workflow-fixtures/synthetic_story.json` | Path to a local synthetic story fixture JSON file. Used for offline / test runs. Falls back to the bundled `TEST-AC-001` fixture when no explicit story source is provided. |
 | `--manual-story-file PATH` | none | Path to a JSON file containing manually pasted story fields (`title`, `description`, `acceptance_criteria`, optional work item reference fields, optional extra context). Treats work item IDs and URLs as reference-only metadata unless explicit write-back is enabled later. |
-| `--runner NAME` | `claude` | LLM backend to use: `claude` (Anthropic), `copilot` (OpenAI/GitHub), `gemini` (Google), `openai-compat` (any OpenAI-compatible endpoint), or a custom alias defined in `~/.agent-runner/config.json` under `runner_aliases`. |
-| `--model NAME` | runner default | Model name to pass to the selected runner. Defaults to the runner's built-in default when omitted. For `openai-compat`, any model name is accepted; `claude`/`copilot`/`gemini` require a known model from their allowlists. |
+| `--runner NAME` | `claude` | LLM backend to use: `claude` (Anthropic), `codex` (OpenAI Codex CLI), `copilot` (OpenAI/GitHub), `gemini` (Google), `openai-compat` (any OpenAI-compatible endpoint), or a custom alias defined in `~/.agent-runner/config.json` under `runner_aliases`. |
+| `--model NAME` | runner default | Model name to pass to the selected runner. Defaults to the runner's built-in default when omitted. For `codex` and `openai-compat`, any model name is accepted; `claude`/`copilot`/`gemini` require a known model from their allowlists. |
 | `--extra-context TEXT` | none | Free-form text appended verbatim to the intake agent's prompt. Useful for passing a reference PR URL, design notes, or other supplemental context. |
 | `--skip-lessons-optimizer` | off | Skip the lessons-optimizer stage at the end of the workflow. Saves time when you don't need the metacognitive improvement pass. |
 | `--skip-materialize` | off | Skip copying agent/skill source files into runner-specific directories before the workflow starts. Use only when assets are already up-to-date. |

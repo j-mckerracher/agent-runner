@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -375,6 +376,18 @@ def normalize_runner_output(runner: str, stdout: str) -> str:
     return text
 
 
+def _read_and_remove_output(path: Path, fallback: str) -> str:
+    try:
+        if path.exists():
+            return path.read_text(encoding="utf-8")
+        return fallback
+    finally:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def invoke_llm(
     *,
     runner: str,
@@ -406,6 +419,28 @@ def invoke_llm(
         cmd = [cli_cmd, "-p", prompt, "-s", "--yolo"]
         if runner == "copilot" and model:
             cmd += ["--model", model]
+    elif runner == "codex":
+        if not shutil.which("codex"):
+            raise BenchmarkGenerationError("codex CLI was not found on PATH")
+        output_path = Path(tempfile.gettempdir()) / f"agent-workbench-codex-benchmark-{os.getpid()}-{time.time_ns()}.txt"
+        cmd = [
+            "codex",
+            "exec",
+            "--cd",
+            str(cwd),
+            "--skip-git-repo-check",
+            "--sandbox",
+            "workspace-write",
+            "--ask-for-approval",
+            "never",
+            "--color",
+            "never",
+            "--output-last-message",
+            str(output_path),
+        ]
+        if model:
+            cmd += ["--model", model]
+        cmd.append(prompt)
     elif runner == "openai-compat":
         from core.run_cmds import run_openai_compat_text
         effective_model = model or "gemma4:31b-cloud"
@@ -418,7 +453,7 @@ def invoke_llm(
         return openai_result.strip()
     else:
         raise BenchmarkGenerationError(
-            f"Unsupported benchmark generator runner {runner!r}. Use claude, copilot, a copilot-* alias, gemini, or openai-compat."
+            f"Unsupported benchmark generator runner {runner!r}. Use claude, codex, copilot, a copilot-* alias, gemini, or openai-compat."
         )
 
     result = run_cmd(cmd, cwd=cwd, timeout=timeout, env=env)
@@ -426,6 +461,8 @@ def invoke_llm(
         raise BenchmarkGenerationError(
             f"{runner} benchmark generation failed with exit code {result.returncode}:\n{tail(result.stderr or result.stdout)}"
         )
+    if runner == "codex":
+        return _read_and_remove_output(output_path, result.stdout).strip()
     return normalize_runner_output(runner, result.stdout)
 
 
@@ -694,7 +731,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Seed eval/benchmarks/{easy,medium,hard} with LLM-generated stories and hidden tests.")
     parser.add_argument("--repo", default=default("EVAL_TARGET_REPO", env_file), help="Target Git repo path or URL. Defaults to EVAL_TARGET_REPO.")
     parser.add_argument("--sha", default=default("EVAL_TARGET_SHA", env_file), help="Gold-master commit SHA. Defaults to EVAL_TARGET_SHA.")
-    parser.add_argument("--runner", default=default("EVAL_RUNNER", env_file, "claude"), help="LLM to use: claude, copilot, copilot-* alias, gemini, or openai-compat.")
+    parser.add_argument("--runner", default=default("EVAL_RUNNER", env_file, "claude"), help="LLM to use: claude, codex, copilot, copilot-* alias, gemini, or openai-compat.")
     parser.add_argument("--model", default=None, help="Optional model override for the selected runner.")
     parser.add_argument("--output-dir", type=Path, default=BENCHMARKS_DIR)
     parser.add_argument("--difficulty", action="append", choices=DIFFICULTIES, default=[], help="Difficulty to generate; repeatable. Defaults to easy, medium, hard.")

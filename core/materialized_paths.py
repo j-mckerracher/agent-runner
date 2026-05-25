@@ -23,6 +23,7 @@ RUNNER_ROOT = Path(__file__).resolve().parent.parent
 
 RUNNER_OUTPUT_ROOTS: dict[str, Path] = {
     "claude": RUNNER_ROOT / ".claude",
+    "codex": RUNNER_ROOT / ".codex",
     "copilot": RUNNER_ROOT / ".github",
     "gemini": RUNNER_ROOT / ".gemini",
     "openai-compat": RUNNER_ROOT / ".openai-compat",
@@ -68,4 +69,3 @@ def runner_script_dir(runner: str) -> Path:
 
 def runner_metadata_file(runner: str) -> Path:
     return RUNNER_METADATA_FILES[normalize_runner(runner)]
-

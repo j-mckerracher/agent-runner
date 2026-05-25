@@ -44,6 +44,18 @@ COPILOT_MODEL_CHOICES = (
 
 DEFAULT_COPILOT_MODEL = "gpt-5-mini"
 
+# Suggested presets for the codex runner. Any model name is accepted;
+# these appear as suggestions in the UI and are not an allowlist.
+CODEX_MODEL_CHOICES = (
+    "gpt-5.2-codex",
+    "gpt-5.1-codex-max",
+    "gpt-5.1-codex",
+    "gpt-5.1-codex-mini",
+    "gpt-5-codex",
+)
+
+DEFAULT_CODEX_MODEL = "gpt-5.2-codex"
+
 # Suggested presets for the openai-compat runner. Any model name is accepted;
 # these appear as suggestions in the UI and are not an allowlist.
 OPENAI_COMPAT_MODEL_CHOICES = (
@@ -60,6 +72,7 @@ DEFAULT_OPENAI_COMPAT_MODEL = "deepseek-v4-pro:cloud"
 
 RUNNER_MODEL_CHOICES: dict[str, tuple[str, ...]] = {
     "claude": CLAUDE_MODEL_CHOICES,
+    "codex": CODEX_MODEL_CHOICES,
     "copilot": COPILOT_MODEL_CHOICES,
     "gemini": GEMINI_MODEL_CHOICES,
     "openai-compat": OPENAI_COMPAT_MODEL_CHOICES,
@@ -67,6 +80,7 @@ RUNNER_MODEL_CHOICES: dict[str, tuple[str, ...]] = {
 
 RUNNER_DEFAULT_MODELS: dict[str, str] = {
     "claude": DEFAULT_CLAUDE_MODEL,
+    "codex": DEFAULT_CODEX_MODEL,
     "copilot": DEFAULT_COPILOT_MODEL,
     "gemini": DEFAULT_GEMINI_MODEL,
     "openai-compat": DEFAULT_OPENAI_COMPAT_MODEL,
@@ -200,7 +214,7 @@ def resolve_runner_model(
     runner_lower = runner.lower()
     if runner_lower in RUNNER_DEFAULT_MODELS:
         if explicit_model is not None:
-            if runner_lower != "openai-compat":
+            if runner_lower not in {"codex", "openai-compat"}:
                 allowed = RUNNER_MODEL_CHOICES.get(runner_lower, ())
                 if allowed and explicit_model not in allowed:
                     raise ValueError(

@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -19,6 +20,7 @@ from opik import opik_context
 from .agent_prompts import load_agent_system_prompt
 from .materialized_paths import normalize_runner, runner_skill_dir
 from .runner_models import (
+    DEFAULT_CODEX_MODEL,
     DEFAULT_GEMINI_MODEL,
     DEFAULT_COPILOT_MODEL,
     DEFAULT_OPENAI_COMPAT_MODEL,
@@ -1390,6 +1392,18 @@ def _build_gemini_prompt(prompt: str, agent: str, extra_skills: list[str] | None
     return combined
 
 
+def _build_codex_prompt(prompt: str, agent: str, extra_skills: list[str] | None = None) -> str:
+    logger.debug("_build_codex_prompt: agent=%s extra_skills=%s", agent, extra_skills)
+    combined = _build_embedded_agent_prompt(
+        prompt=prompt,
+        agent=agent,
+        runner="codex",
+        extra_skills=extra_skills,
+    )
+    logger.debug("_build_codex_prompt: combined prompt length=%d chars for agent=%s", len(combined), agent)
+    return combined
+
+
 def _looks_like_copilot_refusal(text: str | None) -> bool:
     normalized = (text or "").strip().lower()
     return any(marker in normalized for marker in _COPILOT_REFUSAL_MARKERS)
@@ -1878,6 +1892,120 @@ def run_gemini_cmd(
     return ""  # unreachable
 
 
+def run_codex_cmd(
+    prompt: str,
+    agent: str,
+    model: str = DEFAULT_CODEX_MODEL,
+    skip_permissions: bool = True,
+    stream_output: bool = False,
+    extra_flags: list[str] | None = None,
+    extra_skills: list[str] | None = None,
+    repo: str | None = None,
+    change_id: str | None = None,
+) -> str:
+    """Trigger Codex CLI non-interactively and return the final message."""
+    if not prompt:
+        raise ValueError(f"prompt must not be empty (agent={agent})")
+    logger.info("run_codex_cmd: agent=%s model=%s prompt_len=%d", agent, model, len(prompt))
+    combined_prompt = _build_codex_prompt(prompt=prompt, agent=agent, extra_skills=extra_skills)
+    print(f"Starting Codex CLI via {agent}...")
+    print(f"Prompt: {prompt}")
+    print(f"Model: {model}")
+    workdir = str(Path(repo).expanduser().resolve()) if repo else os.getcwd()
+    output_path = Path(tempfile.gettempdir()) / f"agent-workbench-codex-{os.getpid()}-{time.time_ns()}.txt"
+    cmd = [
+        "codex",
+        "exec",
+        "--model",
+        model,
+        "--cd",
+        workdir,
+        "--skip-git-repo-check",
+        "--sandbox",
+        "workspace-write" if skip_permissions else "read-only",
+        "--ask-for-approval",
+        "never",
+        "--color",
+        "never",
+        "--output-last-message",
+        str(output_path),
+    ]
+    if extra_flags:
+        cmd.extend(extra_flags)
+    cmd.append(combined_prompt)
+    result = _run_cli(
+        cmd,
+        runner="codex",
+        agent=agent,
+        env=_without_claude_auth_env(),
+        stream_output=stream_output,
+        model=model,
+        prompt_text=combined_prompt,
+        attempt=1,
+        max_attempts=1,
+    )
+    output_text = result.stdout or ""
+    try:
+        if output_path.exists():
+            output_text = output_path.read_text(encoding="utf-8")
+    finally:
+        try:
+            output_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+    if output_text:
+        logger.debug("run_codex_cmd: output length=%d for agent=%s", len(output_text), agent)
+        print(output_text)
+    if result.stderr:
+        logger.debug("run_codex_cmd: stderr length=%d for agent=%s", len(result.stderr), agent)
+        print(result.stderr)
+    ti = _estimate_tokens(combined_prompt)
+    to = _estimate_tokens(output_text)
+    if ti > 0 or to > 0:
+        _emit_event("metrics", tokens_in=ti, tokens_out=to, cost_usd=0.0)
+    if result.returncode != 0:
+        combined_error = output_text + (result.stderr or "")
+        _emit_llm_call_event(
+            runner="codex",
+            agent=agent,
+            model=model,
+            status="error",
+            duration_ms=_runner_duration_ms(result),
+            prompt_text=combined_prompt,
+            response_text=combined_error,
+            prompt_tokens=ti,
+            completion_tokens=to,
+            cost_usd=0.0,
+            attempt=1,
+            max_attempts=1,
+            exit_code=result.returncode,
+            error_category=_classify_error(combined_error, runner="codex"),
+            retryable=False,
+            cache_static_prefix_chars=0,
+            cache_static_prefix_est_tokens=0,
+        )
+        raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
+    _emit_llm_call_event(
+        runner="codex",
+        agent=agent,
+        model=model,
+        status="ok",
+        duration_ms=_runner_duration_ms(result),
+        prompt_text=combined_prompt,
+        response_text=output_text,
+        prompt_tokens=ti,
+        completion_tokens=to,
+        cost_usd=0.0,
+        attempt=1,
+        max_attempts=1,
+        exit_code=result.returncode,
+        cache_static_prefix_chars=0,
+        cache_static_prefix_est_tokens=0,
+    )
+    logger.info("run_codex_cmd: agent=%s completed OK", agent)
+    return output_text
+
+
 def run_openai_compat_cmd(
     prompt: str,
     agent: str,
@@ -2252,6 +2380,17 @@ def run_agent_cmd(
     elif runner_lower == "claude":
         model_kwarg = {"model": runner_model} if runner_model is not None else {}
         return run_claude_cmd(prompt=prompt, agent=agent, **model_kwarg, **kwargs)
+    elif runner_lower == "codex":
+        model_kwarg = {"model": runner_model} if runner_model is not None else {}
+        return run_codex_cmd(
+            prompt=prompt,
+            agent=agent,
+            extra_skills=extra_skills,
+            repo=repo,
+            change_id=change_id,
+            **model_kwarg,
+            **kwargs,
+        )
     elif runner_lower == "gemini":
         model_kwarg = {"model": runner_model} if runner_model is not None else {}
         return run_gemini_cmd(prompt=prompt, agent=agent, extra_skills=extra_skills, **model_kwarg, **kwargs)
@@ -2311,7 +2450,7 @@ def run_agent_cmd(
             )
 
         logger.error("run_agent_cmd: unknown runner=%r provider=%s", runner, provider)
-        raise ValueError(f"Unknown runner: {runner!r}. Must be 'claude', 'copilot' (or a copilot alias), 'gemini', or an openai-compat-based runner.")
+        raise ValueError(f"Unknown runner: {runner!r}. Must be 'claude', 'codex', 'copilot' (or a copilot alias), 'gemini', or an openai-compat-based runner.")
 
 
 def run_copilot(

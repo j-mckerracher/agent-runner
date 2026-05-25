@@ -6,7 +6,7 @@ Reads canonical sources from:
   - agent-skill-source/{name}/v{n}/manifest.yaml + SKILL.md
   - agent-script-source/**/*
 
-Then writes runner-specific generated artifacts for Claude, Copilot, and Gemini
+Then writes runner-specific generated artifacts for Claude, Codex, Copilot, and Gemini
 into their respective directories and records content hashes + timestamps in a
 per-runner `.materialization.json` file.
 
@@ -117,6 +117,8 @@ def save_materialization(metadata_file: Path, data: dict) -> None:
 def _agent_target_filename(manifest: dict, runner: str) -> str:
     if runner == "claude":
         return manifest["claude_code_agent_file"]
+    if runner == "codex":
+        return manifest.get("codex_agent_file") or manifest["claude_code_agent_file"]
     if runner == "copilot":
         return (
             manifest.get("github_copilot_agent_file")
@@ -133,6 +135,8 @@ def _agent_target_filename(manifest: dict, runner: str) -> str:
 def _skill_target_filename(manifest: dict, runner: str) -> str:
     if runner == "claude":
         return manifest.get("claude_skill_file") or manifest.get("skill_file") or "SKILL.md"
+    if runner == "codex":
+        return manifest.get("codex_skill_file") or manifest.get("skill_file") or "SKILL.md"
     if runner == "copilot":
         return (
             manifest.get("github_copilot_skill_file")
@@ -387,7 +391,7 @@ def run_materialization(filter_names: list[str] | None = None, check_only: bool 
         return True
     print(f"  Found {len(agents)} agent(s), {len(skills)} skill(s), and {len(scripts)} script(s).\n")
     label = "Checking" if check_only else "Materializing"
-    print(f"{label} runner artifacts into .claude/, .github/, and .gemini/...")
+    print(f"{label} runner artifacts into .claude/, .codex/, .github/, and .gemini/...")
     logger.info(
         "run_materialization: %d agent(s), %d skill(s), %d script(s) check_only=%s",
         len(agents),
@@ -413,4 +417,3 @@ if __name__ == "__main__":
         if args.check:
             print("\n[OK] All agents are up-to-date.")
         sys.exit(0)
-

@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from core.runner_models import (
+    CODEX_MODEL_CHOICES,
     OPENAI_COMPAT_MODEL_CHOICES,
     OPENAI_COMPAT_RETRY_DEFAULTS,
     RUNNER_DEFAULT_MODELS,
@@ -150,7 +151,7 @@ class TestResolveAgentModel(unittest.TestCase):
         self.assertEqual(result, "")
 
     def test_all_runners_have_defaults(self):
-        for runner in ["claude", "copilot", "gemini"]:
+        for runner in ["claude", "codex", "copilot", "gemini"]:
             result = resolve_agent_model(
                 agent_name="test-agent",
                 runner=runner,
@@ -313,6 +314,23 @@ class OpenaiCompatArbitraryModelTests(unittest.TestCase):
     def test_openai_compat_default_resolves_when_no_explicit_model(self):
         resolved = resolve_runner_model("openai-compat", explicit_model=None)
         self.assertEqual(resolved, RUNNER_DEFAULT_MODELS["openai-compat"])
+
+    def test_codex_accepts_arbitrary_explicit_model(self):
+        cfg = resolve_runner_llm_config(
+            "codex",
+            explicit_model="future-codex-model",
+        )
+        self.assertEqual(cfg["model"], "future-codex-model")
+
+    def test_codex_presets_still_resolve(self):
+        for model in CODEX_MODEL_CHOICES:
+            with self.subTest(model=model):
+                cfg = resolve_runner_llm_config("codex", explicit_model=model)
+                self.assertEqual(cfg["model"], model)
+
+    def test_codex_default_resolves_when_no_explicit_model(self):
+        resolved = resolve_runner_model("codex", explicit_model=None)
+        self.assertEqual(resolved, RUNNER_DEFAULT_MODELS["codex"])
 
     def test_claude_rejects_invalid_model(self):
         with self.assertRaises(ValueError):

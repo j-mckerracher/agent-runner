@@ -44,21 +44,25 @@ skill_file: SKILL.md
 
         self.runner_agent_dirs = {
             "claude": self.tmpdir / ".claude" / "agents",
+            "codex": self.tmpdir / ".codex" / "agents",
             "copilot": self.tmpdir / ".github" / "agents",
             "gemini": self.tmpdir / ".gemini" / "agents",
         }
         self.runner_skill_dirs = {
             "claude": self.tmpdir / ".claude" / "skills",
+            "codex": self.tmpdir / ".codex" / "skills",
             "copilot": self.tmpdir / ".github" / "skills",
             "gemini": self.tmpdir / ".gemini" / "skills",
         }
         self.runner_script_dirs = {
             "claude": self.tmpdir / ".claude" / "scripts",
+            "codex": self.tmpdir / ".codex" / "scripts",
             "copilot": self.tmpdir / ".github" / "scripts",
             "gemini": self.tmpdir / ".gemini" / "scripts",
         }
         self.runner_metadata_files = {
             "claude": self.tmpdir / ".claude" / ".materialization.json",
+            "codex": self.tmpdir / ".codex" / ".materialization.json",
             "copilot": self.tmpdir / ".github" / ".materialization.json",
             "gemini": self.tmpdir / ".gemini" / ".materialization.json",
         }
@@ -85,7 +89,7 @@ skill_file: SKILL.md
             result = materialize.run_materialization()
 
         self.assertTrue(result)
-        for runner in ("claude", "copilot", "gemini"):
+        for runner in ("claude", "codex", "copilot", "gemini"):
             self.assertTrue((self.runner_agent_dirs[runner] / "intake.agent.md").exists())
             self.assertTrue((self.runner_skill_dirs[runner] / "frontend-design" / "SKILL.md").exists())
             self.assertTrue((self.runner_script_dirs[runner] / "validate-scope.py").exists())
@@ -154,7 +158,7 @@ skill_file: SKILL.md
                 stack.enter_context(patcher)
             self.assertTrue(materialize.run_materialization())
 
-        for runner in ("claude", "copilot", "gemini"):
+        for runner in ("claude", "codex", "copilot", "gemini"):
             agent_text = (self.runner_agent_dirs[runner] / "intake.agent.md").read_text(encoding="utf-8")
             self.assertIn("# Intake Agent Prompt v2", agent_text)
             self.assertTrue((self.runner_skill_dirs[runner] / "interrogate-eng" / "SKILL.md").exists())
@@ -162,4 +166,3 @@ skill_file: SKILL.md
 
 if __name__ == "__main__":
     unittest.main()
-

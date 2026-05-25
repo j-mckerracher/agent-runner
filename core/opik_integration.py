@@ -2,7 +2,7 @@
 Opik integration for agent-runner.
 
 Sets up Opik from environment variables and provides helpers for:
-- Loading agent system prompts from .claude/agents/*.agent.md
+- Loading agent system prompts from runner-specific materialized agent files
 - Injecting referenced agent-context file contents into evaluator prompts
 - Calling evaluator agents via Anthropic SDK or Gemini SDK with @opik.track
 
@@ -32,7 +32,7 @@ import httpx
 from opik import opik_context
 from google import genai as google_genai
 from .ui_trace_bridge import track_with_ui
-from .run_cmds import build_runner_agent_instructions, run_copilot_cmd, run_openai_compat_text
+from .run_cmds import build_runner_agent_instructions, run_codex_cmd, run_copilot_cmd, run_openai_compat_text
 from .runner_models import is_copilot_runner, _provider_for_runner
 
 logger = logging.getLogger(__name__)
@@ -125,6 +125,7 @@ def call_evaluator_sdk(
     Run an evaluator agent via Copilot CLI, Anthropic SDK, or Gemini SDK with Opik tracing.
 
     When runner=="copilot", uses Copilot CLI with the selected model.
+    When runner=="codex", uses Codex CLI with the selected model.
     When runner=="gemini", uses the Gemini API (GEMINI_API_KEY required).
     When runner=="claude", uses the Anthropic API (ANTHROPIC_API_KEY required).
     When runner=="openai-compat", uses the OpenAI-compatible chat API.
@@ -140,7 +141,7 @@ def call_evaluator_sdk(
         context:       The evaluator prompt / instruction string.
         agent_name:    Slug used to locate the .agent.md file (e.g. "task-plan-evaluator").
         model:         Model ID (Anthropic, Copilot, Gemini, or OpenAI-compat depending on runner).
-        runner:        One of "copilot", "claude", "gemini", or "openai-compat".
+        runner:        One of "copilot", "claude", "codex", "gemini", or "openai-compat".
         runner_model:  Explicit model name to use (overrides *model* when runner=="gemini").
 
     Returns:
@@ -177,6 +178,16 @@ def call_evaluator_sdk(
             )
         logger.info("call_evaluator_sdk: Copilot CLI call succeeded agent=%s response_len=%d", agent_name, len(text or ""))
         # Token metrics are emitted directly by run_copilot_cmd
+        return text
+
+    elif runner == "codex":
+        logger.info("call_evaluator_sdk: using Codex CLI model=%s agent=%s", model, agent_name)
+        text = run_codex_cmd(
+            prompt=user_message,
+            agent=agent_name,
+            model=model,
+        )
+        logger.info("call_evaluator_sdk: Codex CLI call succeeded agent=%s response_len=%d", agent_name, len(text or ""))
         return text
 
     elif runner == "openai-compat" or provider == "openai-compat":
@@ -273,7 +284,7 @@ def call_evaluator_sdk(
         return text
 
     else:
-        raise ValueError(f"Unknown runner={runner} for call_evaluator_sdk; must be one of 'copilot', 'claude', 'gemini', 'openai-compat', or a copilot alias (copilot-<name>)")
+        raise ValueError(f"Unknown runner={runner} for call_evaluator_sdk; must be one of 'copilot', 'claude', 'codex', 'gemini', 'openai-compat', or a copilot alias (copilot-<name>)")
 
 
 def _load_runtime_config_for_provider() -> dict:
