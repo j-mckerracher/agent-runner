@@ -16,6 +16,7 @@ import yaml
 
 from core.artifact_utils import (
     ImplReportValidationError,
+    normalize_impl_report_file,
     snapshot_impl_report_attempt,
     validate_impl_report_alignment,
 )
@@ -169,6 +170,120 @@ class ImplReportArtifactIntegrityTests(unittest.TestCase):
             self.assertEqual(snapshot, uow_dir / "attempts" / "attempt-002" / "impl_report.yaml")
             self.assertTrue(snapshot.is_file())
             self.assertEqual(yaml.safe_load(snapshot.read_text(encoding="utf-8"))["status"], "complete")
+
+    def test_easy__normalize_impl_report_repairs_unquoted_colon_in_dod_item(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report_path = Path(tmpdir) / "impl_report.yaml"
+            report_path.write_text(
+                "\n".join(
+                    [
+                        'change_id: "CHANGE-1"',
+                        'uow_id: "UOW-001"',
+                        'status: "complete"',
+                        "definition_of_done_status:",
+                        "  - item: Output format preserved: status remains visible",
+                        "    met: true",
+                        "    evidence: verified",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertTrue(normalize_impl_report_file(report_path))
+
+            report = yaml.safe_load(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                report["definition_of_done_status"][0]["item"],
+                "Output format preserved: status remains visible",
+            )
+
+    def test_easy__normalize_impl_report_repairs_nested_list_mapping_value(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report_path = Path(tmpdir) / "impl_report.yaml"
+            report_path.write_text(
+                "\n".join(
+                    [
+                        'change_id: "CHANGE-1"',
+                        'uow_id: "UOW-001"',
+                        "files_modified:",
+                        "  - path: src/components/Example.tsx",
+                        "    change_type: modified",
+                        "    change_summary: Added confirmation behavior, dismissible: boolean flag supported",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertTrue(normalize_impl_report_file(report_path))
+
+            report = yaml.safe_load(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                report["files_modified"][0]["change_summary"],
+                "Added confirmation behavior, dismissible: boolean flag supported",
+            )
+
+    def test_easy__normalize_impl_report_canonicalizes_valid_report(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report_path = Path(tmpdir) / "impl_report.yaml"
+            report_path.write_text(
+                '{"change_id": "CHANGE-1", "uow_id": "UOW-001", "status": "complete"}\n',
+                encoding="utf-8",
+            )
+
+            self.assertTrue(normalize_impl_report_file(report_path))
+
+            self.assertEqual(
+                yaml.safe_load(report_path.read_text(encoding="utf-8")),
+                {"change_id": "CHANGE-1", "uow_id": "UOW-001", "status": "complete"},
+            )
+            self.assertIn("change_id: CHANGE-1", report_path.read_text(encoding="utf-8"))
+
+    def test_easy__normalize_impl_report_fails_for_unrecoverable_yaml(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report_path = Path(tmpdir) / "impl_report.yaml"
+            report_path.write_text(
+                "\n".join(
+                    [
+                        'change_id: "CHANGE-1"',
+                        "files_modified:",
+                        "  - path: [unterminated",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "not valid YAML"):
+                normalize_impl_report_file(report_path)
+
+    def test_medium__validation_reports_yaml_parse_error_for_invalid_impl_report(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "agent-context"
+            uow_dir = root / "CHANGE-1" / "execution" / "UOW-005"
+            self._write_yaml(
+                uow_dir / "uow_spec.yaml",
+                {
+                    "uow_id": "UOW-005",
+                    "title": "Implement alpha ordering",
+                    "implementation_hints": ["libs/orders/alpha-order/alpha-order.component.ts"],
+                },
+            )
+            (uow_dir / "impl_report.yaml").write_text(
+                "\n".join(
+                    [
+                        'change_id: "CHANGE-1"',
+                        "files_modified:",
+                        "  - path: [unterminated",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ImplReportValidationError, "YAML parse error"):
+                validate_impl_report_alignment(
+                    agent_context_root=root,
+                    change_id="CHANGE-1",
+                    uow_id="UOW-005",
+                )
 
 
 if __name__ == "__main__":

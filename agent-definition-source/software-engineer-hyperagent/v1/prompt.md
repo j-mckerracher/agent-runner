@@ -139,50 +139,56 @@ Produce `impl_report.yaml` with this structure:
 
 ```yaml
 uow_id: "UOW-001"
-  status: "complete|partial|blocked"
-  implementation_summary: "<what was implemented>"
-  librarian_queries:
-      query: "What tooltip patterns exist?"
-      confidence_received: "full"
-      answer_summary: "PrimeNG pTooltip with tooltipPosition"
-  librarian_exploration_summaries:
-      query: "Where is the PersonService?"
-      summary_received: "Located in src/services/PersonService.ts"
-  files_modified:
-      path: "src/components/Example.tsx"
-      change_type: "modified|created|deleted"
-      change_summary: "<brief description>"
-  definition_of_done_status: {
-    "DoD item 1": {"met": true, "evidence": "<how verified>"}
-    "DoD item 2": {"met": true, "evidence": "<how verified>"}
-  commands_executed:
-      command: "npm run build"
-      result: "pass|fail"
-      output_summary: "<relevant output>"
-  risks_identified:
-      type: "breaking_change|regression_risk|tech_debt"
-      description: "<what the risk is>"
-      mitigation: "<how it's being handled>"
-      requires_escalation: false
-  notes: "<implementation decisions, trade-offs made>"
-  metacognitive_context:
-    decision_rationale: '<Why this specific implementation approach was chosen over alternatives>'
-    alternatives_discarded:
-      - approach: '<alternative implementation considered>'
-        reason_rejected: '<why it was not used>'
-    knowledge_gaps:
-      - '<specific documentation, files, or context the agent felt was missing during implementation>'
-    tool_anomalies:
-      - tool: '<tool name (nx, Cypress, Angular CLI, etc.)>'
-        anomaly: '<unexpected behavior observed>'
-  revision_history:
-      attempt: 1
-      feedback_addressed: "<what evaluator feedback was addressed>"
-      phase2_analysis:  # NEW — only present for attempt > 1
-        evaluator_root_cause: '<from eval_impl_k.json root_cause_hypothesis>'
-        self_analysis_conclusion: '<what the meta agent determined>'
-        heuristic_evolved: '<the new rule appended, or "none">'
+status: "complete|partial|blocked"
+implementation_summary: "<what was implemented>"
+librarian_queries:
+  - query: "What tooltip patterns exist?"
+    confidence_received: "full"
+    answer_summary: "PrimeNG pTooltip with tooltipPosition"
+librarian_exploration_summaries:
+  - query: "Where is the PersonService?"
+    summary_received: "Located in src/services/PersonService.ts"
+files_modified:
+  - path: "src/components/Example.tsx"
+    change_type: "modified|created|deleted"
+    change_summary: "<brief description>"
+definition_of_done_status:
+  - item: "DoD item 1"
+    met: true
+    evidence: "<how verified>"
+  - item: "DoD item 2"
+    met: true
+    evidence: "<how verified>"
+commands_executed:
+  - command: "npm run build"
+    result: "pass|fail"
+    output_summary: "<relevant output>"
+risks_identified:
+  - type: "breaking_change|regression_risk|tech_debt"
+    description: "<what the risk is>"
+    mitigation: "<how it's being handled>"
+    requires_escalation: false
+notes: "<implementation decisions, trade-offs made>"
+metacognitive_context:
+  decision_rationale: "<Why this specific implementation approach was chosen over alternatives>"
+  alternatives_discarded:
+    - approach: "<alternative implementation considered>"
+      reason_rejected: "<why it was not used>"
+  knowledge_gaps:
+    - "<specific documentation, files, or context the agent felt was missing during implementation>"
+  tool_anomalies:
+    - tool: "<tool name (nx, Cypress, Angular CLI, etc.)>"
+      anomaly: "<unexpected behavior observed>"
+revision_history:
+  - attempt: 1
+    feedback_addressed: "<what evaluator feedback was addressed>"
+    phase2_analysis:
+      evaluator_root_cause: "<from eval_impl_k.json root_cause_hypothesis>"
+      self_analysis_conclusion: "<what the meta agent determined>"
+      heuristic_evolved: "<the new rule appended, or 'none'>"
 ```
+
+Quote scalar values that contain `:` characters. Example: `item: "Output format preserved: status remains visible"`.
 
 ## Documentation-First Requirement
 

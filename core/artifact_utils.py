@@ -67,12 +67,6 @@ def _utc_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def _load_yaml_mapping(path: Path) -> dict[str, Any]:
-    from core.yaml_safety import load_yaml_mapping_safe
-
-    return load_yaml_mapping_safe(path)
-
-
 def _walk_strings(value: Any) -> list[str]:
     if isinstance(value, str):
         return [value]
@@ -131,6 +125,93 @@ def _impl_report_dir(agent_context_root: Path, change_id: str, uow_id: str) -> P
     return agent_context_root / change_id / "execution" / uow_id
 
 
+def _load_yaml_mapping(path: Path) -> dict[str, Any]:
+    from core.yaml_safety import load_yaml_mapping_safe
+
+    return load_yaml_mapping_safe(path)
+
+
+def _load_yaml_mapping_result(path: Path):
+    from core.yaml_safety import safe_load_yaml_file
+
+    return safe_load_yaml_file(path)
+
+
+def _line_needs_quoted_yaml_scalar(value: str) -> bool:
+    stripped = value.strip()
+    if not stripped:
+        return False
+    if stripped[0] in {'"', "'", "{", "[", "|", ">"}:
+        return False
+    return bool(re.search(r":\s+", stripped))
+
+
+def _split_unquoted_yaml_comment(value: str) -> tuple[str, str]:
+    in_single = False
+    in_double = False
+    for index, char in enumerate(value):
+        if char == "'" and not in_double:
+            in_single = not in_single
+        elif char == '"' and not in_single:
+            in_double = not in_double
+        elif char == "#" and not in_single and not in_double and (index == 0 or value[index - 1].isspace()):
+            return value[:index].rstrip(), value[index:]
+    return value.rstrip(), ""
+
+
+def _quote_yaml_plain_scalar_line(line: str) -> str:
+    match = re.match(r"^(\s*(?:-\s*)?[A-Za-z0-9_\"'-][^:\n]*:\s*)(.*)$", line)
+    if not match:
+        return line
+
+    prefix, value = match.groups()
+    value_without_comment, comment = _split_unquoted_yaml_comment(value)
+    if not _line_needs_quoted_yaml_scalar(value_without_comment):
+        return line
+
+    leading = value_without_comment[: len(value_without_comment) - len(value_without_comment.lstrip())]
+    scalar = value_without_comment.strip()
+    quoted = json.dumps(scalar)
+    suffix = f" {comment}" if comment else ""
+    return f"{prefix}{leading}{quoted}{suffix}"
+
+
+def _repair_impl_report_unquoted_colon_scalars(raw: str) -> str:
+    return "\n".join(_quote_yaml_plain_scalar_line(line) for line in raw.split("\n"))
+
+
+def normalize_impl_report_file(path: Path) -> bool:
+    """Repair and canonicalize agent-authored implementation report YAML."""
+    if not path.is_file():
+        return False
+
+    raw = path.read_text(encoding="utf-8")
+    try:
+        data = yaml.safe_load(raw)
+    except yaml.YAMLError as original_exc:
+        repaired = _repair_impl_report_unquoted_colon_scalars(raw)
+        if repaired == raw:
+            raise ValueError(f"impl_report.yaml is not valid YAML: {original_exc}") from original_exc
+        try:
+            data = yaml.safe_load(repaired)
+        except yaml.YAMLError as repaired_exc:
+            raise ValueError(
+                "impl_report.yaml is not valid YAML after conservative scalar repair: "
+                f"{repaired_exc}; original error: {original_exc}"
+            ) from repaired_exc
+
+    if data is None:
+        data = {}
+    if not isinstance(data, dict):
+        raise ValueError(f"impl_report.yaml must parse to a mapping, got {type(data).__name__}")
+
+    normalized = yaml.safe_dump(data, sort_keys=False)
+    if raw == normalized:
+        return False
+    path.write_text(normalized, encoding="utf-8")
+    return True
+
+
 def snapshot_impl_report_attempt(
     *,
     agent_context_root: Path,
@@ -169,12 +250,16 @@ def validate_impl_report_alignment(
     uow_dir = _impl_report_dir(agent_context_root, change_id, uow_id)
     spec_path = uow_dir / "uow_spec.yaml"
     report_path = uow_dir / "impl_report.yaml"
-    spec = _load_yaml_mapping(spec_path)
-    report = _load_yaml_mapping(report_path)
+    spec_result = _load_yaml_mapping_result(spec_path)
+    report_result = _load_yaml_mapping_result(report_path)
+    spec = spec_result.data if spec_result.is_valid else {}
+    report = report_result.data if report_result.is_valid else {}
     if not spec:
-        raise ImplReportValidationError(f"Missing or invalid UoW spec: {spec_path}")
+        detail = "; ".join(spec_result.errors or spec_result.warnings)
+        raise ImplReportValidationError(f"Missing or invalid UoW spec: {spec_path}. {detail}".rstrip())
     if not report:
-        raise ImplReportValidationError(f"Missing or invalid implementation report: {report_path}")
+        detail = "; ".join(report_result.errors or report_result.warnings)
+        raise ImplReportValidationError(f"Missing or invalid implementation report: {report_path}. {detail}".rstrip())
 
     errors: list[str] = []
     report_uow_id = report.get("uow_id")

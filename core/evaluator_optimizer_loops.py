@@ -6,7 +6,7 @@ import time
 from opik import opik_context
 
 from . import steps
-from .artifact_utils import snapshot_impl_report_attempt, validate_impl_report_alignment
+from .artifact_utils import normalize_impl_report_file, snapshot_impl_report_attempt, validate_impl_report_alignment
 from .runner_models import DEFAULT_GEMINI_MODEL
 from .ui_trace_bridge import start_span_with_ui, track_with_ui
 
@@ -133,6 +133,9 @@ def run_uow_eval_loop(
                     evaluator_feedback=evaluator_out if i > 0 else "",
                     runner=runner,
                     runner_model=runner_model,
+                )
+                normalize_impl_report_file(
+                    steps.AGENT_CONTEXT_ROOT / change_id / "execution" / uow_id / "impl_report.yaml"
                 )
                 snapshot_impl_report_attempt(
                     agent_context_root=steps.AGENT_CONTEXT_ROOT,

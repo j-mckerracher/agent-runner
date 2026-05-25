@@ -4,6 +4,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import yaml
+
 
 class EvaluatorOptimizerLoopTelemetryTests(unittest.TestCase):
     def test_medium__eval_optimizer_loop_emits_explicit_loop_events(self):
@@ -49,6 +51,72 @@ class EvaluatorOptimizerLoopTelemetryTests(unittest.TestCase):
         finally:
             events._default = None
             Path(path).unlink(missing_ok=True)
+
+    def test_medium__uow_eval_loop_normalizes_impl_report_before_validation(self):
+        from core.evaluator_optimizer_loops import run_uow_eval_loop
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "agent-context"
+            uow_dir = root / "CHANGE-1" / "execution" / "UOW-001"
+            uow_dir.mkdir(parents=True)
+            (uow_dir / "uow_spec.yaml").write_text(
+                yaml.safe_dump(
+                    {
+                        "uow_id": "UOW-001",
+                        "title": "Implement alpha ordering helper",
+                        "implementation_hints": ["libs/orders/alpha-order/alpha-order-helper.ts"],
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+            evaluator_calls = []
+
+            def software_engineer(**_kwargs) -> str:
+                (uow_dir / "impl_report.yaml").write_text(
+                    "\n".join(
+                        [
+                            'change_id: "CHANGE-1"',
+                            'uow_id: "UOW-001"',
+                            'status: "complete"',
+                            "implementation_summary: Alpha order preserved: helper verified",
+                            "definition_of_done_status:",
+                            "  - item: Output format preserved: status remains visible",
+                            "    met: true",
+                            "    evidence: alpha order helper verified",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                return "implemented"
+
+            def evaluator(**_kwargs) -> str:
+                evaluator_calls.append(True)
+                return "PASS"
+
+            with patch("core.evaluator_optimizer_loops.steps.AGENT_CONTEXT_ROOT", root), patch(
+                "core.evaluator_optimizer_loops.steps.step_software_engineer", side_effect=software_engineer
+            ), patch("core.evaluator_optimizer_loops.steps.step_software_engineer_evaluator", side_effect=evaluator):
+                producer_out, evaluator_out = run_uow_eval_loop(
+                    "UOW-001",
+                    "CHANGE-1",
+                    repo="/tmp/repo",
+                    iter_count=1,
+                    runner="claude",
+                    runner_model="claude-sonnet",
+                )
+
+            self.assertEqual(producer_out, "implemented")
+            self.assertEqual(evaluator_out, "PASS")
+            self.assertEqual(evaluator_calls, [True])
+            normalized = yaml.safe_load((uow_dir / "impl_report.yaml").read_text(encoding="utf-8"))
+            self.assertEqual(normalized["implementation_summary"], "Alpha order preserved: helper verified")
+            snapshot = uow_dir / "attempts" / "attempt-001" / "impl_report.yaml"
+            self.assertTrue(snapshot.is_file())
+            self.assertEqual(
+                yaml.safe_load(snapshot.read_text(encoding="utf-8"))["definition_of_done_status"][0]["item"],
+                "Output format preserved: status remains visible",
+            )
 
 
 if __name__ == "__main__":
