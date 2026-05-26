@@ -126,7 +126,7 @@ Ownership model:
 
 - Most agents: append/fallback capture only, consume scoped lessons only
 - Reference Librarian: routes scoped lessons and maintains retrieval metadata/index
-- Lessons Optimizer: reads full lessons for optimization and recommendation quality
+- Human operators: review captured lessons and decide whether to apply prompt/configuration changes manually
 
 ## When NOT to Capture
 

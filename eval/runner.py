@@ -52,7 +52,6 @@ WORKFLOW_STAGE_ORDER = (
     "task-assignment",
     "execution",
     "qa",
-    "lessons-optimizer",
 )
 
 
@@ -109,11 +108,10 @@ class WorkflowProgress:
         )
 
 
-def workflow_stage_names(include_lessons: bool) -> list[str]:
-    stages = list(WORKFLOW_STAGE_ORDER)
-    if not include_lessons:
-        stages.remove("lessons-optimizer")
-    return stages
+def workflow_stage_names(include_lessons: bool = False) -> list[str]:
+    # The lessons optimizer is disabled globally; keep the argument for backward
+    # compatibility with older callers but never include that stage.
+    return list(WORKFLOW_STAGE_ORDER)
 
 
 def apply_workflow_event(progress: WorkflowProgress, event: dict[str, Any]) -> bool:
@@ -345,8 +343,7 @@ def build_workflow_command(
     ]
     if args.model:
         cmd += ["--model", args.model]
-    if not args.include_lessons:
-        cmd.append("--skip-lessons-optimizer")
+    cmd.append("--skip-lessons-optimizer")
     return cmd
 
 
@@ -914,7 +911,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--workflow-timeout", type=int, default=10800) # 3 hours
     parser.add_argument("--test-timeout", type=int, default=300)
     parser.add_argument("--project-test-command", default=default("EVAL_PROJECT_TEST_COMMAND", env_file))
-    parser.add_argument("--include-lessons", action="store_true", help="Include the lessons optimizer stage. Skipped by default for faster evals.")
+    parser.add_argument("--include-lessons", action="store_true", help="Deprecated no-op. The lessons optimizer is disabled globally.")
     parser.add_argument("--keep-sandbox", action="store_true")
     parser.add_argument("--write-report", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--log-level", default="warning")

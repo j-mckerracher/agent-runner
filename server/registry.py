@@ -7,6 +7,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from core.agent_catalog import is_disabled_agent
+
 from .paths import AGENT_SOURCES_ROOT
 
 logger = logging.getLogger(__name__)
@@ -94,6 +96,9 @@ def list_agents() -> list[dict[str, Any]]:
     for agent_dir in sorted(AGENT_SOURCES_ROOT.iterdir()):
         if not agent_dir.is_dir():
             continue
+        if is_disabled_agent(agent_dir.name):
+            logger.debug("list_agents: %s is disabled; skipping", agent_dir.name)
+            continue
         summary = _agent_summary(agent_dir)
         if summary is None:
             continue
@@ -108,6 +113,9 @@ def list_agents() -> list[dict[str, Any]]:
 
 def get_agent(name: str) -> dict[str, Any] | None:
     logger.debug("get_agent: name=%s", name)
+    if is_disabled_agent(name):
+        logger.debug("get_agent: %s is disabled", name)
+        return None
     agent_dir = AGENT_SOURCES_ROOT / name
     if not agent_dir.is_dir():
         logger.debug("get_agent: %s not found", name)

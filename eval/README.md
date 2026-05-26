@@ -199,7 +199,7 @@ separately by the hidden tests in step 3.
 | `--project-test-command CMD` | none | Shell command executed inside the sandbox after the workflow finishes, used to detect regressions (e.g. `python3 -m pytest -q`). Falls back to `EVAL_PROJECT_TEST_COMMAND` in `.env`. |
 | `--workflow-timeout SECS` | `10800` (3 h) | Maximum wall-clock seconds allowed for the workflow stage (`run.py`) per benchmark before it is killed. |
 | `--test-timeout SECS` | `300` (5 min) | Maximum seconds allowed for each test stage (project tests and hidden tests) per benchmark. |
-| `--include-lessons` | off | Include the lessons-optimizer stage in the workflow. Disabled by default to keep eval runs faster. |
+| `--include-lessons` | off | Deprecated no-op. The lessons optimizer is disabled and is never included in workflow eval runs. |
 | `--keep-sandbox` | off | Preserve the temporary sandbox directory after the run completes. Useful for post-mortem debugging. |
 | `--write-report / --no-write-report` | on | Write a JSON report to `eval/reports/`. Pass `--no-write-report` to skip writing. |
 | `--log-level LEVEL` | `warning` | Logging verbosity passed through to `run.py`: `debug`, `info`, `warning`, `error`, or `critical`. |

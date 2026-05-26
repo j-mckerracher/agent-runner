@@ -72,7 +72,7 @@ if __name__ == "__main__":
                 issues.append("Missing 'definition_of_done_status' or 'definition_of_done'")
             else:
                 if not isinstance(dod, list):
-                    issues.append("'definition_of_done_status' should be a list (see Self-Evolved Rules)")
+                    issues.append("'definition_of_done_status' should be a list (see operator-curated rules)")
         valid = len(issues) == 0
         print(json.dumps({"schema_valid": valid, "issues": issues}, indent=2))
         sys.exit(0 if valid else 1)

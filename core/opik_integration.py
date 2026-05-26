@@ -23,14 +23,25 @@ import os
 import re
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
-import truststore
-truststore.inject_into_ssl()
+try:
+    import truststore
+except ModuleNotFoundError:  # Optional when SDK-backed evaluator calls are not used.
+    truststore = None
+else:
+    truststore.inject_into_ssl()
 
-import anthropic
+try:
+    import anthropic
+except ModuleNotFoundError:  # Optional until the Anthropic evaluator path is selected.
+    anthropic = SimpleNamespace(Anthropic=None)
 import httpx
-from opik import opik_context
-from google import genai as google_genai
+from .opik_compat import opik_context
+try:
+    from google import genai as google_genai
+except ModuleNotFoundError:  # Optional until the Gemini evaluator path is selected.
+    google_genai = SimpleNamespace(Client=None)
 from .ui_trace_bridge import track_with_ui
 from .run_cmds import build_runner_agent_instructions, run_codex_cmd, run_copilot_cmd, run_openai_compat_text
 from .runner_models import is_copilot_runner, _provider_for_runner
@@ -208,6 +219,8 @@ def call_evaluator_sdk(
         return text
 
     elif runner == "claude":
+        if getattr(anthropic, "Anthropic", None) is None:
+            raise RuntimeError("Anthropic SDK is not installed; install requirements.txt to use the claude evaluator path")
         logger.info("call_evaluator_sdk: using Anthropic API model=%s agent=%s", model, agent_name)
         _env_cert = os.environ.get("SSL_CERT_FILE") or os.environ.get("REQUESTS_CA_BUNDLE")
         if os.environ.get("ANTHROPIC_VERIFY_SSL", "1") == "0":
@@ -231,6 +244,8 @@ def call_evaluator_sdk(
         return text
 
     elif runner == "gemini":
+        if getattr(google_genai, "Client", None) is None:
+            raise RuntimeError("Google GenAI SDK is not installed; install requirements.txt to use the gemini evaluator path")
         if runner_model and "gemini" in runner_model:
             gemini_model = runner_model
         elif model and "gemini" in model:

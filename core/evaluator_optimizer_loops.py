@@ -3,7 +3,7 @@ import os
 import re
 import time
 
-from opik import opik_context
+from .opik_compat import opik_context
 
 from . import steps
 from .artifact_utils import normalize_impl_report_file, snapshot_impl_report_attempt, validate_impl_report_alignment

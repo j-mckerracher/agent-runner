@@ -763,6 +763,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--host", default=DEFAULT_HOST, help=f"Server bind host (default: {DEFAULT_HOST})")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"Server bind port (default: {DEFAULT_PORT})")
     parser.add_argument("--reload", action="store_true", help="Start the FastAPI server with --reload.")
+    parser.add_argument("--materialize", action="store_true", help="Manually materialize enabled runner assets during bootstrap. Off by default so prompt-file changes remain explicit.")
     opik_group = parser.add_mutually_exclusive_group()
     opik_group.add_argument(
         "--with-opik",
@@ -799,7 +800,10 @@ def main() -> int:
         _announce_optional_azure_devops()
         _check_rtk()
         _install_requirements()
-        _materialize_agents()
+        if getattr(args, "materialize", False):
+            _materialize_agents()
+        else:
+            print("[bootstrap] Skipping agent/skill materialization by default. Re-run with --materialize to update generated runner assets.", flush=True)
         _prompt_user_config()
         eval_config = _collect_eval_config(args)
         _generate_eval_benchmarks(eval_config, args)

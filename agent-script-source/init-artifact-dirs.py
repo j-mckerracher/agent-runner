@@ -58,7 +58,6 @@ def main() -> int:
         logs_root / "qa",
         logs_root / "qa_evaluator",
         logs_root / "information_explorer",
-        logs_root / "lessons_optimizer",
     ]
 
     for d in artifact_dirs:

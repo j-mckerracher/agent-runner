@@ -18,8 +18,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, Callable, Iterator
 
-import opik
-from opik import opik_context
+from .opik_compat import opik, opik_context
 
 from .ui_trace_bridge import set_opik_tracing_enabled
 

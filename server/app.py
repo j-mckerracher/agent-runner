@@ -21,7 +21,6 @@ from .routes import integrations as integrations_routes
 from .routes import runs as runs_routes
 from .routes import settings as settings_routes
 from .routes import telemetry as telemetry_routes
-from core.materialize import run_materialization
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +32,7 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        logger.info("Lifespan: materializing agents and skills from source trees")
-        try:
-            run_materialization()
-            logger.info("Lifespan: agent materialization complete")
-        except Exception:
-            logger.exception("Lifespan: agent materialization failed — continuing startup")
+        logger.info("Lifespan: skipping automatic materialization; generated runner assets are operator-controlled")
         logger.info("Lifespan: starting JobManager (version=%s)", __version__)
         await mgr.start()
         logger.info("Lifespan: JobManager started")

@@ -21,9 +21,17 @@ class RunMainArgParseTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             run.parse_args(["--repo", "/tmp/repo", "--log-level", "verbose"])
 
+    def test_easy__parse_args_defaults_to_skip_materialize(self) -> None:
+        args = run.parse_args(["--repo", "/tmp/repo"])
+        self.assertTrue(args.skip_materialize)
+
     def test_easy__parse_args_accepts_skip_materialize(self) -> None:
         args = run.parse_args(["--repo", "/tmp/repo", "--skip-materialize"])
         self.assertTrue(args.skip_materialize)
+
+    def test_easy__parse_args_accepts_explicit_materialize(self) -> None:
+        args = run.parse_args(["--repo", "/tmp/repo", "--materialize"])
+        self.assertFalse(args.skip_materialize)
 
     def test_easy__story_source_metadata_counts_original_acceptance_criteria(self) -> None:
         with tempfile.TemporaryDirectory() as td:

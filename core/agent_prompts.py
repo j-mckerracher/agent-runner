@@ -4,6 +4,7 @@ import logging
 import re
 from pathlib import Path
 
+from .agent_catalog import is_disabled_agent
 from .materialized_paths import runner_agent_dir
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,10 @@ def load_agent_system_prompt(
 
     Raises FileNotFoundError if no matching agent file is found.
     """
+    if is_disabled_agent(agent_name):
+        logger.error("load_agent_system_prompt: disabled agent requested: %s", agent_name)
+        raise RuntimeError(f"Agent {agent_name!r} is disabled and may not be invoked")
+
     search_dir = prompts_dir or runner_agent_dir(runner)
     logger.debug(
         "load_agent_system_prompt: agent_name=%s runner=%s search_dir=%s",

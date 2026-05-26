@@ -39,7 +39,6 @@ Each agent writes to its own subdirectory directly under `logs/`. There is no ch
 | Software Engineer    | `logs/software_engineer/`    |
 | QA Engineer          | `logs/qa/`                   |
 | Information Explorer | `logs/information_explorer/` |
-| Lessons Optimizer    | `logs/lessons_optimizer/`    |
 
 ## Log File Naming Convention
 
@@ -61,7 +60,6 @@ logs/{agent_name}/{YYYYMMDD_HHMMSS}_{identifier}.json
 | Software Engineer    | `20260127_160000_UOW-001_session.json`  |
 | QA Engineer          | `20260127_180000_session.json`          |
 | Information Explorer | `20260127_143100_exploration.yaml`      |
-| Lessons Optimizer    | `20260127_190000_session.json`          |
 
 ## Required Log Fields
 
@@ -126,7 +124,7 @@ Use `~/.github/scripts/init-session-log.py` to create properly named and structu
 
 **Parameters**:
 
-- `agent_name`: one of `orchestrator`, `intake`, `reference_librarian`, `task_generator`, `assignment`, `task_plan_evaluator`, `assignment_evaluator`, `software_engineer`, `implementation_evaluator`, `qa`, `qa_evaluator`, `information_explorer`, `lessons_optimizer`
+- `agent_name`: one of `orchestrator`, `intake`, `reference_librarian`, `task_generator`, `assignment`, `task_plan_evaluator`, `assignment_evaluator`, `software_engineer`, `implementation_evaluator`, `qa`, `qa_evaluator`, `information_explorer`
 - `identifier`: log type (e.g., `session`, `query`, `state_transition`)
 - `iteration`: optional, defaults to 1
 

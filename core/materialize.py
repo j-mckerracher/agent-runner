@@ -6,12 +6,14 @@ Reads canonical sources from:
   - agent-skill-source/{name}/v{n}/manifest.yaml + SKILL.md
   - agent-script-source/**/*
 
-Then writes runner-specific generated artifacts for Claude, Codex, Copilot, and Gemini
-into their respective directories and records content hashes + timestamps in a
-per-runner `.materialization.json` file.
+Then writes runner-specific generated artifacts for Claude, Codex, Copilot, Gemini,
+and OpenAI-compatible runners into their respective directories and records
+content hashes + timestamps in a per-runner `.materialization.json` file. This is
+an explicit operator command; workflow runs no longer materialize prompts
+automatically.
 
 Usage:
-    python materialize.py               # materialize all agents/skills/scripts
+    python materialize.py               # manually materialize all enabled agents/skills/scripts
     python materialize.py --check       # check for drift only, exit 1 if stale
     python materialize.py --agent intake --agent task-generator  # specific agents only
 """
@@ -31,6 +33,7 @@ import yaml
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from core.agent_catalog import is_disabled_agent
 from core.materialized_paths import (
     RUNNER_AGENT_DIRS,
     RUNNER_METADATA_FILES,
@@ -175,6 +178,9 @@ def discover_agents(filter_names: list[str] | None = None) -> list[dict]:
             continue
         manifest = load_manifest(manifest_path)
         name = manifest.get("name") or agent_dir.name
+        if is_disabled_agent(str(name)) or is_disabled_agent(agent_dir.name):
+            logger.info("discover_agents: %s is disabled; skipping", name)
+            continue
         if filter_names and name not in filter_names and agent_dir.name not in filter_names:
             logger.debug("discover_agents: %s not in filter; skipping", name)
             continue
@@ -249,8 +255,11 @@ def discover_scripts(filter_names: list[str] | None = None) -> list[dict]:
 
     scripts = []
     script_files = [
-        path for path in sorted(script_sources_root.rglob("*"), key=lambda path: str(path.relative_to(script_sources_root)))
+        path
+        for path in sorted(script_sources_root.rglob("*"), key=lambda path: str(path.relative_to(script_sources_root)))
         if path.is_file()
+        and "__pycache__" not in path.parts
+        and path.suffix != ".pyc"
     ]
     for script_path in script_files:
         relative_path = script_path.relative_to(SCRIPT_SOURCES_ROOT)
@@ -360,7 +369,7 @@ def materialize(agents: list[dict], skills: list[dict], scripts: list[dict], che
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Materialize agents, skills, and scripts for Claude, Copilot, and Gemini.")
+    parser = argparse.ArgumentParser(description="Manually materialize enabled agents, skills, and scripts for all runner backends.")
     parser.add_argument(
         "--check",
         action="store_true",
@@ -371,7 +380,7 @@ def parse_args() -> argparse.Namespace:
         dest="agents",
         action="append",
         metavar="NAME",
-        help="Materialize only the named agent(s). Can be repeated.",
+        help="Materialize only the named enabled agent(s). Can be repeated.",
     )
     return parser.parse_args()
 

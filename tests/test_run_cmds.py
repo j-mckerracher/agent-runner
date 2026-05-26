@@ -311,9 +311,9 @@ class OpenaiCompatToolRuntimeTests(unittest.TestCase):
                 "write_assignments",
                 "write_impl_report",
                 "write_qa_report",
-                "write_lessons_optimizer_report",
             }.issubset(tool_names)
         )
+        self.assertNotIn("write_lessons_optimizer_report", tool_names)
 
     def test_medium__write_task_plan_serializes_parseable_yaml_and_injects_story_id(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -476,32 +476,6 @@ class OpenaiCompatToolRuntimeTests(unittest.TestCase):
             self.assertEqual(report["story_id"], "CHANGE-1")
             self.assertEqual(report["acceptance_criteria_validation"]["AC1"]["notes"], "Evidence: pytest output.")
 
-    def test_medium__write_lessons_optimizer_report_serializes_parseable_yaml_and_injects_run_id(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            runtime, context_root = self._runtime(tmpdir)
-            result = json.loads(
-                runtime.execute(
-                    "write_lessons_optimizer_report",
-                    {
-                        "report": {
-                            "session_review": {"lessons_reviewed": 1},
-                            "recommended_rules": [
-                                {
-                                    "target_agent": "software-engineer",
-                                    "rule": "Use typed artifact writers.",
-                                }
-                            ],
-                        }
-                    },
-                )
-            )
-
-            self.assertNotIn("error", result)
-            report_path = context_root / "CHANGE-1" / "summary" / "lessons_optimizer_report.yaml"
-            report = yaml.safe_load(report_path.read_text(encoding="utf-8"))
-            self.assertEqual(report["run_id"], "CHANGE-1-lessons-optimizer-001")
-            self.assertEqual(report["recommended_rules"][0]["rule"], "Use typed artifact writers.")
-
     def test_medium__protected_writers_reject_mismatched_change_identity(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             runtime, context_root = self._runtime(tmpdir)
@@ -509,7 +483,6 @@ class OpenaiCompatToolRuntimeTests(unittest.TestCase):
                 ("write_task_plan", {"artifact": {"story_id": "CHANGE-999", "tasks": []}}),
                 ("write_assignments", {"artifact": {"story_id": "CHANGE-999", "batches": []}}),
                 ("write_qa_report", {"report": {"story_id": "CHANGE-999", "qa_status": "pass"}}),
-                ("write_lessons_optimizer_report", {"report": {"run_id": "CHANGE-999-lessons-optimizer-001"}}),
             ]
 
             for tool_name, arguments in cases:
@@ -521,7 +494,6 @@ class OpenaiCompatToolRuntimeTests(unittest.TestCase):
             self.assertFalse((context_root / "CHANGE-1" / "planning" / "tasks.yaml").exists())
             self.assertFalse((context_root / "CHANGE-1" / "planning" / "assignments.json").exists())
             self.assertFalse((context_root / "CHANGE-1" / "qa" / "qa_report.yaml").exists())
-            self.assertFalse((context_root / "CHANGE-1" / "summary" / "lessons_optimizer_report.yaml").exists())
 
     def test_medium__write_file_rejects_protected_workflow_artifacts(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -531,7 +503,6 @@ class OpenaiCompatToolRuntimeTests(unittest.TestCase):
                 context_root / "CHANGE-1" / "planning" / "assignments.json": "write_assignments",
                 context_root / "CHANGE-1" / "execution" / "UOW-004" / "impl_report.yaml": "write_impl_report",
                 context_root / "CHANGE-1" / "qa" / "qa_report.yaml": "write_qa_report",
-                context_root / "CHANGE-1" / "summary" / "lessons_optimizer_report.yaml": "write_lessons_optimizer_report",
             }
 
             for protected_path, expected_tool in protected_paths.items():
@@ -604,6 +575,36 @@ class OpenaiCompatToolRuntimeTests(unittest.TestCase):
 
                 self.assertNotIn("error", result)
                 self.assertEqual(target_file.read_text(encoding="utf-8"), "hello\n")
+
+    def test_medium__write_file_rejects_agent_prompt_paths(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir) / "repo"
+            repo.mkdir()
+            context_root = Path(tmpdir) / "agent-context"
+            with patch("core.run_cmds._OPENAI_COMPAT_AGENT_CONTEXT_ROOT", context_root):
+                runtime = run_cmds._OpenaiCompatToolRuntime(repo=str(repo), change_id="CHANGE-1")
+                protected_paths = [
+                    repo / "agent-definition-source" / "intake" / "v1" / "prompt.md",
+                    repo / "agent-skill-source" / "scope-and-security" / "v1" / "SKILL.md",
+                    repo / "agent-script-source" / "init-artifact-dirs.py",
+                    repo / ".claude" / "agents" / "intake.agent.md",
+                    repo / ".codex" / "skills" / "artifact-io" / "SKILL.md",
+                    repo / ".openai-compat" / "scripts" / "init-session-log.py",
+                ]
+                for target_file in protected_paths:
+                    with self.subTest(path=target_file):
+                        result = json.loads(
+                            runtime.execute(
+                                "write_file",
+                                {
+                                    "path": str(target_file),
+                                    "content": "# changed\n",
+                                },
+                            )
+                        )
+                        self.assertIn("error", result)
+                        self.assertIn("not allowed", result["error"])
+                        self.assertFalse(target_file.exists())
 
 
 class RunAgentCmdDispatchMatrixTests(unittest.TestCase):

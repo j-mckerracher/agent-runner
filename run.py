@@ -78,7 +78,6 @@ AGENT_NAMES = [
     "implementation-evaluator",
     "qa-engineer",
     "qa-evaluator",
-    "lessons-optimizer-hyperagent",
 ]
 
 
@@ -148,8 +147,11 @@ def _record_current_job_metadata(**fields) -> None:
         pass
 
 
-def _workflow_stage_names(*, skip_lessons_optimizer: bool) -> list[str]:
-    stages = [
+def _workflow_stage_names(*, skip_lessons_optimizer: bool = True) -> list[str]:
+    # The lessons optimizer is disabled unconditionally. Keep the historical
+    # parameter so older callers do not break, but never add that stage back into
+    # the executable plan.
+    return [
         "materialize",
         "intake",
         "task-generation",
@@ -157,9 +159,6 @@ def _workflow_stage_names(*, skip_lessons_optimizer: bool) -> list[str]:
         "execution",
         "qa",
     ]
-    if not skip_lessons_optimizer:
-        stages.append("lessons-optimizer")
-    return stages
 
 
 class _Stage:
@@ -720,13 +719,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--skip-lessons-optimizer",
         action="store_true",
-        help="Skip the lessons optimizer stage at the end of the workflow.",
+        help="Deprecated compatibility flag. The lessons optimizer is always disabled.",
     )
-    parser.add_argument(
+    materialize_group = parser.add_mutually_exclusive_group()
+    materialize_group.add_argument(
+        "--materialize",
+        dest="skip_materialize",
+        action="store_false",
+        help="Opt in to copying enabled agent/skill/script files into runner-specific generated directories before the workflow starts.",
+    )
+    materialize_group.add_argument(
         "--skip-materialize",
+        dest="skip_materialize",
         action="store_true",
-        help="Skip materialization of agents/skills into runner-specific directories.",
+        help="Do not materialize runner assets. This is the default so prompt-file changes remain explicit.",
     )
+    parser.set_defaults(skip_materialize=True)
     parser.add_argument(
         "--calibration-fast-mode",
         action="store_true",
@@ -758,8 +766,8 @@ def main(
     runner: str = "claude",
     model: str | None = None,
     extra_context: str | None = None,
-    skip_lessons_optimizer: bool = False,
-    skip_materialize: bool = False,
+    skip_lessons_optimizer: bool = True,
+    skip_materialize: bool = True,
     calibration_fast_mode: bool = False,
     headless: bool = False,
     log_level: str = "warning",
@@ -928,13 +936,13 @@ def main(
             logger.info("main: inside workflow trace context, starting stages")
             with _Stage("materialize"):
                 if not skip_materialize:
-                    logger.info("main: materializing agents and skills from source trees")
-                    print("Materializing agents and skills from source trees...")
+                    logger.info("main: materializing enabled agents and skills from source trees by explicit operator request")
+                    print("Materializing enabled agents and skills from source trees (--materialize was provided)...")
                     run_materialization()
                     logger.info("main: materialization complete")
                 else:
-                    logger.info("main: skipping materialization (--skip-materialize)")
-                    print("Skipping materialization (--skip-materialize).")
+                    logger.info("main: skipping materialization by default; pass --materialize to opt in")
+                    print("Skipping materialization by default. Pass --materialize to update generated runner assets.")
                 last_completed_stage = "materialize"
 
             # ── Stage 1: Intake ──────────────────────────────────────────────
@@ -1165,21 +1173,11 @@ def main(
                 last_completed_stage = "qa"
                 failed_stage = None
 
-            # ── Stage 6: Lessons Optimization (one-shot) ─────────────────────
-            if skip_lessons_optimizer:
-                logger.info("main: skipping lessons optimizer (--skip-lessons-optimizer)")
-                print("Skipping lessons optimizer (--skip-lessons-optimizer).")
-            else:
-                with _Stage("lessons-optimizer"):
-                    failed_stage = "lessons-optimizer"
-                    steps.step_lessons_optimizer(
-                        change_id=resolved_change_id,
-                        repo=resolved_repo,
-                        runner=runner,
-                        **runner_model_kwargs,
-                    )
-                    last_completed_stage = "lessons-optimizer"
-                    failed_stage = None
+            # The lessons optimizer previously ran here and could inject rules
+            # into agent prompt files. It is now disabled unconditionally so
+            # prompt changes remain explicit operator actions.
+            logger.info("main: lessons optimizer disabled; no optimizer agent will be invoked")
+            print("Lessons optimizer disabled; no automatic prompt optimization will run.")
 
 
         if tracer is not None:

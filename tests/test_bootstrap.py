@@ -264,7 +264,7 @@ class BootstrapMainFlowTests(unittest.TestCase):
             patch.object(bootstrap, "_warn_if_no_ai_backend"),
             patch.object(bootstrap, "_check_rtk"),
             patch.object(bootstrap, "_install_requirements"),
-            patch.object(bootstrap, "_materialize_agents"),
+            patch.object(bootstrap, "_materialize_agents") as materialize_mock,
             patch.object(bootstrap, "_prompt_user_config"),
             patch.object(bootstrap, "_prompt_for_opik", return_value=False),
             patch.object(bootstrap, "_check_docker") as check_docker_mock,
@@ -277,6 +277,7 @@ class BootstrapMainFlowTests(unittest.TestCase):
             result = bootstrap.main()
 
         self.assertEqual(result, 0)
+        materialize_mock.assert_not_called()
         check_docker_mock.assert_not_called()
         opik_repo_dir_mock.assert_not_called()
         sync_opik_repo_mock.assert_not_called()
@@ -288,6 +289,41 @@ class BootstrapMainFlowTests(unittest.TestCase):
             reload=False,
             opik_settings=None,
         )
+
+    def test_medium__main_materializes_only_when_explicitly_requested(self):
+        args = SimpleNamespace(
+            host="127.0.0.1",
+            port=8742,
+            reload=False,
+            materialize=True,
+            generate_eval_benchmarks=False,
+            skip_eval_benchmarks=True,
+            eval_target_repo=None,
+            eval_target_sha=None,
+            eval_runner=None,
+            eval_model=None,
+            force_eval_benchmarks=False,
+            no_verify_eval_gold_fails=False,
+            verify_eval_gold_fails=False,
+            with_opik=False,
+            no_opik=True,
+        )
+
+        with (
+            patch.object(bootstrap, "parse_args", return_value=args),
+            patch.object(bootstrap, "_ensure_virtualenv"),
+            patch.object(bootstrap, "_warn_if_no_ai_backend"),
+            patch.object(bootstrap, "_check_rtk"),
+            patch.object(bootstrap, "_install_requirements"),
+            patch.object(bootstrap, "_materialize_agents") as materialize_mock,
+            patch.object(bootstrap, "_prompt_user_config"),
+            patch.object(bootstrap, "_generate_eval_benchmarks"),
+            patch.object(bootstrap, "_start_server"),
+        ):
+            result = bootstrap.main()
+
+        self.assertEqual(result, 0)
+        materialize_mock.assert_called_once_with()
 
     def test_medium__generate_eval_benchmarks_passes_gold_verification_opt_out(self):
         config = {

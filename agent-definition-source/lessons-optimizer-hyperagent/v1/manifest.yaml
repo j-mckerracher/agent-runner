@@ -1,5 +1,6 @@
 name: lessons-optimizer-hyperagent
 version: v1
-description: "lessons-optimizer-hyperagent agent, v1, seeded from .claude/agents/11-lessons-optimizer-hyperagent.agent.md"
-source: "agent-development/.claude/agents/11-lessons-optimizer-hyperagent.agent.md"
+description: "DISABLED historical lessons optimizer; retained for compatibility only and never invoked"
+source: "agent-definition-source/lessons-optimizer-hyperagent/prompt.md"
 claude_code_agent_file: "11-lessons-optimizer-hyperagent.agent.md"
+disabled: true

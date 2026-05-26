@@ -1212,7 +1212,7 @@
                     inset 0 -1px 0 rgba(255, 230, 190, 0.06),
                     inset -1px 0 0 rgba(255, 225, 170, 0.08);
             }
-            .submit-section:hover::after {
+            .submit-section:hover::after{
                 opacity: 0.96;
                 background: linear-gradient(
                     180deg,
@@ -1227,7 +1227,7 @@
                 background: rgba(196, 135, 58, 0.12);
                 border-left-color: rgba(255, 225, 170, 0.16);
             }
-            .submit-section:hover::-webkit-scrollbar-thumb {
+            .submit-section:hover::-webkit-scrollbar-thumb{
                 background: linear-gradient(
                     180deg,
                     rgba(245, 184, 74, 0.98),
@@ -3757,14 +3757,11 @@
                                 <div
                                     class="story-source-tabs"
                                     id="story-source-tabs"
-                                    role="radiogroup"
-                                    aria-label="Story input mode"
+                                    role="radiogroup" aria-label="Story input mode"
                                 >
                                     <button
                                         type="button"
-                                        role="radio"
-                                        aria-checked="true"
-                                        aria-controls="story-source-manual"
+                                        role="radio" aria-checked="true" aria-controls="story-source-manual"
                                         class="story-source-tab active"
                                         data-story-source="manual"
                                     >
@@ -3873,8 +3870,7 @@
                                 </div>
                                 <div
                                     class="story-source-panel"
-                                    id="story-source-ado"
-                                    hidden
+                                    id="story-source-ado" hidden
                                 >
                                     <p class="story-source-note">
                                         Fetch the story from Azure DevOps using
@@ -3907,8 +3903,7 @@
                                 </div>
                                 <div
                                     class="story-source-panel"
-                                    id="story-source-story_file"
-                                    hidden
+                                    id="story-source-story_file" hidden
                                 >
                                     <p class="story-source-note">
                                         Use a local JSON story fixture for
@@ -4033,8 +4028,7 @@
                                 <div
                                     class="submit-feedback"
                                     id="submit-feedback"
-                                    role="status"
-                                    aria-live="polite"
+                                    role="status" aria-live="polite"
                                 ></div>
                             </div>
                         </div>
@@ -4186,6 +4180,27 @@
                                             </select>
                                         </div>
                                         <div
+                                            class="history-filter-row"
+                                            role="group"
+                                            aria-label="History density"
+                                        >
+                                            <span class="history-filter-label"
+                                                >Density</span
+                                            ><button
+                                                type="button"
+                                                class="history-chip active"
+                                                data-history-density="comfortable"
+                                            >
+                                                Comfortable</button
+                                            ><button
+                                                type="button"
+                                                class="history-chip"
+                                                data-history-density="compact"
+                                            >
+                                                Compact
+                                            </button>
+                                        </div>
+                                        <div
                                             class="history-filter-summary"
                                             id="history-filter-summary"
                                         ></div>
@@ -4262,8 +4277,7 @@
                                 <div class="term" id="term">
                                     <div class="empty">
                                         <strong
-                                            >Submit a run to see live logs
-                                            here.</strong
+                                            >Submit a run to see live logs here.</strong
                                         >Select a past run to replay captured
                                         events. Live stage events, prompts,
                                         metrics, and errors will stream into
@@ -5855,13 +5869,7 @@
             let workflowTicker = null;
             let lastSeq = 0;
             let submitRunInFlight = false;
-            const RUN_HISTORY_STATE = {
-                items: [],
-                status: "all",
-                range: "all",
-                runner: "all",
-                collapsed: false,
-            };
+            const RUN_HISTORY_STATE = {items:[], status:"all", range:"all", runner:"all", density:"comfortable", collapsed:false};
             const ACTIVE_JOB_BY_SURFACE = { runs: null, evaluate: null };
             const TRACE_EVENTS = { runs: [], evaluate: [] };
             const STREAM_EVENT_TYPES = [
@@ -6704,8 +6712,8 @@
             const RUN_WORKFLOW_STAGES = [
                 {
                     key: "materialize",
-                    label: "Materialize",
-                    detail: "Sync agent prompts",
+                    label: "Asset preflight",
+                    detail: "Manual materialization only",
                 },
                 {
                     key: "intake",
@@ -6731,11 +6739,6 @@
                     key: "qa",
                     label: "QA",
                     detail: "Validate against acceptance criteria",
-                },
-                {
-                    key: "lessons-optimizer",
-                    label: "Lessons optimizer",
-                    detail: "Capture follow-on learning",
                 },
             ];
             const RUN_ACTIVE_STATUSES = new Set([
@@ -9078,7 +9081,6 @@
                 "task-assigner",
                 "software-engineer-hyperagent",
                 "qa-engineer",
-                "lessons-optimizer-hyperagent",
                 "task-plan-evaluator",
                 "assignment-evaluator",
                 "implementation-evaluator",
@@ -9096,7 +9098,6 @@
                     "task-assigner": ["router", "tag-assigner"],
                     "software-engineer-hyperagent": ["exec", "tag-engineer"],
                     "qa-engineer": ["qa", "tag-qa"],
-                    "lessons-optimizer-hyperagent": ["learn", "tag-optimizer"],
                     "task-plan-evaluator": ["eval", "tag-evaluator"],
                     "assignment-evaluator": ["eval", "tag-evaluator"],
                     "implementation-evaluator": ["eval", "tag-evaluator"],
@@ -9846,10 +9847,10 @@
                     minute: "2-digit",
                     second: "2-digit",
                     hour12: false,
-                    timeZoneName: "short",
+                    timeZoneName:"short",
                 });
             }
-            function fmtLocalClockTime(isoStr) {
+            function fmtLocalClockTime(isoStr){
                 if (!isoStr) return "";
                 const d = new Date(isoStr);
                 if (Number.isNaN(d.getTime())) return isoStr;
@@ -9858,7 +9859,7 @@
                     minute: "2-digit",
                     second: "2-digit",
                     hour12: false,
-                    timeZoneName: "short",
+                    timeZoneName:"short",
                 });
             }
 
@@ -9920,6 +9921,12 @@
                         btn.dataset.historyRange === RUN_HISTORY_STATE.range,
                     ),
                 );
+                $$(`[data-history-density]`).forEach((btn) =>
+                    btn.classList.toggle(
+                        "active",
+                        btn.dataset.historyDensity === RUN_HISTORY_STATE.density,
+                    ),
+                );
                 const runnerSelect = $("#history-runner-filter");
                 if (runnerSelect) runnerSelect.value = RUN_HISTORY_STATE.runner;
             }
@@ -9936,10 +9943,7 @@
                     "aria-expanded",
                     expanded ? "true" : "false",
                 );
-                button.setAttribute(
-                    "aria-label",
-                    expanded ? "Collapse Past Runs" : "Expand Past Runs",
-                );
+                button.setAttribute("aria-label", expanded ? "Collapse Past Runs" : "Expand Past Runs");
                 button.title = expanded
                     ? "Collapse Past Runs"
                     : "Expand Past Runs";
@@ -10077,6 +10081,12 @@
                 RUN_HISTORY_STATE.runner = event.target.value || "all";
                 renderHistory();
             });
+            $$(`[data-history-density]`).forEach((btn) =>
+                btn.addEventListener("click", () => {
+                    RUN_HISTORY_STATE.density = btn.dataset.historyDensity || "comfortable";
+                    renderHistory();
+                }),
+            );
             $("#history")?.addEventListener("change", (e) => {
                 if (e.target.value) selectJob(e.target.value);
             });
@@ -10186,7 +10196,7 @@
                     );
                     try {
                         await rememberRepoPath(body.repo);
-                        toast("Submitted " + r.job_id, false, "success");
+                        toast("Submitted "+r.job_id, false, "success");
                     } catch (saveErr) {
                         toast(
                             `Submitted ${r.job_id}; repo path was not saved: ${saveErr.message}`,
@@ -10976,10 +10986,10 @@
                 wrap.innerHTML = "";
                 if (!r.items.length) {
                     wrap.innerHTML =
-                        '<div class="empty">No materialized agents found in agent-definition-source/.</div>';
+                        '<div class="empty">No enabled agent definitions found in agent-definition-source/.</div>';
                     setActiveAgent(null);
                     setAgentPromptEmpty(
-                        "No materialized agents found in agent-definition-source/.",
+                        "No enabled agent definitions found in agent-definition-source/.",
                     );
                 }
                 r.items.forEach((a) => {

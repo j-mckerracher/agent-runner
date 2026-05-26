@@ -1003,7 +1003,7 @@ if result.pass_rate < 1.0:
 | `assignment-regression` | "execution_schedule is a list of batches", "all task IDs appear in schedule", "no task appears in two batches" |
 | `implementation-regression` | "impl_report.yaml has status field", "status is one of: complete, partial, failed" |
 | `qa-regression` | "qa_report.yaml has overall_result", "each acceptance criterion has a verdict" |
-| `lessons-regression` | "lessons_optimizer_report.yaml is non-empty", "contains at least one lesson entry" |
+| `lessons-regression` | Deprecated/disabled; the lessons optimizer no longer runs or writes reports. |
 
 ---
 

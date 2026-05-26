@@ -89,7 +89,7 @@ That flow:
 
 - creates or reuses `.venv/`
 - installs `requirements.txt`
-- materializes agents, skills, and helper scripts
+- leaves generated runner assets untouched by default; use `--materialize` or `python3 core/materialize.py` when you explicitly choose to refresh agents, skills, and helper scripts
 - keeps manual story entry available by default; Azure DevOps integration can be enabled later in Settings if you install/configure it
 - prompts you (y/N) whether to enable the bundled local [Opik](https://github.com/comet-ml/opik/blob/main/README.md) observability stack — answer "n" (default) to skip Docker entirely
 - if enabled: clones / updates `~/.agent-runner/opik`, starts the stack, persists Opik metadata into `~/.agent-runner/config.json`
@@ -108,6 +108,7 @@ If Opik is skipped, not configured, or temporarily unreachable, workflow runs co
 | `--with-opik` | — | Enable the bundled local Opik stack (requires Docker). Skips the interactive prompt. |
 | `--no-opik` | — | Skip the bundled local Opik stack. Skips the interactive prompt. |
 | `--eval-target-repo` | — | Target repo path or Git URL used for generated workflow eval benchmarks. |
+| `--materialize` | off | Explicitly refresh generated runner assets during bootstrap. Off by default so prompt-file changes remain manual. |
 | `--eval-target-sha` | — | Gold-master commit SHA for generated workflow eval benchmarks. |
 | `--generate-eval-benchmarks` | off | Use an LLM to generate `eval/benchmarks/{easy,medium,hard}` during bootstrap. |
 | `--skip-eval-benchmarks` | off | Do not prompt for or generate eval benchmarks during bootstrap. |
@@ -227,8 +228,9 @@ python3 run.py \
 | `--runner NAME` | `claude` | LLM backend to use: `claude` (Anthropic), `codex` (OpenAI Codex CLI), `copilot` (OpenAI/GitHub), `gemini` (Google), `openai-compat` (any OpenAI-compatible endpoint), or a custom alias defined in `~/.agent-runner/config.json` under `runner_aliases`. |
 | `--model NAME` | runner default | Model name to pass to the selected runner. Defaults to the runner's built-in default when omitted. For `codex` and `openai-compat`, any model name is accepted; `claude`/`copilot`/`gemini` require a known model from their allowlists. |
 | `--extra-context TEXT` | none | Free-form text appended verbatim to the intake agent's prompt. Useful for passing a reference PR URL, design notes, or other supplemental context. |
-| `--skip-lessons-optimizer` | off | Skip the lessons-optimizer stage at the end of the workflow. Saves time when you don't need the metacognitive improvement pass. |
-| `--skip-materialize` | off | Skip copying agent/skill source files into runner-specific directories before the workflow starts. Use only when assets are already up-to-date. |
+| `--skip-lessons-optimizer` | always on | Deprecated compatibility flag. The lessons optimizer is disabled and is never invoked. |
+| `--materialize` | off | Explicitly copy enabled agent/skill/script source files into runner-specific generated directories before the workflow starts. |
+| `--skip-materialize` | on | Do not refresh generated runner assets. This is the default so prompt-file changes remain manual. |
 | `--calibration-fast-mode` | off | Use a cheaper single-iteration profile for every evaluator/optimizer loop. Intended for synthesis calibration runs where full loop quality is not required. |
 | `--headless` | off | Disable interactive human-in-the-loop prompts. Escalation requests from agents are auto-answered. Required for CI/eval environments. |
 | `--log-level LEVEL` | `warning` | Python logging verbosity: `debug`, `info`, `warning`, `error`, or `critical`. |
@@ -306,7 +308,7 @@ Submitting a run in **Hermetic** mode records subprocess invocations into `~/.ag
 | `GET` | `/runs/{job_id}/stream` | SSE stream with `Last-Event-ID` / `?after=` support |
 | `POST` | `/runs/{job_id}/respond` | Submit answers when a run is waiting for user input |
 | `POST` | `/runs/{job_id}/cancel` | Cancel a queued or running job |
-| `GET` | `/agents` | List materialized agents |
+| `GET` | `/agents` | List enabled agent definitions |
 | `GET` | `/agents/{name}` | Read the latest prompt + metadata for one agent |
 | `GET` | `/corpus` | List generated story corpus entries |
 | `GET` | `/corpus/{change_id}` | Read one generated story corpus entry |
@@ -408,7 +410,6 @@ agent-context/<change-id>/
 │       ├── screenshots/
 │       └── test_output/
 └── summary/
-    ├── lessons_optimizer_report.yaml
     ├── workflow_status.yaml
     ├── run_metrics.yaml
     └── events.jsonl              # copy of logs/<change-id>/events.jsonl when present
@@ -421,12 +422,15 @@ logs/<change-id>/
 
 ## Workflow stages
 
+Optional preflight: **Asset preflight** checks runner setup. It does not refresh generated runner assets unless `--materialize` is provided.
+
 1. **Intake** — normalizes fixture or ADO input into canonical intake artifacts
 2. **Task Generation** — writes `planning/tasks.yaml`
 3. **Task Assignment** — writes `planning/assignments.json`
 4. **Implementation** — iterates through units of work and writes per-UoW implementation reports
 5. **QA** — validates the implementation and writes `qa/qa_report.yaml`
-6. **Lessons** — writes `summary/lessons_optimizer_report.yaml`
+
+The lessons optimizer stage is disabled. Workflow runs do not write `summary/lessons_optimizer_report.yaml` and do not make optimizer-driven prompt edits.
 
 When runs are launched through the local API, the server also records structured events in `logs/<change-id>/events.jsonl`, streams them over SSE, writes per-agent CLI session summaries under `logs/<change-id>/<agent>/`, and copies event-derived metrics into `summary/run_metrics.yaml`.
 

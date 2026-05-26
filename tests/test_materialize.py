@@ -117,6 +117,28 @@ skill_file: SKILL.md
             )
             self.assertFalse(materialize.run_materialization(check_only=True))
 
+    def test_medium__run_materialization_skips_disabled_agents(self):
+        disabled_dir = self.agent_sources / "lessons-optimizer-hyperagent" / "v1"
+        disabled_dir.mkdir(parents=True)
+        (disabled_dir / "manifest.yaml").write_text(
+            "name: lessons-optimizer-hyperagent\n"
+            "claude_code_agent_file: 11-lessons-optimizer-hyperagent.agent.md\n"
+            "codex_agent_file: 11-lessons-optimizer-hyperagent.agent.md\n"
+            "github_copilot_agent_file: 11-lessons-optimizer-hyperagent.agent.md\n"
+            "gemini_agent_file: 11-lessons-optimizer-hyperagent.agent.md\n"
+            "openai_compat_agent_file: 11-lessons-optimizer-hyperagent.agent.md\n",
+            encoding="utf-8",
+        )
+        (disabled_dir / "prompt.md").write_text("# Disabled\n", encoding="utf-8")
+
+        with ExitStack() as stack:
+            for patcher in self._patch_paths():
+                stack.enter_context(patcher)
+            self.assertTrue(materialize.run_materialization())
+
+        for target_dir in self.runner_agent_dirs.values():
+            self.assertFalse((target_dir / "11-lessons-optimizer-hyperagent.agent.md").exists())
+
     def test_medium__run_materialization_uses_latest_agent_version_and_skill_manifest_name(self):
         intake_v2_dir = self.agent_sources / "intake" / "v2"
         intake_v2_dir.mkdir(parents=True)

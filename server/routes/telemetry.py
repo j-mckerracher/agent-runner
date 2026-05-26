@@ -22,7 +22,6 @@ KNOWN_STAGES = (
     "task-assignment",
     "execution",
     "qa",
-    "lessons-optimizer",
 )
 TERMINAL_STATUSES = {"succeeded", "failed", "cancelled"}
 

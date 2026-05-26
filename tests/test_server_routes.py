@@ -213,11 +213,16 @@ class ServerRoutesTests(unittest.TestCase):
         self.assertEqual(alias["timeout"], 600)
         self.assertEqual(cfg["runner_models"]["openai-compat-cloud"], ["openai-compat/llama3.3:70b"])
 
-    def test_easy__agents_lists_known_materializable_agents(self):
+    def test_easy__agents_lists_known_enabled_agents(self):
         r = self.client.get("/agents")
         self.assertEqual(r.status_code, 200)
         names = [a["name"] for a in r.json()["items"]]
         self.assertIn("intake", names)
+        self.assertNotIn("lessons-optimizer-hyperagent", names)
+
+    def test_medium__disabled_agent_detail_returns_404(self):
+        r = self.client.get("/agents/lessons-optimizer-hyperagent")
+        self.assertEqual(r.status_code, 404)
 
     def test_medium__agent_detail_returns_latest_prompt(self):
         r = self.client.get("/agents/intake")

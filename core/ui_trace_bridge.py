@@ -8,7 +8,7 @@ from contextvars import ContextVar
 from types import SimpleNamespace
 from typing import Any, Callable, Iterator, ParamSpec, TypeVar
 
-import opik
+from .opik_compat import opik
 
 from server.events import emit
 

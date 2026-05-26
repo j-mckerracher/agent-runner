@@ -8,7 +8,7 @@ from pathlib import Path
 import yaml
 
 from .artifact_utils import _load_yaml_mapping, load_assignments_file, normalize_assignments_file
-from opik import opik_context
+from .opik_compat import opik_context
 from .repo_prep import build_feature_branch_name
 from .run_cmds import run_claude_cmd, run_agent_cmd
 from .opik_integration import call_evaluator_sdk
@@ -1490,41 +1490,15 @@ def step_qa_evaluator(
     return result
 
 
-@track_with_ui(
-    name="stage:lessons-optimizer",
-    type="tool",
-    metadata_getter=lambda change_id, repo, runner="claude", **_unused: _stage_trace_metadata(
-        stage="lessons-optimizer",
-        runner=runner,
-        change_id=change_id,
-    ),
-)
 def step_lessons_optimizer(
     change_id: str,
     repo: str,
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
 ) -> str:
-    logger.info("step_lessons_optimizer: change_id=%s runner=%s", change_id, runner)
-    _annotate_trace(stage="lessons-optimizer", runner=runner, change_id=change_id)
-    prompt = (
-        f"Run the end-of-workflow lessons optimization for change {change_id}.\n"
-        f"Read {AGENT_CONTEXT_ROOT}/lessons.md for recorded lessons.\n"
-        f"Read all execution artifacts under {AGENT_CONTEXT_ROOT}/{change_id}/.\n"
-        f"Target repo: {repo}\n"
-        f"Write your report to {AGENT_CONTEXT_ROOT}/{change_id}/summary/lessons_optimizer_report.yaml.\n"
-        f"Act autonomously where the available artifacts and repository evidence are sufficient. "
-        f"If a blocking ambiguity or human-only decision prevents safe progress, "
-        f"use the user escalation protocol and continue after the response."
+    """Disabled: prompt optimization must be a manual, operator-controlled action."""
+    logger.info("step_lessons_optimizer: disabled; refusing invocation for change_id=%s runner=%s", change_id, runner)
+    raise RuntimeError(
+        "The lessons optimizer agent is disabled. "
+        "Automatic prompt optimization and optimizer-driven prompt edits are not allowed."
     )
-    resolved_model = resolve_agent_model("lessons-optimizer-hyperagent", runner, runner_model)
-    result = run_agent_cmd(
-        runner=runner,
-        prompt=prompt,
-        agent="lessons-optimizer-hyperagent",
-        repo=repo,
-        change_id=change_id,
-        **_agent_runner_kwargs(resolved_model),
-    )
-    logger.info("step_lessons_optimizer: completed change_id=%s output_len=%d", change_id, len(result or ""))
-    return result

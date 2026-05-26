@@ -15,8 +15,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
-from opik import opik_context
+from .opik_compat import opik_context
 
+from .agent_catalog import is_disabled_agent
 from .agent_prompts import load_agent_system_prompt
 from .materialized_paths import normalize_runner, runner_skill_dir
 from .runner_models import (
@@ -67,6 +68,19 @@ _OPENAI_COMPAT_RUNNER_ROOT = Path(__file__).resolve().parent.parent
 _OPENAI_COMPAT_AGENT_CONTEXT_ROOT = _OPENAI_COMPAT_RUNNER_ROOT / "agent-context"
 _RUNNER_LOGS_ROOT = _OPENAI_COMPAT_RUNNER_ROOT / "logs"
 _FORBIDDEN_WRITE_PATH_PARTS = frozenset({".git", "node_modules", "dist", "build"})
+_PROTECTED_AGENT_SOURCE_DIRS = frozenset({
+    "agent-definition-source",
+    "agent-skill-source",
+    "agent-script-source",
+})
+_PROTECTED_RUNNER_ASSET_PARENTS = frozenset({
+    ".claude",
+    ".codex",
+    ".github",
+    ".gemini",
+    ".openai-compat",
+})
+_PROTECTED_RUNNER_ASSET_DIRS = frozenset({"agents", "skills", "scripts"})
 _FORBIDDEN_WRITE_FILE_NAMES = frozenset({
     "package-lock.json",
     "yarn.lock",
@@ -631,6 +645,18 @@ def _forbidden_write_path(path: Path) -> str | None:
         return f"writing lock files is not allowed: {path.name}"
     if any(part in _FORBIDDEN_WRITE_PATH_PARTS for part in path.parts):
         return f"writing to generated or VCS directories is not allowed: {path}"
+    parts = path.parts
+    if any(part in _PROTECTED_AGENT_SOURCE_DIRS for part in parts):
+        return f"writing agent configuration source files is not allowed: {path}"
+    if path.suffix == ".md" and lower_name in {"prompt.md", "agents.md"}:
+        return f"writing agent prompt files is not allowed: {path}"
+    for index, part in enumerate(parts[:-1]):
+        if (
+            part in _PROTECTED_RUNNER_ASSET_PARENTS
+            and index + 1 < len(parts)
+            and parts[index + 1] in _PROTECTED_RUNNER_ASSET_DIRS
+        ):
+            return f"writing generated runner agent assets is not allowed: {path}"
     if any(marker in lower_name for marker in (".env", "secret", "credential", "password")):
         return f"writing sensitive files is not allowed: {path.name}"
     return None
@@ -754,20 +780,6 @@ class _OpenaiCompatToolRuntime:
             {
                 "type": "function",
                 "function": {
-                    "name": "write_lessons_optimizer_report",
-                    "description": "Write summary/lessons_optimizer_report.yaml as canonical YAML from a structured JSON object.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "report": {"type": "object"},
-                        },
-                        "required": ["report"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
                     "name": "run_shell",
                     "description": "Run a local shell command within an allowed working directory. Use this for git, rg, tests, or build commands.",
                     "parameters": {
@@ -838,7 +850,6 @@ class _OpenaiCompatToolRuntime:
             self.change_dir / "planning" / "tasks.yaml": "write_task_plan",
             self.change_dir / "planning" / "assignments.json": "write_assignments",
             self.change_dir / "qa" / "qa_report.yaml": "write_qa_report",
-            self.change_dir / "summary" / "lessons_optimizer_report.yaml": "write_lessons_optimizer_report",
         }
         if path in protected_paths:
             return protected_paths[path]
@@ -986,19 +997,6 @@ class _OpenaiCompatToolRuntime:
         self._ensure_identity(report, "story_id", self.change_id)
         return self._write_structured_yaml(path=self.change_dir / "qa" / "qa_report.yaml", payload=report)
 
-    def _write_lessons_optimizer_report(self, args: dict) -> dict:
-        self._require_change_context("lessons_optimizer_report.yaml")
-        report = self._structured_payload(args, "report")
-        run_id = report.get("run_id")
-        if run_id is None:
-            report["run_id"] = f"{self.change_id}-lessons-optimizer-001"
-        elif not str(run_id).startswith(self.change_id):
-            raise ValueError(f"run_id {run_id!r} must start with current change_id {self.change_id!r}")
-        return self._write_structured_yaml(
-            path=self.change_dir / "summary" / "lessons_optimizer_report.yaml",
-            payload=report,
-        )
-
     def _run_shell(self, args: dict) -> dict:
         command = str(args.get("command") or "").strip()
         if not command:
@@ -1063,8 +1061,6 @@ class _OpenaiCompatToolRuntime:
                 result = self._write_impl_report(arguments)
             elif tool_name == "write_qa_report":
                 result = self._write_qa_report(arguments)
-            elif tool_name == "write_lessons_optimizer_report":
-                result = self._write_lessons_optimizer_report(arguments)
             elif tool_name == "run_shell":
                 result = self._run_shell(arguments)
             elif tool_name == "request_user_input":
@@ -1095,7 +1091,8 @@ def _openai_compat_agent_instructions(*, agent: str, runner: str, extra_skills: 
         "- You only have the attached function tools for side effects. Use them instead of describing hypothetical actions.\n"
         "- If the original prompt mentions native CLI features or sub-agents that are unavailable here, perform the work yourself with the provided tools.\n"
         f"- Allowed write roots: {write_scope}\n"
-        "- For protected workflow artifacts, use the matching typed writer with structured data: `write_task_plan` for planning/tasks.yaml, `write_assignments` for planning/assignments.json, `write_impl_report` for execution/*/impl_report.yaml, `write_qa_report` for qa/qa_report.yaml, and `write_lessons_optimizer_report` for summary/lessons_optimizer_report.yaml. Use `write_file` only for source files, evidence files, logs, and non-schema artifacts; if `write_file` rejects a protected artifact, retry with the matching typed writer.\n"
+        "- For protected workflow artifacts, use the matching typed writer with structured data: `write_task_plan` for planning/tasks.yaml, `write_assignments` for planning/assignments.json, `write_impl_report` for execution/*/impl_report.yaml, and `write_qa_report` for qa/qa_report.yaml. Use `write_file` only for source files, evidence files, logs, and non-schema artifacts; if `write_file` rejects a protected artifact, retry with the matching typed writer.\n"
+        "- Do not edit agent prompt/source files, skill/script source files, or generated runner assets. Prompt and agent-configuration changes are operator-controlled changes.\n"
         "- Do not make network requests or access secrets.\n"
         "- Before your final answer, ensure required files are actually written to disk.\n"
         "\n"
@@ -2342,6 +2339,9 @@ def run_agent_cmd(
 ) -> str:
     """Dispatch to the selected CLI runner based on runner."""
     logger.debug("run_agent_cmd: runner=%s agent=%s", runner, agent)
+    if is_disabled_agent(agent):
+        logger.error("run_agent_cmd: disabled agent requested: %s", agent)
+        raise RuntimeError(f"Agent {agent!r} is disabled and may not be invoked")
     runner_model = kwargs.pop("runner_model", None)
     extra_skills = kwargs.pop("extra_skills", None)
     repo = kwargs.pop("repo", None)

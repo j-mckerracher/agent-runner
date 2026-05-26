@@ -33,6 +33,7 @@ This is **separate from the code repository** and is used for workflow artifacts
 - **Read-only agents** (evaluators, QA, planners): May read but MUST NOT modify source code
 - **Write agents** (software-engineer): May modify source code files within the designated `code_repo` as required by their Unit of Work
 - **All agents**: May write to their designated artifact paths and `agent-context/lessons.md` (append-only)
+- **All agents**: MUST NOT edit agent prompt/source files, skill/script source files, or generated runner assets during a workflow run. Prompt and agent-configuration changes are operator-controlled changes, not autonomous workflow outputs.
 
 ## Forbidden File Patterns
 
@@ -45,7 +46,7 @@ Agents MUST NOT modify these files under any circumstances:
 | `package-lock.json`, `yarn.lock`         | Lock files (modify `package.json` instead) |
 | `node_modules/`, `dist/`, `build/`       | Generated directories                      |
 | `.git/`                                  | Version control internals                  |
-| Agent prompt files                       | Configuration (unless explicitly tasked)   |
+| Agent prompt files                       | Operator-controlled configuration          |
 
 ## Forbidden Actions
 
