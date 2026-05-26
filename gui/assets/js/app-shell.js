@@ -57,6 +57,23 @@ const WORKFLOW_STAGE_AGENTS = [
     "qa-evaluator",
 ];
 
+const CODEX_MODEL_LABELS = {
+    "gpt-5.5":
+        "gpt-5.5 (current) - Frontier model for complex coding, research, and real-world work.",
+    "gpt-5.4": "gpt-5.4 - Strong model for everyday coding.",
+    "gpt-5.4-mini":
+        "gpt-5.4-mini - Small, fast, and cost-efficient model for simpler coding tasks.",
+    "gpt-5.3-codex": "gpt-5.3-codex - Coding-optimized model.",
+    "gpt-5.2":
+        "gpt-5.2 - Optimized for professional work and long-running agents.",
+};
+
+function modelOptionLabel(runner, model) {
+    return runner === "codex"
+        ? CODEX_MODEL_LABELS[model] || model
+        : model;
+}
+
 function buildAgentDefaultsUI(agentDefaults) {
     const container = $("#agent-defaults-container");
     container.innerHTML = "";
@@ -138,7 +155,7 @@ function buildAgentDefaultsUI(agentDefaults) {
             models.forEach((model) => {
                 const opt = document.createElement("option");
                 opt.value = model;
-                opt.textContent = model;
+                opt.textContent = modelOptionLabel(runner, model);
                 select.appendChild(opt);
             });
 
@@ -359,7 +376,6 @@ async function loadSettings() {
     // Populate free-form runner datalists with preset suggestions.
     [
         ["openai-compat-model-suggestions", "openai-compat"],
-        ["codex-model-suggestions", "codex"],
     ].forEach(([datalistId, runner]) => {
         const datalist = document.getElementById(datalistId);
         if (!datalist) return;
@@ -730,7 +746,7 @@ function syncModelSelectFor(runnerSelector, modelSelector) {
     (RUNNER_MODELS[r] || []).forEach((m) => {
         const o = document.createElement("option");
         o.value = m;
-        o.textContent = m;
+        o.textContent = modelOptionLabel(r, m);
         sel.appendChild(o);
     });
     // Restore previous value if it matches a known option
