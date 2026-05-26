@@ -18,7 +18,7 @@ Outputs:
     - {vault_root}/{CHANGE-ID}-{UOW-ID}-Execution.md  (per UoW)
     - {vault_root}/{CHANGE-ID}-{AgentName}-Logs.md     (per agent)
     - {vault_root}/{CHANGE-ID}-QA-Report.md            (if qa/ present)
-    - {vault_root}/{CHANGE-ID}-Lessons-Optimizer-Report.md (if lessons present)
+    - {vault_root}/{CHANGE-ID}-Lessons-Report.md (if lessons present)
 
 Exit codes: 0 = success, 1 = partial (warnings), 2 = usage error
 Emits JSON summary to stdout.
@@ -203,9 +203,9 @@ def generate_moc(change_id: str, artifact_dir: str, vault_root: str,
     # Lessons
     sections.append("### 4. Continuous Improvement")
     if has_lessons:
-        sections.append(f"- [[{change_id}-Lessons-Optimizer-Report]]")
+        sections.append(f"- [[{change_id}-Lessons-Report]]")
     else:
-        sections.append("- No lessons optimizer report found.")
+        sections.append("- No lessons report found.")
     sections.append("")
 
     # Standing questions
@@ -455,7 +455,7 @@ def generate_qa_report(change_id: str, artifact_dir: str,
 
 def generate_lessons_report(change_id: str, artifact_dir: str,
                             vault_root: str) -> str | None:
-    """Generate lessons optimizer report from summary/ artifacts."""
+    """Generate lessons report from summary/ artifacts."""
     summary_dir = os.path.join(artifact_dir, "summary")
     if not os.path.isdir(summary_dir):
         return None
@@ -474,7 +474,7 @@ def generate_lessons_report(change_id: str, artifact_dir: str,
     }
 
     sections = [yaml_frontmatter(meta), ""]
-    sections.append(f"# {change_id} — Lessons Optimizer Report\n")
+    sections.append(f"# {change_id} — Lessons Report\n")
 
     for lf in sorted(lessons_files):
         data = load_file(lf)
@@ -504,7 +504,7 @@ def generate_lessons_report(change_id: str, artifact_dir: str,
 
     sections.append(f"\n---\n← Back to [[{change_id}-MOC]]")
 
-    path = os.path.join(vault_root, f"{change_id}-Lessons-Optimizer-Report.md")
+    path = os.path.join(vault_root, f"{change_id}-Lessons-Report.md")
     Path(path).write_text("\n".join(sections), encoding="utf-8")
     return path
 

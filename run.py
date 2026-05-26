@@ -695,8 +695,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         metavar="RUNNER",
         help=(
             "LLM provider or custom alias to use: 'claude' (Anthropic), "
-            "'copilot' (OpenAI), 'gemini' (Google), or a custom alias "
-            "defined in ~/.agent-runner/config.json under runner_aliases. "
+            "'codex' (OpenAI Codex CLI), 'copilot' (GitHub Copilot), "
+            "'gemini' (Google), 'openai-compat' (local /api/chat endpoint), "
+            "or a custom alias defined in ~/.agent-runner/config.json under runner_aliases. "
             "Defaults to 'claude'."
         ),
     )

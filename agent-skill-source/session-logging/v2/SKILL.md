@@ -116,10 +116,10 @@ Logs enable workflow debugging:
 
 ## Automated Log Initialization Script
 
-Use `~/.github/scripts/init-session-log.py` to create properly named and structured log files under `logs/{agent_name}/...`:
+Use `{workflow_assets_root}/scripts/init-session-log.py` to create properly named and structured log files under `logs/{agent_name}/...`:
 
 ```bash
-~/.github/scripts/init-session-log.py <artifact_root> <change_id> <agent_name> <identifier> [iteration]
+{workflow_assets_root}/scripts/init-session-log.py <artifact_root> <change_id> <agent_name> <identifier> [iteration]
 ```
 
 **Parameters**:

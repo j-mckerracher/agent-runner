@@ -1,5 +1,5 @@
 name: qa-evaluator
 version: v2
-description: "qa-evaluator agent, v1, seeded from .claude/agents/09-qa-evaluator.agent.md"
-source: "agent-development/.claude/agents/09-qa-evaluator.agent.md"
+description: "qa-evaluator agent, v2"
+source: "agent-definition-source/qa-evaluator/v2/prompt.md"
 claude_code_agent_file: "09-qa-evaluator.agent.md"

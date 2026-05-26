@@ -1,71 +1,15 @@
-# Agent Workflow Runner — Python dependencies
-#
-# Core operation remains standard-library only.
+# Agent Workbench Python dependencies
 # Python version: >= 3.9
 #
-# Optional Python package — richer observability:
-#
-#   langfuse
-#     pip install langfuse
-#     Enable with:
-#       AGENT_RUNNER_OBSERVABILITY=langfuse
-#       LANGFUSE_PUBLIC_KEY=...
-#       LANGFUSE_SECRET_KEY=...
-#       LANGFUSE_HOST=...   (optional)
-#
-# ─────────────────────────────────────────────────────────────────────────────
-# External CLI tools (install separately — not managed by pip):
-# ─────────────────────────────────────────────────────────────────────────────
-#
-# Required for the one-command local bootstrap flow:
-#
-#   Docker Desktop
-#     Used to run the local self-hosted Opik stack.
-#
-# Required — at least one AI backend:
-#
-#   GitHub Copilot CLI
-#     gh extension install github/gh-copilot
-#     https://github.com/github/gh-copilot
-#
-#   Claude Code CLI
-#     https://claude.ai/code
-#
-# Required:
-#
-#   git >= 2.0
-#     https://git-scm.com
-#     (used to locate the repository root via `git rev-parse --show-toplevel`)
-#
-# Optional — needed only for Azure DevOps work item fetch:
-#
-#   Azure CLI
-#     macOS:  brew install azure-cli
-#     Other:  https://learn.microsoft.com/cli/azure/install-azure-cli
-#
-#   azure-devops extension
-#     az extension add --name azure-devops
-#
-# ─────────────────────────────────────────────────────────────────────────────
-# Discord Escalation Bridge (optional — .claude/scripts/discord_escalation_bridge.py)
-# ─────────────────────────────────────────────────────────────────────────────
-#
-# Uses the Discord REST API via stdlib urllib — no discord.py required.
-#
-# To enable, set the following environment variables before running:
-#
-#   DISCORD_BOT_TOKEN        Your Discord bot token (required to enable)
-#   DISCORD_GUILD_NAME       Server name (default: Agent-Escalations)
-#   DISCORD_CHANNEL_NAME     Channel name (default: general)
-#   DISCORD_ALLOWED_USER_IDS Comma-separated Discord user IDs allowed to resume
-#   DISCORD_POLL_SECONDS     Poll interval in seconds (default: 5)
-#
-# For developer testing without a real Discord server, set:
-#   DISCORD_DRY_RUN=1
-# and create status/discord_simulated_message.txt with e.g.:
-#   RESUME: Q1=my answer
-#
-# See docs/Discord_Escalation_Bridge.md for full setup instructions.
+# External tools are installed separately:
+# - git is required for normal repository workflows.
+# - At least one AI backend is required for real workflow execution: Claude Code,
+#   OpenAI Codex CLI, GitHub Copilot CLI, Google Gemini CLI, or a configured
+#   openai-compat HTTP endpoint.
+# - Docker Desktop is optional and only needed when using the bundled local Opik
+#   stack through bootstrap `--with-opik` or the interactive bootstrap prompt.
+# - Azure CLI plus the azure-devops extension are optional and only needed for
+#   live Azure DevOps intake/write-back workflows.
 
 numpy
 opik
@@ -74,22 +18,10 @@ truststore
 python-dotenv
 google-genai
 
-# Local API + GUI server (server/ + gui/index.html, started via `python server_main.py`)
+# Local API + GUI server (server/ + gui/, started via `python3 server_main.py`)
 fastapi
 uvicorn[standard]
 
-# ─────────────────────────────────────────────────────────────────────────────
-# RTK CLI (optional — token-optimizing terminal proxy)
-# ─────────────────────────────────────────────────────────────────────────────
-#
-# RTK is a separate CLI binary (not a Python package). The workflow uses it via
-# core/rtk_terminal.py to compress shell output when present on PATH. When
-# absent, the workflow falls back to raw shell execution automatically.
-#
-# Install from the internal Mayo fork:
-#
-#   git clone git@ssh.dev.azure.com:v3/mclm/Mayo%20Open%20Developer%20Network/mayo-rtk-ai
-#   cd mayo-rtk-ai && cargo build --release
-#   cp target/release/rtk ~/.local/bin/   # or anywhere on PATH
-#   codesign -s - ~/.local/bin/rtk         # macOS Gatekeeper workaround
-#
+# RTK CLI is an optional external binary, not a Python package. When `rtk` is on
+# PATH, core/rtk_terminal.py uses it to reduce terminal-output token volume;
+# otherwise the workflow falls back to normal shell execution.

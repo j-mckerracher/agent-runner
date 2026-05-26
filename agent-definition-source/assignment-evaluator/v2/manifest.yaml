@@ -1,5 +1,5 @@
 name: assignment-evaluator
 version: v2
-description: "assignment-evaluator agent, v1, seeded from .claude/agents/07-assignment-evaluator.agent.md"
-source: "agent-development/.claude/agents/07-assignment-evaluator.agent.md"
+description: "assignment-evaluator agent, v2"
+source: "agent-definition-source/assignment-evaluator/v2/prompt.md"
 claude_code_agent_file: "07-assignment-evaluator.agent.md"

@@ -250,10 +250,10 @@ The runner prints workflow progress in real time:
 Preparing sandbox
 Verifying hidden tests fail on gold master
 Running workflow
-Workflow progress: 14% — intake (stage 2/7)
-Workflow progress: 28% — task-generation (stage 3/7)
+Workflow progress: 16% — intake (stage 2/6)
+Workflow progress: 33% — task-generation (stage 3/6)
 ...
-Workflow progress: 85% — execution (3/4 UoWs complete)
+Workflow progress: 83% — execution (3/4 UoWs complete)
 Workflow progress: 100% — workflow complete
 Running project tests
 Running hidden tests

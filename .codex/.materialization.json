@@ -1,0 +1,217 @@
+{
+  "agents": [
+    {
+      "name": "assignment-evaluator",
+      "version": "v2"
+    },
+    {
+      "name": "implementation-evaluator",
+      "version": "v3"
+    },
+    {
+      "name": "information-explorer",
+      "version": "v2"
+    },
+    {
+      "name": "intake",
+      "version": "v3"
+    },
+    {
+      "name": "qa",
+      "version": "v2"
+    },
+    {
+      "name": "qa-evaluator",
+      "version": "v2"
+    },
+    {
+      "name": "reference-librarian",
+      "version": "v2"
+    },
+    {
+      "name": "software-engineer-hyperagent",
+      "version": "v2"
+    },
+    {
+      "name": "task-assigner",
+      "version": "v2"
+    },
+    {
+      "name": "task-generator",
+      "version": "v2"
+    },
+    {
+      "name": "task-plan-evaluator",
+      "version": "v2"
+    }
+  ],
+  "skills": [
+    {
+      "name": "agentic-eval",
+      "version": "v1"
+    },
+    {
+      "name": "artifact-io",
+      "version": "v1"
+    },
+    {
+      "name": "azure-devops-cli",
+      "version": "v1"
+    },
+    {
+      "name": "code-comment-standards",
+      "version": "v1"
+    },
+    {
+      "name": "cypress",
+      "version": "v1"
+    },
+    {
+      "name": "evaluator-framework",
+      "version": "v1"
+    },
+    {
+      "name": "execution-discipline",
+      "version": "v1"
+    },
+    {
+      "name": "frontend-design",
+      "version": "v1"
+    },
+    {
+      "name": "interrogate-eng",
+      "version": "v1"
+    },
+    {
+      "name": "lessons-capture",
+      "version": "v1"
+    },
+    {
+      "name": "librarian-query-protocol",
+      "version": "v1"
+    },
+    {
+      "name": "mcs-products-mono-ui-onboarding",
+      "version": "v1"
+    },
+    {
+      "name": "nx-cli",
+      "version": "v1"
+    },
+    {
+      "name": "ov",
+      "version": "v1"
+    },
+    {
+      "name": "scope-and-security",
+      "version": "v1"
+    },
+    {
+      "name": "session-logging",
+      "version": "v2"
+    },
+    {
+      "name": "storybook",
+      "version": "v1"
+    }
+  ],
+  "scripts": [
+    {
+      "name": "check-ac-coverage.py",
+      "version": "source"
+    },
+    {
+      "name": "check-dependency-cycles.py",
+      "version": "source"
+    },
+    {
+      "name": "check-test-harnesses.py",
+      "version": "source"
+    },
+    {
+      "name": "detect-ui-changes.py",
+      "version": "source"
+    },
+    {
+      "name": "generate-obsidian-archive.py",
+      "version": "source"
+    },
+    {
+      "name": "init-artifact-dirs.py",
+      "version": "source"
+    },
+    {
+      "name": "init-session-log.py",
+      "version": "source"
+    },
+    {
+      "name": "parse-lessons.py",
+      "version": "source"
+    },
+    {
+      "name": "parse-test-steps.py",
+      "version": "source"
+    },
+    {
+      "name": "request-user-input.py",
+      "version": "source"
+    },
+    {
+      "name": "validate-artifact-schema.py",
+      "version": "source"
+    },
+    {
+      "name": "validate-diff-size.py",
+      "version": "source"
+    },
+    {
+      "name": "validate-scope.py",
+      "version": "source"
+    }
+  ],
+  "target_dir": "/mnt/data/aw_work/aw/.codex",
+  "content_hashes": {
+    "agent:assignment-evaluator@v2": "9b33bed0ad1be7ed1007ff93f7cabd53598d235f4ee5cf1a270003508553ef01",
+    "agent:implementation-evaluator@v3": "26cfac14299725e048f298f279bb39720030c6b30773fe0923b4b31fd3e14b71",
+    "agent:information-explorer@v2": "d681df3497ab343447dd0e55a92a2e5b0c95f1fd98696d6cba1b938460a42f78",
+    "agent:intake@v3": "2e4f76f92d08c45343412535aaa557891629f62a0c6f43f057f5e758b24bd1a9",
+    "agent:qa@v2": "d4f2faf2b4addcb9e9cf85e140f81a916c3a260424d32f37bcf965c493770797",
+    "agent:qa-evaluator@v2": "5ff09b0e100bd64bafeacdb415054b79fa6a09bc98fcc480f90c2669a5e3723e",
+    "agent:reference-librarian@v2": "eee0f318e66408c439818a348eb1b5bc99e4292084ee341e7d861a7101aff53b",
+    "agent:software-engineer-hyperagent@v2": "016708a0e10aba04516f7b4498ec98b2397a741c71aeb34573493be6a29716bd",
+    "agent:task-assigner@v2": "26f56cda234f07cd7ab39ca91cb8f9cb17becce73ef6b7a7803423fe639eb053",
+    "agent:task-generator@v2": "89b76afd664e56cc2cdf9456b0322e9d473440d29764314c22d3c00271c21b7a",
+    "agent:task-plan-evaluator@v2": "8dbc3634b333d7dac4884c2c9f197aeb915ab6eb57ff3d82a8e6cfe77a56cd81",
+    "skill:agentic-eval@v1": "7f05cf94e15bee6fcfa4340593a7b6984a08b5279ff906fb39cfd92dd267e831",
+    "skill:artifact-io@v1": "583c09dbb309d616264a41dcb76d4b7d6d237a2c8071e46885bd7d22b5d3d502",
+    "skill:azure-devops-cli@v1": "4ff7f8da9da48c8cd8d7a76e8bf73ca641549c8910b470a52dfe32e591826704",
+    "skill:code-comment-standards@v1": "fe853fc9a03d20cbea01a083d138592b05894f3cb79fe495232c90f16032dfb3",
+    "skill:cypress@v1": "64e695b4ce0b6a9ad923d31256429738a416b5a54c1e57ac4c2da58c536445af",
+    "skill:evaluator-framework@v1": "a13466192263adcc3f2cf86332b935fd2723cceab7151fda1cb0c6363bb6b5c5",
+    "skill:execution-discipline@v1": "176c056e80afffd788105c52b2c71955761f21c4b15a7397a7d8bcdf0512367f",
+    "skill:frontend-design@v1": "b81e2ff87ed8fa4d6c377ccb127a7254c9e6a77e3ae94f21e6b514f7bb2945a0",
+    "skill:interrogate-eng@v1": "9a711010da4ac7c429b9d203b595dd03163d85b8c6cb4b3b1fdfcbc7473d4746",
+    "skill:lessons-capture@v1": "1e136e32e7d8375421985829931b1e67e1c1a8199d547423d7538af5111e9e33",
+    "skill:librarian-query-protocol@v1": "8906b39f1fbfceff09f5cf864c3b65db1fc9c44df32dc82f2684475e3e14b71a",
+    "skill:mcs-products-mono-ui-onboarding@v1": "a956187945af631b8a2f4b631673edc3f99643067a991b0b3a83e689400098aa",
+    "skill:nx-cli@v1": "94a1041056a1a56b60ea4fb167afdde0db9091422302f3e468447d7107abefff",
+    "skill:ov@v1": "e60cd662a3156cf15d5a48947a722fee7be54feefd0f838533793e575f4b573b",
+    "skill:scope-and-security@v1": "d8ccd072b83c335e8faff3256e6b5d1317540dc71d0977585526f4219ea919ab",
+    "skill:session-logging@v2": "b87e3a28d0198303a0a25b8ecc47f7d24bfe04508afdf36f81cf791c881768af",
+    "skill:storybook@v1": "ca01c34f52e82be52bd7f71b2db0cca07db82363de1d54ac6fbb85ea0f71a3b5",
+    "script:check-ac-coverage.py@source": "924f9d93ff225fbe4f07cabcd2ae7152737f100c042cf977664d4e94d1f1e550",
+    "script:check-dependency-cycles.py@source": "a1c2772327bedfad843229c481f1a9f625cdd37ddea9ee6bf411fe01ad0cbef4",
+    "script:check-test-harnesses.py@source": "9d84a0cf0c77f87fa004d2ae3828b661ae8a0469cd8c0b4c75693b4bce14402b",
+    "script:detect-ui-changes.py@source": "0c96a78969c6b5fadc463c911db395e4c090e60aa99dacee448ad0b9ef70ed3e",
+    "script:generate-obsidian-archive.py@source": "55d50498b6cc85b8e463a71e1ba64693a4d24d0b78461502c00021b8fcb3c6aa",
+    "script:init-artifact-dirs.py@source": "0f0ef792639305244a1041eee61c7b39bdde5a930b01ced7f5612bf116da8d09",
+    "script:init-session-log.py@source": "ff65f0b4cbd1b6758f1df1875295e8aa097eec4918f848ba2faed196e0185f66",
+    "script:parse-lessons.py@source": "d2d42bb9c96e7b01fe0baefba3035753185193f140a2c86d1d54495aadb96340",
+    "script:parse-test-steps.py@source": "cb4b587d1e2fd7bdab76edecb8f6ef92c0e6a7b943631bef1ca99cf71dd0d1c1",
+    "script:request-user-input.py@source": "a73c5e274193b428c7da4f26ffbf9a54c51083edf451cec9a503a23d7a85877a",
+    "script:validate-artifact-schema.py@source": "cedf70d4d04d5bee79182eea24c4792051174c708cf4476313ce37f9203441c9",
+    "script:validate-diff-size.py@source": "d22f20f6eba1a6d32163a7d7a88c1110de4ab9a6a4c3794345d128ffc5a63880",
+    "script:validate-scope.py@source": "acdd22b90d0bde7897de5fadc41480f8960a2c25b86fce494a3fefcdc06d7383"
+  },
+  "materialized_at": "2026-05-26T17:06:33Z"
+}

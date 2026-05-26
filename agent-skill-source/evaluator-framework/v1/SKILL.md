@@ -139,7 +139,7 @@ The following scripts automate programmatic gates described in Step 1 above. Run
 ### Schema Validation Gate
 
 ```bash
-~/.github/scripts/validate-artifact-schema.py --type <tasks|assignments|impl_report|qa_report> <artifact_path>
+{workflow_assets_root}/scripts/validate-artifact-schema.py --type <tasks|assignments|impl_report|qa_report> <artifact_path>
 ```
 
 Validates artifact structure against the expected schema for its type. Reports all violations as a JSON issues array.
@@ -147,7 +147,7 @@ Validates artifact structure against the expected schema for its type. Reports a
 ### Dependency Cycle Detection Gate
 
 ```bash
-~/.github/scripts/check-dependency-cycles.py <tasks.yaml|assignments.json> [--type tasks|assignments]
+{workflow_assets_root}/scripts/check-dependency-cycles.py <tasks.yaml|assignments.json> [--type tasks|assignments]
 ```
 
 Builds a DAG from dependency edges, runs topological sort, reports any cycles or dangling references.
@@ -155,7 +155,7 @@ Builds a DAG from dependency edges, runs topological sort, reports any cycles or
 ### AC Coverage Completeness Gate
 
 ```bash
-~/.github/scripts/check-ac-coverage.py <story.yaml> <tasks.yaml>
+{workflow_assets_root}/scripts/check-ac-coverage.py <story.yaml> <tasks.yaml>
 ```
 
 Verifies every acceptance criterion maps to at least one task. Reports unmapped ACs and tasks with no AC mapping.
@@ -163,7 +163,7 @@ Verifies every acceptance criterion maps to at least one task. Reports unmapped 
 ### Test Harness Existence Gate
 
 ```bash
-~/.github/scripts/check-test-harnesses.py <file1.component.ts> [file2.component.ts...]
+{workflow_assets_root}/scripts/check-test-harnesses.py <file1.component.ts> [file2.component.ts...]
 ```
 
 Verifies modified Angular components have corresponding `*.test-harness.ts` files.

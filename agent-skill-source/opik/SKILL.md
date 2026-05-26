@@ -1,7 +1,7 @@
 ---
 name: opik
 description: |
-  Comprehensive Opik LLM observability, tracing, and evaluation skill for the agent-runner pipeline.
+  Comprehensive Opik LLM observability, tracing, and evaluation skill for the Agent Workbench pipeline.
   Use this skill when:
   - Instrumenting a new pipeline stage with Opik traces or spans
   - Adding structured evaluation metrics to an eval-optimizer loop
@@ -11,12 +11,12 @@ description: |
   - Filling observability gaps (CLI agent calls, artifact I/O, thread grouping)
   - Configuring online evaluation, alerts, or experiment tracking
   - Referencing the full metrics catalogue or API surface
-  Primary codebase files: opik_integration.py, steps.py, evaluator_optimizer_loops.py
+  Primary codebase files: core/opik_integration.py, core/steps.py, core/evaluator_optimizer_loops.py
 ---
 
-# Opik — Agent-Runner Integration Guide
+# Opik — Agent Workbench Integration Guide
 
-Opik is an open-source platform (by Comet) for logging, debugging, and evaluating LLM applications and AI agent pipelines. This skill is scoped to the **agent-runner** codebase, which runs a 6-stage multi-agent workflow (intake → task-gen → task-assignment → implementation → QA → lessons) and uses Opik for tracing and evaluation.
+Opik is an open-source platform (by Comet) for logging, debugging, and evaluating LLM applications and AI agent pipelines. This skill is scoped to the **agent-workbench** codebase, which runs a 6-stage multi-agent workflow (materialize → intake → task-generation → task-assignment → execution → qa) and uses Opik for tracing and evaluation.
 
 Official docs: https://www.comet.com/docs/opik/  
 GitHub: https://github.com/comet-ml/opik

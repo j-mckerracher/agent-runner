@@ -1,5 +1,5 @@
 name: task-generator
 version: v2
-description: "task-generator agent, v1, seeded from .claude/agents/02-task-generator.agent.md"
-source: "agent-development/.claude/agents/02-task-generator.agent.md"
+description: "task-generator agent, v2"
+source: "agent-definition-source/task-generator/v2/prompt.md"
 claude_code_agent_file: "02-task-generator.agent.md"

@@ -66,8 +66,7 @@ logs/{CHANGE-ID}/
 │       ├── test_output/
 │       └── logs/
 │
-├── summary/                   # Stage 6: Post-workflow
-│   └── lessons_optimizer_report.yaml
+├── summary/                   # Post-workflow run summaries
 │
 ```
 
@@ -87,8 +86,7 @@ logs/{CHANGE-ID}/              # Run/session/event logs
 ├── implementation_evaluator/
 ├── qa/
 ├── qa_evaluator/
-├── information_explorer/
-└── lessons_optimizer/
+└── information_explorer/
 ```
 
 ## Permission Model
@@ -104,7 +102,6 @@ logs/{CHANGE-ID}/              # Run/session/event logs
 | **QA Engineer**          | All artifacts (read-only), `code_repo` (read-only)                                      | `qa/*`, `logs/{CHANGE-ID}/qa/`                                                                                             |
 | **Evaluators**           | Stage-specific input + output artifacts                                                 | `planning/eval_*_k.json`, `execution/{UOW-ID}/eval_impl_k.json`, `qa/eval_qa_k.json`                                       |
 | **Information Explorer** | `agent-context/knowledge/*`, repo docs, web                                             | `logs/{CHANGE-ID}/information_explorer/`                                                                                   |
-| **Lessons Optimizer**    | `agent-context/lessons.md`, agent prompts (read-only)                                   | `summary/*`, `logs/{CHANGE-ID}/lessons_optimizer/`, `agent-context/rule-recommendations.md`, `agent-context/mistake-rate-tracker.json` |
 
 ### Universal Permissions
 
@@ -118,6 +115,7 @@ All agents MUST NOT:
 
 - Write outside their designated paths
 - Modify artifacts from other stages (read-only)
+- Modify agent prompt/source files, skill/script source files, or generated runner assets
 - Access credentials or environment files
 
 ## Path Construction
@@ -173,10 +171,10 @@ Access to these files is managed exclusively through the Reference Librarian.
 
 ## Automated Scaffold Script
 
-Use `~/.github/scripts/init-artifact-dirs.py` to create the standard artifact directory tree:
+Use `{workflow_assets_root}/scripts/init-artifact-dirs.py` to create the standard artifact directory tree:
 
 ```bash
-~/.github/scripts/init-artifact-dirs.py <artifact_root> <CHANGE-ID>
+{workflow_assets_root}/scripts/init-artifact-dirs.py <artifact_root> <CHANGE-ID>
 ```
 
 **When to use**: At the start of any workflow, before writing any artifacts. This replaces manual `mkdir -p` commands.

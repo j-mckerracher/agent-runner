@@ -171,10 +171,10 @@ Access to these files is managed exclusively through the Reference Librarian.
 
 ## Automated Scaffold Script
 
-Use `~/.github/scripts/init-artifact-dirs.py` to create the standard artifact directory tree:
+Use `{workflow_assets_root}/scripts/init-artifact-dirs.py` to create the standard artifact directory tree:
 
 ```bash
-~/.github/scripts/init-artifact-dirs.py <artifact_root> <CHANGE-ID>
+{workflow_assets_root}/scripts/init-artifact-dirs.py <artifact_root> <CHANGE-ID>
 ```
 
 **When to use**: At the start of any workflow, before writing any artifacts. This replaces manual `mkdir -p` commands.

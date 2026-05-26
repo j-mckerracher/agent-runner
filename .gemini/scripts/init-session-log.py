@@ -29,7 +29,6 @@ VALID_AGENTS = [
     "qa",
     "qa_evaluator",
     "information_explorer",
-    "lessons_optimizer",
 ]
 
 USAGE = f"""\

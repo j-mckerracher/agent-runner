@@ -5,11 +5,11 @@
 The current runner executes a six-stage workflow:
 
 ```text
-intake → task generation → task assignment → implementation ⟳ QA → lessons
-                                                    ↑ evaluator feedback |
+materialize → intake → task-generation → task-assignment → execution ⟳ qa
+                                                               ↑ evaluator feedback |
 ```
 
-Implementation and QA use evaluator/optimizer loops. A producer agent writes an artifact, an evaluator scores it, and evaluator feedback is injected into the next iteration unless the evaluator returns `PASS`.
+The `materialize` stage is a preflight stage. It verifies runner assets by default and refreshes generated runner assets only when the operator explicitly passes `--materialize`. Execution and QA use evaluator loops: a producer agent writes an artifact, an evaluator scores it, and evaluator feedback is injected into the next iteration unless the evaluator returns `PASS`. The historical lessons optimizer is disabled.
 
 | Local Agent Workbench UI | Opik observability command center |
 |---|---|
@@ -62,7 +62,7 @@ The current platform is intentionally local-first and workflow-centric. The next
 | Python 3.9+ | Yes      | `run.py`, `server_main.py`, bootstrap, eval tools | Bootstrap creates `.venv/`, but does not install Python. |
 | `git` | Yes      | bootstrap and normal repo workflows | Used for the repo itself and for syncing the local Opik checkout. |
 | Docker Desktop | No       | bundled local Opik stack | Required only if you opt in to the bundled local Opik stack at bootstrap time (the bootstrap script will prompt you). Skip-able by default or via `--no-opik`. |
-| One AI backend CLI | Yes      | actual workflow execution | Install and authenticate at least one of `claude`, `codex`, `copilot`, or `gemini`. |
+| One AI backend | Yes      | actual workflow execution | Install and authenticate at least one CLI backend (`claude`, `codex`, `copilot`, or `gemini`) or configure `openai-compat` for a local `/api/chat` endpoint. |
 | Azure CLI + `azure-devops` extension | No       | optional live ADO intake mode | Manual story entry and local synthetic stories do not require Azure DevOps tooling. |
 
 ### Optional tooling
@@ -266,12 +266,13 @@ The FastAPI server serves the GUI at `/` and exposes JSON and SSE endpoints for 
 
 ### UI views
 
-The current UI includes five views:
+The current UI includes six views:
 
 - **Runs**
+- **Run Telemetry**
 - **Agents**
-- **Evaluations**
-- **Evaluate**
+- **Run Evaluations**
+- **Evaluation Results**
 - **Settings**
 
 ### Local state
@@ -313,8 +314,13 @@ Submitting a run in **Hermetic** mode records subprocess invocations into `~/.ag
 | `GET` | `/corpus` | List generated story corpus entries |
 | `GET` | `/corpus/{change_id}` | Read one generated story corpus entry |
 | `GET` | `/evaluate/summary` | Read the latest benchmark-report summary from `eval/reports` |
+| `GET` | `/evaluate/stories` | List evaluation stories available to the Run Evaluations view |
 | `GET` | `/evaluate/reports` | List benchmark reports available for comparison |
 | `POST` | `/evaluate/benchmark-runs` | Start a hidden-test benchmark run through `eval/runner.py` |
+| `GET` | `/integrations/azure-devops/status` | Report manual, Azure CLI, and MCP read/write capability status |
+| `GET` | `/telemetry/runs` | List run telemetry rows for charts and trend tables |
+| `POST` | `/telemetry/query` | Query telemetry aggregates and chart payloads |
+| `GET` | `/telemetry/runs/{job_id}/profile` | Read one run's stage, token, cost, and event profile |
 | `GET` / `PUT` | `/settings` | Read/update `~/.agent-runner/config.json` |
 | `POST` | `/settings/opik/connect` | Resolve and save Opik workspace/project metadata |
 
@@ -422,13 +428,12 @@ logs/<change-id>/
 
 ## Workflow stages
 
-Optional preflight: **Asset preflight** checks runner setup. It does not refresh generated runner assets unless `--materialize` is provided.
-
-1. **Intake** — normalizes fixture or ADO input into canonical intake artifacts
-2. **Task Generation** — writes `planning/tasks.yaml`
-3. **Task Assignment** — writes `planning/assignments.json`
-4. **Implementation** — iterates through units of work and writes per-UoW implementation reports
-5. **QA** — validates the implementation and writes `qa/qa_report.yaml`
+1. **Materialize** — checks runner asset setup; refreshes generated assets only when `--materialize` is provided
+2. **Intake** — normalizes manual, fixture, or ADO input into canonical intake artifacts
+3. **Task Generation** — writes `planning/tasks.yaml`
+4. **Task Assignment** — writes `planning/assignments.json`
+5. **Execution** — iterates through units of work and writes per-UoW implementation reports
+6. **QA** — validates the implementation and writes `qa/qa_report.yaml`
 
 The lessons optimizer stage is disabled. Workflow runs do not write `summary/lessons_optimizer_report.yaml` and do not make optimizer-driven prompt edits.
 
@@ -481,7 +486,7 @@ The flag is purely additive: when it is absent, `_force_test_escalation()` in `c
 | `missing required field(s)` | `title`, `description`, or `acceptance_criteria` missing or empty | Add the missing required fields |
 | `acceptance_criteria must be ...` | Empty / invalid AC values | Use a non-empty list of strings or non-empty string map |
 | `change_id does not match` | `--change-id` and fixture `change_id` conflict | Remove one or make them match |
-| `Provide either ado_url or story_file, not both` | Both modes were requested | Pick one intake mode |
+| `provide only one of manual_story, ado_url, or story_file` | Multiple story sources were requested | Pick exactly one intake mode |
 | `api.port must be an integer between 1 and 65535` | Invalid settings value or bad `--port` override | Choose a valid TCP port |
 | Browser shows `API offline` | `server_main.py` is not running or host/port changed | Start the server and open the configured host/port |
 

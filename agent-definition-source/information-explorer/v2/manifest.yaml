@@ -1,5 +1,5 @@
 name: information-explorer
 version: v2
-description: "information-explorer agent, v1, seeded from .claude/agents/10-information-explorer.agent.md"
-source: "agent-development/.claude/agents/10-information-explorer.agent.md"
+description: "information-explorer agent, v2"
+source: "agent-definition-source/information-explorer/v2/prompt.md"
 claude_code_agent_file: "10-information-explorer.agent.md"

@@ -1,6 +1,6 @@
 name: lessons-optimizer-hyperagent
 version: v1
 description: "DISABLED historical lessons optimizer; retained for compatibility only and never invoked"
-source: "agent-definition-source/lessons-optimizer-hyperagent/prompt.md"
+source: "agent-definition-source/lessons-optimizer-hyperagent/v1/prompt.md"
 claude_code_agent_file: "11-lessons-optimizer-hyperagent.agent.md"
 disabled: true

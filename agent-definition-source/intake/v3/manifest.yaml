@@ -1,6 +1,6 @@
 name: intake
 version: v3
-description: "intake agent, v2, aligned with interrogate-eng clarification skill"
-source: "agent-definition-source/intake/v2/prompt.md"
+description: "intake agent, v3"
+source: "agent-definition-source/intake/v3/prompt.md"
 claude_code_agent_file: "intake.agent.md"
 

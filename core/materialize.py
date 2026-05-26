@@ -13,9 +13,9 @@ an explicit operator command; workflow runs no longer materialize prompts
 automatically.
 
 Usage:
-    python materialize.py               # manually materialize all enabled agents/skills/scripts
-    python materialize.py --check       # check for drift only, exit 1 if stale
-    python materialize.py --agent intake --agent task-generator  # specific agents only
+    python3 core/materialize.py               # manually materialize all enabled agents/skills/scripts
+    python3 core/materialize.py --check       # check for drift only, exit 1 if stale
+    python3 core/materialize.py --agent intake --agent task-generator  # specific agents only
 """
 
 import argparse
@@ -400,7 +400,7 @@ def run_materialization(filter_names: list[str] | None = None, check_only: bool 
         return True
     print(f"  Found {len(agents)} agent(s), {len(skills)} skill(s), and {len(scripts)} script(s).\n")
     label = "Checking" if check_only else "Materializing"
-    print(f"{label} runner artifacts into .claude/, .codex/, .github/, and .gemini/...")
+    print(f"{label} runner artifacts into .claude/, .codex/, .github/, .gemini/, and .openai-compat/...")
     logger.info(
         "run_materialization: %d agent(s), %d skill(s), %d script(s) check_only=%s",
         len(agents),
@@ -417,7 +417,7 @@ if __name__ == "__main__":
     args = parse_args()
     ok = run_materialization(filter_names=args.agents, check_only=args.check)
     if args.check and not ok:
-        print("\n[FAIL] One or more agents are stale. Run `python materialize.py` to update.")
+        print("\n[FAIL] One or more agents are stale. Run `python3 core/materialize.py` to update.")
         sys.exit(1)
     elif not ok:
         print("\n[FAIL] Materialization encountered errors.")

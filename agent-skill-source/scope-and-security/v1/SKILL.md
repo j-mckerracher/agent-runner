@@ -111,14 +111,14 @@ Agents MUST NOT:
 
 ## Automated Scope Validation Script
 
-Use `~/.github/scripts/validate-scope.py` to check file paths against forbidden patterns:
+Use `{workflow_assets_root}/scripts/validate-scope.py` to check file paths against forbidden patterns:
 
 ```bash
 # Check specific files
-~/.github/scripts/validate-scope.py [--artifact-root <path>] file1.ts file2.ts
+{workflow_assets_root}/scripts/validate-scope.py [--artifact-root <path>] file1.ts file2.ts
 
 # Check files from stdin
-git diff --name-only | ~/.github/scripts/validate-scope.py
+git diff --name-only | {workflow_assets_root}/scripts/validate-scope.py
 ```
 
 **What it checks**: All forbidden file patterns defined above (_.env_, _secret_, _credential_, _password_, lock files, node_modules/, dist/, build/, .git/). If `--artifact-root` is given, also validates paths are under that root.
