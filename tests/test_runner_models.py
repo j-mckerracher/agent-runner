@@ -315,12 +315,9 @@ class OpenaiCompatArbitraryModelTests(unittest.TestCase):
         resolved = resolve_runner_model("openai-compat", explicit_model=None)
         self.assertEqual(resolved, RUNNER_DEFAULT_MODELS["openai-compat"])
 
-    def test_codex_accepts_arbitrary_explicit_model(self):
-        cfg = resolve_runner_llm_config(
-            "codex",
-            explicit_model="future-codex-model",
-        )
-        self.assertEqual(cfg["model"], "future-codex-model")
+    def test_codex_rejects_invalid_model(self):
+        with self.assertRaises(ValueError):
+            resolve_runner_llm_config("codex", explicit_model="not-a-real-model")
 
     def test_codex_presets_still_resolve(self):
         for model in CODEX_MODEL_CHOICES:

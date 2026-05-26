@@ -215,11 +215,10 @@ function syncRunnerSelectFor(runnerSelectorId, modelSelectorId) {
 }
 
 function runnerUsesFreeFormModel(runner) {
-    return runner === "codex" || runner === "openai-compat";
+    return runner === "openai-compat";
 }
 
-function modelDatalistForRunner(runner) {
-    if (runner === "codex") return "codex-model-suggestions";
+function modelDatalistForRunner(_runner) {
     return "openai-compat-model-suggestions";
 }
 
