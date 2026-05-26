@@ -2,14 +2,15 @@ import shutil
 import subprocess
 import textwrap
 import unittest
-from pathlib import Path
+
+from gui_sources import read_gui_scripts
 
 
 def _extract_function(source: str, name: str) -> str:
     marker = f"function {name}("
     start = source.find(marker)
     if start == -1:
-        raise AssertionError(f"Could not find {marker!r} in gui/index.html")
+        raise AssertionError(f"Could not find {marker!r} in GUI scripts")
     brace_start = source.find("{", start)
     if brace_start == -1:
         raise AssertionError(f"Could not find opening brace for {name}")
@@ -21,17 +22,16 @@ def _extract_function(source: str, name: str) -> str:
         elif char == "}":
             depth -= 1
             if depth == 0:
-                return source[start:index + 1]
+                return source[start : index + 1]
     raise AssertionError(f"Could not find closing brace for {name}")
 
 
 @unittest.skipUnless(shutil.which("node"), "node is required for GUI metric regression tests")
 class GuiMetricsRegressionTests(unittest.TestCase):
     def test_medium__gui_metrics_helpers_accumulate_and_estimate_cumulative_values(self) -> None:
-        repo_root = Path(__file__).resolve().parents[1]
-        html = (repo_root / "gui" / "index.html").read_text(encoding="utf-8")
+        source = read_gui_scripts()
         functions = "\n\n".join(
-            _extract_function(html, name)
+            _extract_function(source, name)
             for name in (
                 "formatMoney",
                 "estimateDisplayedCostUsd",
@@ -64,7 +64,6 @@ class GuiMetricsRegressionTests(unittest.TestCase):
         )
         subprocess.run(
             ["node", "-e", script],
-            cwd=repo_root,
             check=True,
             capture_output=True,
             text=True,
