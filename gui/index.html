@@ -1464,7 +1464,7 @@ html,body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size
             <div class="telemetry-chart-card wide is-primary"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">Token usage trend</div><div class="telemetry-chart-subtitle">Stacked bars split input/output tokens; the line shows tokens per run.</div></div></div><div id="telemetry-chart-tokens" class="telemetry-chart"></div></div>
             <div class="telemetry-chart-card wide stage-boxplot"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">Stage duration box plot</div><div class="telemetry-chart-subtitle">Each row is one stage across the currently filtered runs. Box = P25-P75, center line = median, whiskers = min/max, marker = P95.</div></div></div><div id="telemetry-chart-stage-boxplot" class="telemetry-chart"></div></div>
             <div class="telemetry-chart-card wide stage-token-boxplot"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">Stage token use box plot</div><div class="telemetry-chart-subtitle">Log scale distribution of total tokens per stage per run. Box = P25-P75, center line = median, whiskers = min/max, marker = P95.</div></div></div><div id="telemetry-chart-stage-token-boxplot" class="telemetry-chart"></div></div>
-            <div class="telemetry-chart-card model-comparison"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">Model comparison</div><div class="telemetry-chart-subtitle">Each point aggregates one runner/model across the current filters. Color is stable per model; point size is fixed so nearby models stay readable.</div></div></div><div id="telemetry-chart-models" class="telemetry-chart"></div></div>
+            <div class="telemetry-chart-card model-comparison"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">Model comparison</div><div class="telemetry-chart-subtitle">Counts how many currently filtered runs used each runner/model. Bar colors are stable per model.</div></div></div><div id="telemetry-chart-models" class="telemetry-chart"></div></div>
             <div class="telemetry-chart-card model-run-counts"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">Runs per model</div><div class="telemetry-chart-subtitle">Counts how many currently filtered runs used each model. Bar colors match the model comparison chart.</div></div></div><div id="telemetry-chart-model-counts" class="telemetry-chart"></div></div>
             <div class="telemetry-chart-card"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">AC complexity</div><div class="telemetry-chart-subtitle">Acceptance criteria count compared with elapsed time.</div></div></div><div id="telemetry-chart-ac" class="telemetry-chart"></div></div>
             <div class="telemetry-chart-card loop-comparison"><div class="telemetry-chart-copy"><div><div class="telemetry-chart-title">Loop iterations by loop</div><div class="telemetry-chart-subtitle">Grouped by named run.py loop. Bars show total iterations per bucket; use this to spot loops that repeatedly re-run.</div></div></div><div id="telemetry-chart-loops" class="telemetry-chart"></div></div>
@@ -3155,34 +3155,31 @@ function renderTelemetryCharts(charts){
     ],
   }, stageTokenRows.length);
 
-  const modelRows = payload.model_points || [];
-  const modelNames = [...new Set(modelRows.map(row=>row.model_key || row.model || row.label || "unknown model"))];
+  const modelRows = (payload.model_points || [])
+    .slice()
+    .sort((a,b)=>(Number(b.runs)||0)-(Number(a.runs)||0) || String(a.label||a.runner_model||"").localeCompare(String(b.label||b.runner_model||"")));
+  const modelComparisonEl = $("#telemetry-chart-models");
+  if(modelComparisonEl) modelComparisonEl.style.height = modelRows.length ? `${Math.max(346, modelRows.length * 34 + 104)}px` : "";
   renderTelemetryChart("telemetry-chart-models", {
-    legend:{type:"scroll",top:0,left:8,right:8,textStyle:{color:"#8a8580"}},
-    grid:{left:58,right:38,top:66,bottom:48,containLabel:true},
+    grid:{left:172,right:42,top:34,bottom:40,containLabel:false},
     tooltip:{trigger:"item",confine:true,backgroundColor:"#141720",borderColor:"rgba(255,255,255,.13)",textStyle:{color:"#e2ddd5"},formatter:params=>{
-      const row = params?.data?.[4] || {};
+      const row = params?.data?.row || {};
       return `<strong>${escapeHtml(row.label || row.runner_model || "unknown")}</strong><br>` +
-        `Model color: ${escapeHtml(row.model_key || row.model || "unknown")}<br>` +
+        `Model: ${escapeHtml(row.model_key || row.model || "unknown")}<br>` +
         `Runs: ${formatNumber(row.runs || 0)}<br>` +
-        `Median runtime: ${formatDuration(row.median_runtime_seconds)}<br>` +
-        `Tokens/run: ${formatNumber(row.tokens_per_run || 0)}<br>` +
-        `Success: ${formatPct(row.success_rate || 0)} · Failure: ${formatPct(row.failure_rate || 0)}`;
+        `Success: ${formatPct(row.success_rate || 0)} · Failure: ${formatPct(row.failure_rate || 0)}<br>` +
+        `Median runtime: ${formatDuration(row.median_runtime_seconds)} · P95 runtime: ${formatDuration(row.p95_runtime_seconds)}<br>` +
+        `Tokens/run: ${formatNumber(row.tokens_per_run || 0)} · Cost/run: ${formatMoney(row.cost_per_run || 0)}`;
     }},
-    xAxis:{type:"value",name:"Median runtime (s)",splitLine:{lineStyle:{color:"rgba(255,255,255,.06)"}}},
-    yAxis:{type:"value",name:"Tokens/run",splitLine:{lineStyle:{color:"rgba(255,255,255,.06)"}}},
-    series:modelNames.map(modelName=>({
-      name:modelName,
-      type:"scatter",
-      symbolSize:12,
-      data:modelRows
-        .filter(row=>(row.model_key || row.model || row.label || "unknown model") === modelName)
-        .map(row=>[row.median_runtime_seconds||0,row.tokens_per_run||0,row.runs||1,row.label || row.runner_model || row.model_set,row]),
-      label:{show:true,position:"right",formatter:params=>params?.data?.[3] || "unknown",color:"#c9c2b7",fontSize:10},
-      labelLayout:{hideOverlap:true},
-      itemStyle:{color:telemetryColorForModel(modelName)},
-      emphasis:{focus:"series",scale:1.35},
-    })),
+    xAxis:{type:"value",name:"Runs",minInterval:1,splitLine:{lineStyle:{color:"rgba(255,255,255,.06)"}}},
+    yAxis:{type:"category",data:modelRows.map(row=>row.label || row.runner_model || row.model_set || "unknown"),inverse:true,axisLabel:{interval:0,color:"#c9c2b7",fontSize:10,margin:12}},
+    series:[{
+      name:"Runs by runner/model",
+      type:"bar",
+      barMaxWidth:24,
+      data:modelRows.map(row=>({value:row.runs || 0,row,itemStyle:{color:telemetryColorForModel(row.model_key || row.model)}})),
+      label:{show:true,position:"right",formatter:params=>formatNumber(params?.value),color:"#c9c2b7",fontSize:10},
+    }],
   }, modelRows.length);
 
   const modelCountRows = (payload.model_run_counts || [])
