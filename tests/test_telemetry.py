@@ -361,8 +361,11 @@ class TelemetryRouteTests(unittest.TestCase):
         self.assertEqual(model_point["runner"], "claude")
         self.assertEqual(model_point["model_key"], "claude-sonnet")
         self.assertEqual(model_point["runs"], 1)
+        self.assertEqual(model_point["tokens_per_run"], 100.0)
+        self.assertEqual(model_point["average_runtime_seconds"], 240.0)
         self.assertEqual(charts["model_run_counts"][0]["model"], "claude-sonnet")
         self.assertEqual(charts["model_run_counts"][0]["runs"], 1)
+        self.assertEqual(charts["model_run_counts"][0]["average_runtime_seconds"], 240.0)
         self.assertEqual(charts["model_run_counts"][0]["runners"], ["claude"])
         loop_by_name = {row["loop_name"]: row for row in charts["loop_iteration_series"]}
         self.assertEqual(loop_by_name["eval-optimizer"]["total_iterations"], 3)

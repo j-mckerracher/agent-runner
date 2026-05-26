@@ -4675,13 +4675,13 @@
                                     <div class="telemetry-chart-copy">
                                         <div>
                                             <div class="telemetry-chart-title">
-                                                Model Comparison
+                                                Model Comparison by Average Token Usage Per Run
                                             </div>
                                             <div
                                                 class="telemetry-chart-subtitle"
                                             >
-                                                Counts how many currently
-                                                filtered runs used each
+                                                Average input and output token
+                                                usage per filtered run for each
                                                 runner/model. Bar colors are
                                                 stable per model.
                                             </div>
@@ -4698,15 +4698,14 @@
                                     <div class="telemetry-chart-copy">
                                         <div>
                                             <div class="telemetry-chart-title">
-                                                Runs Per Model
+                                                Model Comparison by Average Time Per Run
                                             </div>
                                             <div
                                                 class="telemetry-chart-subtitle"
                                             >
-                                                Counts how many currently
-                                                filtered runs used each model.
-                                                Bar colors match the model
-                                                comparison chart.
+                                                Average runtime per filtered run
+                                                for each model. Bar colors match
+                                                the token usage chart.
                                             </div>
                                         </div>
                                     </div>
@@ -8287,7 +8286,8 @@
                     .slice()
                     .sort(
                         (a, b) =>
-                            (Number(b.runs) || 0) - (Number(a.runs) || 0) ||
+                            (Number(b.tokens_per_run) || 0) -
+                                (Number(a.tokens_per_run) || 0) ||
                             String(a.label || a.runner_model || "").localeCompare(
                                 String(b.label || b.runner_model || ""),
                             ),
@@ -8320,15 +8320,14 @@
                                     `Model: ${escapeHtml(row.model_key || row.model || "unknown")}<br>` +
                                     `Runs: ${formatNumber(row.runs || 0)}<br>` +
                                     `Success: ${formatPct(row.success_rate || 0)} · Failure: ${formatPct(row.failure_rate || 0)}<br>` +
-                                    `Median runtime: ${formatDuration(row.median_runtime_seconds)} · P95 runtime: ${formatDuration(row.p95_runtime_seconds)}<br>` +
+                                    `Average runtime: ${formatDuration(row.average_runtime_seconds)} · P95 runtime: ${formatDuration(row.p95_runtime_seconds)}<br>` +
                                     `Tokens/run: ${formatNumber(row.tokens_per_run || 0)} · Cost/run: ${formatMoney(row.cost_per_run || 0)}`
                                 );
                             },
                         },
                         xAxis: {
                             type: "value",
-                            name: "Runs",
-                            minInterval: 1,
+                            name: "Tokens/run",
                             splitLine: {
                                 lineStyle: { color: "rgba(255,255,255,.06)" },
                             },
@@ -8352,11 +8351,11 @@
                         },
                         series: [
                             {
-                                name: "Runs by runner/model",
+                                name: "Average tokens per run",
                                 type: "bar",
                                 barMaxWidth: 24,
                                 data: modelRows.map((row) => ({
-                                    value: row.runs || 0,
+                                    value: row.tokens_per_run || 0,
                                     row,
                                     itemStyle: {
                                         color: telemetryColorForModel(
@@ -8382,7 +8381,8 @@
                     .slice()
                     .sort(
                         (a, b) =>
-                            (Number(b.runs) || 0) - (Number(a.runs) || 0) ||
+                            (Number(b.average_runtime_seconds) || 0) -
+                                (Number(a.average_runtime_seconds) || 0) ||
                             String(a.model || "").localeCompare(
                                 String(b.model || ""),
                             ),
@@ -8415,14 +8415,13 @@
                                     `Runs using model: ${formatNumber(row.runs || 0)}<br>` +
                                     `Runners: ${escapeHtml((row.runners || []).join(", ") || "unknown")}<br>` +
                                     `Success: ${formatPct(row.success_rate || 0)} · Failure: ${formatPct(row.failure_rate || 0)}<br>` +
-                                    `Median runtime: ${formatDuration(row.median_runtime_seconds)} · Tokens/run: ${formatNumber(row.tokens_per_run || 0)}`
+                                    `Average runtime: ${formatDuration(row.average_runtime_seconds)} · Tokens/run: ${formatNumber(row.tokens_per_run || 0)}`
                                 );
                             },
                         },
                         xAxis: {
                             type: "value",
-                            name: "Runs",
-                            minInterval: 1,
+                            name: "Average time/run",
                             splitLine: {
                                 lineStyle: { color: "rgba(255,255,255,.06)" },
                             },
@@ -8442,11 +8441,11 @@
                         },
                         series: [
                             {
-                                name: "Runs using model",
+                                name: "Average time per run",
                                 type: "bar",
                                 barMaxWidth: 24,
                                 data: modelCountRows.map((row) => ({
-                                    value: row.runs || 0,
+                                    value: row.average_runtime_seconds || 0,
                                     row,
                                     itemStyle: {
                                         color: telemetryColorForModel(
@@ -8458,7 +8457,7 @@
                                     show: true,
                                     position: "right",
                                     formatter: (params) =>
-                                        formatNumber(params?.value),
+                                        formatDuration(params?.value),
                                     color: "#c9c2b7",
                                     fontSize: 10,
                                 },

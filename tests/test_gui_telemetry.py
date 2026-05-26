@@ -1,3 +1,4 @@
+import re
 import shutil
 import subprocess
 import textwrap
@@ -30,22 +31,27 @@ class GuiTelemetryRegressionTests(unittest.TestCase):
     def test_easy__telemetry_chart_defaults_and_hooks_are_present(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         html = (repo_root / "gui" / "index.html").read_text(encoding="utf-8")
+        compact_html = re.sub(r"\s+", " ", html)
 
         self.assertIn('/static/vendor/echarts.min.js', html)
-        self.assertIn('<option value="all" selected>All time</option>', html)
-        self.assertIn('chartBucket:"day"', html)
-        self.assertIn('rollup:"run"', html)
+        self.assertRegex(html, re.compile(r'<option value="all" selected>\s*All time\s*</option>'))
+        self.assertRegex(html, re.compile(r'chartBucket:\s*"day"'))
+        self.assertRegex(html, re.compile(r'rollup:\s*"run"'))
         self.assertIn('const range = $("#telemetry-range")?.value || "all";', html)
         self.assertIn('$("#telemetry-range").value = "all";', html)
-        self.assertIn('bucket:TELEMETRY_STATE.chartBucket || "day"', html)
+        self.assertRegex(html, re.compile(r'bucket:\s*TELEMETRY_STATE\.chartBucket \|\| "day"'))
         self.assertIn('api(`/telemetry/runs/${jobId}/profile`)', html)
         self.assertIn('function telemetryChartsAvailable()', html)
-        self.assertIn('Stage token use box plot', html)
+        self.assertIn('Stage Token Use', compact_html)
         self.assertIn('id="telemetry-chart-stage-token-boxplot"', html)
         self.assertIn('payload.stage_token_boxplot || []', html)
-        self.assertIn('{type:"log",name:"Total tokens"', html)
-        self.assertIn('{type:"log",name:"Tokens/run"', html)
-        self.assertIn('nameTextStyle:{color:"#e2ddd5",fontWeight:700', html)
+        self.assertIn('Model Comparison by Average Token Usage Per Run', compact_html)
+        self.assertIn('Model Comparison by Average Time Per Run', compact_html)
+        self.assertIn('name: "Average tokens per run"', html)
+        self.assertIn('name: "Average time per run"', html)
+        self.assertRegex(html, re.compile(r'type:\s*"log",\s*name:\s*"Total tokens"'))
+        self.assertRegex(html, re.compile(r'type:\s*"log",\s*name:\s*"Tokens/run"'))
+        self.assertRegex(html, re.compile(r'nameTextStyle:\s*\{\s*color:\s*"#e2ddd5",\s*fontWeight:\s*700'))
 
     def test_medium__pick_default_telemetry_run_prefers_active_then_newest(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]

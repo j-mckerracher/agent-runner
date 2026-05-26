@@ -720,6 +720,7 @@ def build_chart_payload(
             "runs": len(group),
             "success_rate": round(successes / total, 4),
             "failure_rate": round(failures / total, 4),
+            "average_runtime_seconds": round(sum(runtimes) / len(runtimes), 3) if runtimes else None,
             "median_runtime_seconds": percentile(runtimes, 50),
             "p95_runtime_seconds": percentile(runtimes, 95),
             "tokens_per_run": round(tokens_total / total, 3),
@@ -746,6 +747,7 @@ def build_chart_payload(
             "success_rate": round(successes / total, 4),
             "failure_rate": round(failures / total, 4),
             "tokens_per_run": round(tokens_total / total, 3),
+            "average_runtime_seconds": round(sum(runtimes) / len(runtimes), 3) if runtimes else None,
             "median_runtime_seconds": percentile(runtimes, 50),
             "runners": sorted({str(p.get("runner") or "unknown runner") for p in group_profiles}),
         })
