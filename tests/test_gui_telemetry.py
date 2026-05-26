@@ -49,6 +49,36 @@ class GuiTelemetryRegressionTests(unittest.TestCase):
         self.assertIn('Model Comparison by Average Time Per Run', compact_html)
         self.assertIn('name: "Average tokens per run"', html)
         self.assertIn('name: "Average time per run"', html)
+        self.assertIn("function formatCompactNumber(value)", html)
+        self.assertIn("formatCompactNumber(params?.value)", html)
+        self.assertRegex(
+            html,
+            re.compile(
+                r'"telemetry-chart-models",\s*\{\s*grid:\s*\{\s*left:\s*172,\s*right:\s*78,\s*top:\s*34,\s*bottom:\s*64,\s*containLabel:\s*false',
+                re.DOTALL,
+            ),
+        )
+        self.assertRegex(
+            html,
+            re.compile(
+                r'name:\s*"Tokens/run",\s*nameLocation:\s*"middle",\s*nameGap:\s*38,\s*axisLabel:\s*\{\s*formatter:\s*\(value\)\s*=>\s*formatCompactNumber\(value\)',
+                re.DOTALL,
+            ),
+        )
+        self.assertRegex(
+            html,
+            re.compile(
+                r'"telemetry-chart-model-counts",\s*\{\s*grid:\s*\{\s*left:\s*146,\s*right:\s*42,\s*top:\s*34,\s*bottom:\s*64,\s*containLabel:\s*false',
+                re.DOTALL,
+            ),
+        )
+        self.assertRegex(
+            html,
+            re.compile(
+                r'name:\s*"Average time/run",\s*nameLocation:\s*"middle",\s*nameGap:\s*38',
+                re.DOTALL,
+            ),
+        )
         self.assertRegex(html, re.compile(r'type:\s*"log",\s*name:\s*"Total tokens"'))
         self.assertRegex(html, re.compile(r'type:\s*"log",\s*name:\s*"Tokens/run"'))
         self.assertRegex(html, re.compile(r'nameTextStyle:\s*\{\s*color:\s*"#e2ddd5",\s*fontWeight:\s*700'))

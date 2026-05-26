@@ -6647,6 +6647,28 @@
                     ? Math.round(n).toLocaleString()
                     : "—";
             }
+            function formatCompactNumber(value) {
+                if (value == null || value === "") return "—";
+                const n = Number(value);
+                if (!Number.isFinite(n)) return "—";
+                const sign = n < 0 ? "-" : "";
+                const abs = Math.abs(n);
+                const units = [
+                    [1_000_000_000, "B"],
+                    [1_000_000, "M"],
+                    [1_000, "K"],
+                ];
+                for (const [scale, suffix] of units) {
+                    if (abs >= scale) {
+                        const scaled = abs / scale;
+                        const rounded = Number(
+                            scaled.toFixed(scaled >= 10 ? 0 : 1),
+                        );
+                        return `${sign}${rounded}${suffix}`;
+                    }
+                }
+                return `${Math.round(n)}`;
+            }
             function setActiveSurfaceJob(surface = "runs", job = null) {
                 const next = job ? { ...job } : null;
                 ACTIVE_JOB_BY_SURFACE[surface] = next;
@@ -8302,9 +8324,9 @@
                     {
                         grid: {
                             left: 172,
-                            right: 42,
+                            right: 78,
                             top: 34,
-                            bottom: 40,
+                            bottom: 64,
                             containLabel: false,
                         },
                         tooltip: {
@@ -8328,6 +8350,12 @@
                         xAxis: {
                             type: "value",
                             name: "Tokens/run",
+                            nameLocation: "middle",
+                            nameGap: 38,
+                            axisLabel: {
+                                formatter: (value) =>
+                                    formatCompactNumber(value),
+                            },
                             splitLine: {
                                 lineStyle: { color: "rgba(255,255,255,.06)" },
                             },
@@ -8367,7 +8395,7 @@
                                     show: true,
                                     position: "right",
                                     formatter: (params) =>
-                                        formatNumber(params?.value),
+                                        formatCompactNumber(params?.value),
                                     color: "#c9c2b7",
                                     fontSize: 10,
                                 },
@@ -8399,7 +8427,7 @@
                             left: 146,
                             right: 42,
                             top: 34,
-                            bottom: 40,
+                            bottom: 64,
                             containLabel: false,
                         },
                         tooltip: {
@@ -8422,6 +8450,8 @@
                         xAxis: {
                             type: "value",
                             name: "Average time/run",
+                            nameLocation: "middle",
+                            nameGap: 38,
                             splitLine: {
                                 lineStyle: { color: "rgba(255,255,255,.06)" },
                             },
