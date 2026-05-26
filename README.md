@@ -11,9 +11,9 @@ materialize → intake → task-generation → task-assignment → execution ⟳
 
 The `materialize` stage is a preflight stage. It verifies runner assets by default and refreshes generated runner assets only when the operator explicitly passes `--materialize`. Execution and QA use evaluator loops: a producer agent writes an artifact, an evaluator scores it, and evaluator feedback is injected into the next iteration unless the evaluator returns `PASS`. The historical lessons optimizer is disabled.
 
-| Runs | Run Telemetry | Opik observability |
-|---|---|---|
-| ![Agent Workbench Runs page showing run submission, run history, and a selected workflow trace timeline](docs/assets/agent-runner-runs.png) | ![Agent Workbench Run Telemetry page showing run filters, KPI cards, and trend charts](docs/assets/agent-runner-run-telemetry.png) | ![Opik project insights dashboard for agent-workbench traces](docs/assets/opik-insights.png) |
+| Runs | Opik observability |
+|---|---|
+| ![Agent Workbench Runs page showing run submission, run history, and a selected workflow trace timeline](docs/assets/agent-runner-runs.png) | ![Opik project insights dashboard for agent-workbench traces](docs/assets/opik-insights.png) |
 
 > The repo is named `agent-workbench`, while some runtime paths and UI labels still use the older `agent-runner` name, such as `~/.agent-runner/` and the browser title.
 
