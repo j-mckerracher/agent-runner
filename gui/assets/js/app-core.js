@@ -132,7 +132,7 @@ const SETTINGS_HELP_COPY = {
     "s-alias-name":
         "A stable short name for this alias (e.g. 'azure-gpt4o'). This becomes the value stored in run records and shown in the UI, so keep it descriptive and don't change it later.",
     "s-alias-provider":
-        "The LiteLLM provider prefix (e.g. 'openai-compat', 'azure', 'anthropic'). This determines how the model string and auth are constructed when calling the backend.",
+        "The LiteLLM provider prefix that determines how the model string and auth are constructed. Use 'openai-compat' to connect to any OpenAI API-compatible endpoint — including self-hosted models (LM Studio, Ollama), third-party gateways (OpenRouter, Together AI), DeepSeek, Mistral, or any LiteLLM proxy. It accepts any model name and reads your API key from the env var you specify. Use 'azure' for Azure OpenAI deployments, or 'anthropic' for direct Anthropic access.",
     "s-alias-model-name":
         "The model identifier passed to the provider (e.g. 'gpt-4o', 'claude-sonnet-4-20250514'). Combined with the provider to form the full model string.",
     "s-alias-api-key-env":

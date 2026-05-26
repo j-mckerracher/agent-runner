@@ -13,4 +13,3 @@ __pycache__/
 .env
 /eval/reports/
 /eval/benchmarks/
-.playwright-mcp/
