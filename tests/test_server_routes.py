@@ -485,6 +485,64 @@ class ServerRoutesTests(unittest.TestCase):
         )
         self.assertIn(r.status_code, (400, 422))
 
+    def test_medium__submit_run_accepts_agent_llm_overrides(self):
+        from core.workflow_inputs import WorkflowInput
+        from server import db
+        from server.events import EventBus
+        from server.runner_proc import JobProcess
+
+        with patch(
+            "server.routes.runs.resolve_workflow_input",
+            return_value=WorkflowInput(
+                repo=self.tmpdir,
+                change_id="TEST-AGENT-LLM",
+                intake_mode="synthetic",
+                intake_source="",
+            ),
+        ):
+            r = self.client.post(
+                "/runs",
+                json={
+                    "repo": self.tmpdir,
+                    "change_id": "TEST-AGENT-LLM",
+                    "runner": "copilot",
+                    "mode": "live",
+                    "model": "gpt-5.4",
+                    "agent_llm_overrides": {
+                        "qa-engineer": {"runner": "codex", "model": "gpt-5.5"},
+                        "qa-evaluator": {"model": "gpt-5.2"},
+                    },
+                },
+            )
+
+        self.assertEqual(r.status_code, 200)
+        job = db.get_job(r.json()["job_id"])
+        self.assertIn('"qa-engineer"', job["agent_llm_overrides"])
+        cmd = JobProcess(job, EventBus(), None)._build_cmd()
+        self.assertIn("qa-engineer=codex", cmd)
+        self.assertIn("qa-evaluator=gpt-5.2", cmd)
+
+    def test_medium__submit_run_rejects_invalid_agent_llm_overrides(self):
+        invalid_payloads = [
+            {"not-an-agent": {"runner": "codex"}},
+            {"qa-engineer": {"runner": "bogus"}},
+            {"qa-engineer": {"runner": "claude", "model": "definitely-not-a-valid-model"}},
+        ]
+        for overrides in invalid_payloads:
+            with self.subTest(overrides=overrides):
+                r = self.client.post(
+                    "/runs",
+                    json={
+                        "repo": self.tmpdir,
+                        "change_id": "TEST-AGENT-LLM-BAD",
+                        "runner": "copilot",
+                        "mode": "live",
+                        "model": "gpt-5.4",
+                        "agent_llm_overrides": overrides,
+                    },
+                )
+                self.assertEqual(r.status_code, 400)
+
     def test_medium__submit_run_rejects_invalid_log_level(self):
         r = self.client.post(
             "/runs",

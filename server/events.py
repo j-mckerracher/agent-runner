@@ -7,6 +7,7 @@ import logging
 import os
 import threading
 import time
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -76,7 +77,6 @@ def append_event(path: str | os.PathLike, type: str, **fields: Any) -> dict:
             except OSError:
                 pass
         logger.debug("append_event: seq=%d type=%s path=%s", record["seq"], type, p)
-        logger.debug("append_event: seq=%d type=%s path=%s", record["seq"], type, p)
     finally:
         if lock_fd is not None:
             if _fcntl is not None:
@@ -139,28 +139,43 @@ def emit(type: str, **fields: Any) -> None:
         em.emit(type, **fields)
 
 
-class EventEmitHandler(logging.Handler):
-    """Bridges stdlib logging → structured `log` events via EventEmitter.
+_log_emit_state = threading.local()
 
-    No-op when AGENT_RUNNER_EVENT_LOG is not set (CLI / test mode).
-    Skips this module's own logger to prevent recursion.
+
+class EventEmitHandler(logging.Handler):
+    """Bridges stdlib logging records to structured ``log`` events.
+
+    This handler is intentionally the only source the GUI treats as visible
+    terminal logs.  Ad-hoc workflow events still flow through the event log for
+    status/metrics, but they are not rendered as log lines.
     """
 
     def emit(self, record: logging.LogRecord) -> None:
-        if record.name == __name__:
+        if record.name == __name__ or record.name.startswith(f"{__name__}."):
+            return
+        if getattr(_log_emit_state, "active", False):
             return
         em = get_emitter()
         if em is None:
             return
+        fields: dict[str, Any] = {
+            "source": "python_logging",
+            "level": record.levelname.lower(),
+            "logger": record.name,
+            "msg": self.format(record),
+            "pathname": record.pathname,
+            "lineno": record.lineno,
+        }
+        stage = os.environ.get("AGENT_RUNNER_CURRENT_STAGE")
+        if stage:
+            fields["stage"] = stage
         try:
-            em.emit(
-                "log",
-                level=record.levelname.lower(),
-                logger=record.name,
-                msg=self.format(record),
-            )
+            _log_emit_state.active = True
+            em.emit("log", **fields)
         except Exception:
             pass
+        finally:
+            _log_emit_state.active = False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -186,6 +201,31 @@ def read_all(path: str | os.PathLike) -> list[dict]:
                 logger.warning("read_all: skipping malformed line in %s: %s", p, exc)
                 continue
     logger.debug("read_all: %d event(s) read from %s", len(out), p)
+    return out
+
+
+def read_recent(path: str | os.PathLike, limit: int) -> list[dict]:
+    """Return at most the last ``limit`` JSONL events, preserving file order."""
+    if limit <= 0:
+        return []
+    p = Path(path)
+    logger.debug("read_recent: reading up to %d event(s) from %s", limit, p)
+    if not p.exists():
+        logger.debug("read_recent: file does not exist: %s", p)
+        return []
+    rows: deque[dict] = deque(maxlen=limit)
+    with p.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError as exc:
+                logger.warning("read_recent: skipping malformed line in %s: %s", p, exc)
+                continue
+    out = list(rows)
+    logger.debug("read_recent: %d event(s) read from %s", len(out), p)
     return out
 
 

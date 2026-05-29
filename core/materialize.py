@@ -352,6 +352,18 @@ def materialize(agents: list[dict], skills: list[dict], scripts: list[dict], che
                 logger.debug("materialize: OK runner=%s %s", runner, key)
                 print(f"  [OK]     {runner}:{key} → {display_target}")
 
+        metadata_lists_stale = (
+            current.get("agents") != new_agents_list
+            or current.get("skills") != new_skills_list
+            or current.get("scripts") != new_scripts_list
+        )
+        if metadata_lists_stale:
+            any_drift = True
+            runner_drift = True
+            if check_only:
+                logger.warning("materialize: DRIFT runner=%s metadata inventory", runner)
+                print(f"  [DRIFT]  {runner}:metadata inventory")
+
         if not check_only and runner_drift:
             current["agents"] = new_agents_list
             current["skills"] = new_skills_list

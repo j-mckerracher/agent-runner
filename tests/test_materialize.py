@@ -139,6 +139,28 @@ skill_file: SKILL.md
         for target_dir in self.runner_agent_dirs.values():
             self.assertFalse((target_dir / "11-lessons-optimizer-hyperagent.agent.md").exists())
 
+    def test_easy__discover_agents_includes_pr_reviewer_definition(self):
+        pr_dir = self.agent_sources / "pr-reviewer" / "v1"
+        pr_dir.mkdir(parents=True)
+        (pr_dir / "manifest.yaml").write_text(
+            "name: pr-reviewer\n"
+            "version: v1\n"
+            "claude_code_agent_file: 12-pr-reviewer.agent.md\n"
+            "codex_agent_file: 12-pr-reviewer.agent.md\n"
+            "github_copilot_agent_file: 12-pr-reviewer.agent.md\n"
+            "gemini_agent_file: 12-pr-reviewer.agent.md\n",
+            encoding="utf-8",
+        )
+        (pr_dir / "prompt.md").write_text("# PR Reviewer\n", encoding="utf-8")
+
+        with ExitStack() as stack:
+            for patcher in self._patch_paths():
+                stack.enter_context(patcher)
+            agents = materialize.discover_agents()
+
+        pr_reviewer = next(agent for agent in agents if agent["name"] == "pr-reviewer")
+        self.assertEqual(pr_reviewer["runner_targets"]["copilot"], "12-pr-reviewer.agent.md")
+
     def test_medium__run_materialization_uses_latest_agent_version_and_skill_manifest_name(self):
         intake_v2_dir = self.agent_sources / "intake" / "v2"
         intake_v2_dir.mkdir(parents=True)

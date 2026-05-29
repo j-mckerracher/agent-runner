@@ -47,14 +47,14 @@ pollHealth();
 const WORKFLOW_STAGE_AGENTS = [
     "intake",
     "task-generator",
-    "task-assigner",
-    "software-engineer-hyperagent",
-    "qa-engineer",
-    "lessons-optimizer-hyperagent",
     "task-plan-evaluator",
+    "task-assigner",
     "assignment-evaluator",
+    "software-engineer-hyperagent",
     "implementation-evaluator",
+    "qa-engineer",
     "qa-evaluator",
+    "pr-reviewer",
 ];
 
 const CODEX_MODEL_LABELS = {
@@ -90,6 +90,7 @@ function buildAgentDefaultsUI(agentDefaults) {
         "assignment-evaluator": ["eval", "tag-evaluator"],
         "implementation-evaluator": ["eval", "tag-evaluator"],
         "qa-evaluator": ["eval", "tag-qa"],
+        "pr-reviewer": ["review", "tag-evaluator"],
     };
 
     const table = document.createElement("table");
@@ -231,12 +232,135 @@ function syncRunnerSelectFor(runnerSelectorId, modelSelectorId) {
         );
 }
 
-function runnerUsesFreeFormModel(runner) {
-    return runner === "openai-compat";
+function runOverrideSafeId(agentName) {
+    return agentName.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
-function modelDatalistForRunner(_runner) {
-    return "openai-compat-model-suggestions";
+function syncRunAgentOverrideModel(agentName) {
+    const safe = runOverrideSafeId(agentName);
+    const runnerEl = $(`#f-agent-runner-${safe}`);
+    const modelEl = $(`#f-agent-model-${safe}`);
+    if (!runnerEl || !modelEl) return;
+    const selectedRunner = runnerEl.value || $("#f-runner")?.value || "claude";
+    const currentValue = modelEl.value || "";
+    const parent = modelEl.parentNode;
+
+    if (runnerUsesFreeFormModel(selectedRunner)) {
+        let input = modelEl;
+        if (modelEl.tagName !== "INPUT") {
+            input = document.createElement("input");
+            input.id = modelEl.id;
+            input.className = modelEl.className;
+            input.type = "text";
+            parent.replaceChild(input, modelEl);
+        }
+        input.setAttribute("list", modelDatalistForRunner(selectedRunner));
+        input.placeholder = "Use default model";
+        input.value = currentValue;
+        return;
+    }
+
+    let select = modelEl;
+    if (modelEl.tagName !== "SELECT") {
+        select = document.createElement("select");
+        select.id = modelEl.id;
+        select.className = modelEl.className;
+        parent.replaceChild(select, modelEl);
+    }
+    select.innerHTML = "";
+    const empty = document.createElement("option");
+    empty.value = "";
+    empty.textContent = "(default)";
+    select.appendChild(empty);
+    (RUNNER_MODELS[selectedRunner] || []).forEach((model) => {
+        const option = document.createElement("option");
+        option.value = model;
+        option.textContent = modelOptionLabel(selectedRunner, model);
+        select.appendChild(option);
+    });
+    if ([...select.options].some((option) => option.value === currentValue)) {
+        select.value = currentValue;
+    }
+}
+
+function buildRunAgentOverridesUI() {
+    const container = $("#f-agent-overrides");
+    if (!container) return;
+    container.innerHTML = "";
+    WORKFLOW_STAGE_AGENTS.forEach((agentName) => {
+        const safe = runOverrideSafeId(agentName);
+        const row = document.createElement("div");
+        row.className = "agent-override-row";
+
+        const label = document.createElement("div");
+        label.className = "agent-override-name";
+        label.textContent = agentName;
+
+        const runnerSelect = document.createElement("select");
+        runnerSelect.id = `f-agent-runner-${safe}`;
+        const defaultRunner = document.createElement("option");
+        defaultRunner.value = "";
+        defaultRunner.textContent = "default";
+        runnerSelect.appendChild(defaultRunner);
+        Object.keys(RUNNER_MODELS).forEach((runner) => {
+            const option = document.createElement("option");
+            option.value = runner;
+            option.textContent =
+                runner.charAt(0).toUpperCase() + runner.slice(1);
+            runnerSelect.appendChild(option);
+        });
+        runnerSelect.addEventListener("change", () =>
+            syncRunAgentOverrideModel(agentName),
+        );
+
+        const modelWrap = document.createElement("div");
+        modelWrap.className = "agent-override-model";
+        const modelSelect = document.createElement("select");
+        modelSelect.id = `f-agent-model-${safe}`;
+        modelWrap.appendChild(modelSelect);
+
+        row.append(label, runnerSelect, modelWrap);
+        container.appendChild(row);
+        syncRunAgentOverrideModel(agentName);
+    });
+}
+
+function refreshRunAgentOverrideModelsUsingDefaultRunner() {
+    WORKFLOW_STAGE_AGENTS.forEach((agentName) => {
+        const safe = runOverrideSafeId(agentName);
+        const runnerEl = $(`#f-agent-runner-${safe}`);
+        if (runnerEl && !runnerEl.value) {
+            syncRunAgentOverrideModel(agentName);
+        }
+    });
+}
+
+function collectRunAgentOverrides() {
+    const overrides = {};
+    WORKFLOW_STAGE_AGENTS.forEach((agentName) => {
+        const safe = runOverrideSafeId(agentName);
+        const runner = $(`#f-agent-runner-${safe}`)?.value || "";
+        const model = $(`#f-agent-model-${safe}`)?.value?.trim() || "";
+        if (!runner && !model) return;
+        overrides[agentName] = {};
+        if (runner) overrides[agentName].runner = runner;
+        if (model) overrides[agentName].model = model;
+    });
+    return overrides;
+}
+
+function runnerUsesFreeFormModel(runner) {
+    return (
+        runner === "codex" ||
+        runner === "openai-compat" ||
+        RUNNER_ALIASES?.[runner]?.provider === "openai-compat"
+    );
+}
+
+function modelDatalistForRunner(runner) {
+    return runner === "codex"
+        ? "codex-model-suggestions"
+        : "openai-compat-model-suggestions";
 }
 
 function updateOpikSettingsStatus(opik) {
@@ -375,6 +499,7 @@ async function loadSettings() {
     RUNNER_MODELS = cfg.runner_models || RUNNER_MODELS;
     // Populate free-form runner datalists with preset suggestions.
     [
+        ["codex-model-suggestions", "codex"],
         ["openai-compat-model-suggestions", "openai-compat"],
     ].forEach(([datalistId, runner]) => {
         const datalist = document.getElementById(datalistId);
@@ -438,8 +563,9 @@ async function loadSettings() {
         Boolean(cfg.azure_devops?.write_back_enabled),
     );
     await loadAzureDevOpsStatus();
-    buildAgentDefaultsUI(cfg.agent_model_defaults || {});
     renderRunnerAliases(cfg.runner_aliases || {});
+    buildAgentDefaultsUI(cfg.agent_model_defaults || {});
+    buildRunAgentOverridesUI();
     syncRunConfigSelects();
 }
 // Runner alias state
@@ -763,7 +889,10 @@ function syncRunConfigSelects() {
     syncModelSelectFor("#eval-runner", "#eval-model");
 }
 $("#f-runner").addEventListener("change", () =>
-    syncModelSelectFor("#f-runner", "#f-model"),
+    {
+        syncModelSelectFor("#f-runner", "#f-model");
+        refreshRunAgentOverrideModelsUsingDefaultRunner();
+    },
 );
 $("#eval-runner").addEventListener("change", () =>
     syncModelSelectFor("#eval-runner", "#eval-model"),

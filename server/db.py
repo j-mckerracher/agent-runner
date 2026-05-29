@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   story_file TEXT,
   manual_story_file TEXT,
   extra_context TEXT,
+  agent_llm_overrides TEXT,
   eval_runner_args TEXT,
   submitted_at TEXT NOT NULL,
   started_at TEXT,
@@ -97,6 +98,9 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     if "eval_runner_args" not in columns:
         logger.info("_ensure_schema: adding jobs.eval_runner_args column")
         conn.execute("ALTER TABLE jobs ADD COLUMN eval_runner_args TEXT")
+    if "agent_llm_overrides" not in columns:
+        logger.info("_ensure_schema: adding jobs.agent_llm_overrides column")
+        conn.execute("ALTER TABLE jobs ADD COLUMN agent_llm_overrides TEXT")
     if "original_ac_count" not in columns:
         logger.info("_ensure_schema: adding jobs.original_ac_count column")
         conn.execute("ALTER TABLE jobs ADD COLUMN original_ac_count INTEGER")
@@ -286,22 +290,42 @@ def list_telemetry_events(
     job_ids: list[str] | None = None,
     start_ts: str | None = None,
     end_ts: str | None = None,
+    limit: int | None = None,
 ) -> list[dict]:
-    sql = "SELECT * FROM telemetry_events WHERE 1=1"
+    if limit is not None and limit <= 0:
+        return []
     params: list[Any] = []
-    if job_ids is not None:
-        if not job_ids:
-            return []
-        placeholders = ",".join("?" for _ in job_ids)
-        sql += f" AND job_id IN ({placeholders})"
-        params.extend(job_ids)
-    if start_ts:
-        sql += " AND ts>=?"
-        params.append(start_ts)
-    if end_ts:
-        sql += " AND ts<=?"
-        params.append(end_ts)
-    sql += " ORDER BY job_id ASC, seq ASC"
+    if (
+        limit is not None
+        and job_ids is not None
+        and len(job_ids) == 1
+        and not start_ts
+        and not end_ts
+    ):
+        sql = (
+            "SELECT * FROM ("
+            "SELECT * FROM telemetry_events WHERE job_id=? ORDER BY seq DESC LIMIT ?"
+            ") ORDER BY seq ASC"
+        )
+        params.extend([job_ids[0], limit])
+    else:
+        sql = "SELECT * FROM telemetry_events WHERE 1=1"
+        if job_ids is not None:
+            if not job_ids:
+                return []
+            placeholders = ",".join("?" for _ in job_ids)
+            sql += f" AND job_id IN ({placeholders})"
+            params.extend(job_ids)
+        if start_ts:
+            sql += " AND ts>=?"
+            params.append(start_ts)
+        if end_ts:
+            sql += " AND ts<=?"
+            params.append(end_ts)
+        sql += " ORDER BY job_id ASC, seq ASC"
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
     with cursor() as cur:
         cur.execute(sql, params)
         rows = cur.fetchall()
@@ -400,7 +424,7 @@ def backfill_telemetry_events_for_jobs(jobs: list[dict]) -> int:
 
 _INSERTABLE = (
     "id", "change_id", "parent_job_id", "status", "run_kind", "mode", "runner", "model", "log_level",
-    "repo", "ado_url", "story_file", "manual_story_file", "extra_context", "eval_runner_args",
+    "repo", "ado_url", "story_file", "manual_story_file", "extra_context", "agent_llm_overrides", "eval_runner_args",
     "submitted_at", "events_path", "cassette_path", "original_ac_count", "normalized_ac_count", "story_source",
 )
 

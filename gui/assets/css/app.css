@@ -1380,6 +1380,63 @@ body {
 .row2 .field {
     flex: 1;
 }
+.agent-overrides-panel {
+    border: 1px solid var(--br);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.02);
+    margin: 2px 0 10px;
+    padding: 6px 8px;
+}
+.agent-overrides-panel summary {
+    cursor: pointer;
+    color: var(--t2);
+    font-size: 11px;
+    font-weight: 700;
+}
+.agent-overrides-grid {
+    display: grid;
+    gap: 5px;
+    margin-top: 8px;
+    min-width: 0;
+}
+.agent-override-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 6px;
+    align-items: center;
+    min-width: 0;
+}
+.agent-override-name {
+    grid-column: 1 / -1;
+    min-width: 0;
+    color: var(--t2);
+    font-family: var(--mono);
+    font-size: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.agent-override-model {
+    min-width: 0;
+}
+.agent-override-row select,
+.agent-override-row input[type="text"] {
+    min-width: 0;
+    width: 100%;
+    background: rgba(28, 32, 40, 0.85);
+    border: 1px solid var(--input-border);
+    border-radius: 4px;
+    color: var(--t1);
+    font-family: var(--font);
+    font-size: 11px;
+    padding: 4px 6px;
+    outline: none;
+}
+.agent-override-row select:focus,
+.agent-override-row input[type="text"]:focus {
+    border-color: var(--acc);
+    background: var(--s4);
+}
 .story-source-label {
     font-size: 10px;
     letter-spacing: 0.12em;
@@ -2072,6 +2129,19 @@ body {
     font-family: var(--font);
     font-size: 12px;
     line-height: 1.5;
+}
+.term .log-limit-notice {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    margin: 0 0 8px;
+    padding: 6px 8px;
+    border: 1px solid var(--br);
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--t3);
+    font-family: var(--font);
+    font-size: 11px;
 }
 .term .empty strong {
     display: block;

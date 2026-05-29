@@ -371,6 +371,13 @@
                                         ><select id="f-model"></select>
                                     </div>
                                 </div>
+                                <details class="agent-overrides-panel">
+                                    <summary>Per-agent overrides</summary>
+                                    <div
+                                        class="agent-overrides-grid"
+                                        id="f-agent-overrides"
+                                    ></div>
+                                </details>
                                 <div class="row2">
                                     <div class="field">
                                         <label>Mode</label
@@ -2191,6 +2198,7 @@
             role="tooltip"
             hidden
         ></div>
+        <datalist id="codex-model-suggestions"></datalist>
         <datalist id="openai-compat-model-suggestions"></datalist>
         <!-- GUI behavior is split by concern. Load order matters because these
              plain scripts share top-level browser state, matching the previous

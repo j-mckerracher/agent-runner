@@ -82,6 +82,11 @@ class JobManager:
             "story_file": payload.get("story_file"),
             "manual_story_file": manual_story_file,
             "extra_context": payload.get("extra_context"),
+            "agent_llm_overrides": (
+                json.dumps(payload.get("agent_llm_overrides"), sort_keys=True)
+                if payload.get("agent_llm_overrides")
+                else None
+            ),
             "eval_runner_args": payload.get("eval_runner_args"),
             "story_source": payload.get("story_source"),
             "submitted_at": db.now_iso(),

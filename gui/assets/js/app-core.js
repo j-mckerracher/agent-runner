@@ -47,6 +47,15 @@ let activeRunEvents = [];
 let workflowTicker = null;
 let lastSeq = 0;
 let submitRunInFlight = false;
+const RUN_TERMINAL_VISIBLE_LOG_LIMIT = 500;
+const RUN_REPLAY_EVENT_LIMIT = 2000;
+const RUN_WORKFLOW_EVENT_LIMIT = 500;
+const RUN_TERMINAL_TRIMMED_LOGS = { runs: 0, evaluate: 0 };
+const RUN_WORKFLOW_EVENT_TYPES = new Set([
+    "stage.start",
+    "stage.end",
+    "job.end",
+]);
 const RUN_HISTORY_STATE = {
     items: [],
     status: "all",
@@ -73,6 +82,29 @@ const STREAM_EVENT_TYPES = [
     "user.prompt.timeout",
     "user.escalation.resolved",
 ];
+function isPythonLogEvent(ev) {
+    return (
+        !!ev &&
+        ev.type === "log" &&
+        (ev.source === "python_logging" || !!ev.logger)
+    );
+}
+function hasVisibleTerminalEvent(events) {
+    return (events || []).some(
+        (ev) => isPythonLogEvent(ev) || ev.type === "user.prompt",
+    );
+}
+function isWorkflowHistoryEvent(ev) {
+    return !!ev && RUN_WORKFLOW_EVENT_TYPES.has(ev.type);
+}
+function rememberWorkflowEvent(ev) {
+    if (!isWorkflowHistoryEvent(ev)) return false;
+    activeRunEvents.push(ev);
+    if (activeRunEvents.length > RUN_WORKFLOW_EVENT_LIMIT) {
+        activeRunEvents = activeRunEvents.slice(-RUN_WORKFLOW_EVENT_LIMIT);
+    }
+    return true;
+}
 const TELEMETRY_STATE = {
     loaded: false,
     loading: false,

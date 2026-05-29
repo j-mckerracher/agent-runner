@@ -80,6 +80,13 @@ class GuiManualStorySmokeTests(unittest.TestCase):
         self.assertIn("returnfmtLocalClockTime(ts);", compact_scripts)
         self.assertIn('timeZoneName:"short"', compact_scripts)
         self.assertIn('toast("Submitted"+r.job_id,false,"success")', compact_scripts)
+        self.assertIn("constRUN_TERMINAL_VISIBLE_LOG_LIMIT=500", compact_scripts)
+        self.assertIn("constRUN_REPLAY_EVENT_LIMIT=2000", compact_scripts)
+        self.assertIn("functionisPythonLogEvent(ev){", compact_scripts)
+        self.assertIn('ev.source==="python_logging"', compact_scripts)
+        self.assertIn('functionenforceTermLogLimit(term,surface="runs"){', compact_scripts)
+        self.assertIn('data-terminal-log-row', scripts)
+        self.assertIn("/events?limit=${RUN_REPLAY_EVENT_LIMIT}", scripts)
 
     def test_medium__gui_entrypoint_loads_named_assets_by_concern(self) -> None:
         html = read_gui_markup()

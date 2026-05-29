@@ -81,6 +81,25 @@ class RunnerProcBuildCmdTests(unittest.TestCase):
         self.assertNotIn("--story-file", cmd)
         self.assertNotIn("--ado-url", cmd)
 
+    def test_easy__includes_agent_llm_overrides_when_present(self):
+        job = {
+            "id": "job_test",
+            "repo": "/tmp/repo",
+            "change_id": "TEST-OVERRIDE-001",
+            "runner": "claude",
+            "model": "claude-haiku-4-5-20251001",
+            "agent_llm_overrides": '{"qa-engineer":{"runner":"codex","model":"gpt-5.5"},"qa-evaluator":{"model":"judge:model"}}',
+            "events_path": "/tmp/events.jsonl",
+        }
+
+        cmd = JobProcess(job, EventBus(), None)._build_cmd()
+
+        self.assertIn("--agent-runner", cmd)
+        self.assertIn("qa-engineer=codex", cmd)
+        self.assertIn("--agent-model", cmd)
+        self.assertIn("qa-engineer=gpt-5.5", cmd)
+        self.assertIn("qa-evaluator=judge:model", cmd)
+
     def test_medium__start_precleans_before_creating_event_log(self):
         job = {
             "id": "job_test",

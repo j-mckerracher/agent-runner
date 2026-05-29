@@ -85,8 +85,40 @@ def _intake_constraints_path(change_id: str) -> Path:
     return _intake_dir(change_id) / "constraints.md"
 
 
+def _pr_dir(change_id: str) -> Path:
+    return AGENT_CONTEXT_ROOT / change_id / "pr"
+
+
+def _pr_json_path(change_id: str) -> Path:
+    return _pr_dir(change_id) / "pr.json"
+
+
+def _pr_review_path(change_id: str) -> Path:
+    return _pr_dir(change_id) / "pr_review.md"
+
+
 def _utc_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _run_repo_command(repo: str | Path, command: list[str]) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            command,
+            cwd=str(repo),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        details = (exc.stderr or exc.stdout or str(exc)).strip()
+        raise RuntimeError(
+            f"{' '.join(command)} failed in {repo}: {details or 'command failed'}"
+        ) from exc
+
+
+def _repo_command_stdout(repo: str | Path, command: list[str]) -> str:
+    return (_run_repo_command(repo, command).stdout or "").strip()
 
 
 def _normalize_acceptance_criteria(acceptance_criteria: object) -> dict[str, str]:
@@ -1488,6 +1520,179 @@ def step_qa_evaluator(
     except Exception:
         pass
     return result
+
+
+def _load_workflow_feature_branch(change_id: str) -> str:
+    config_path = _intake_config_path(change_id)
+    if not config_path.is_file():
+        raise FileNotFoundError(f"Missing intake config for PR stage: {config_path}")
+    with config_path.open("r", encoding="utf-8") as handle:
+        config = yaml.safe_load(handle) or {}
+    feature_branch = (
+        config.get("run_metadata", {}).get("feature_branch")
+        if isinstance(config, dict)
+        else None
+    )
+    if not isinstance(feature_branch, str) or not feature_branch.strip():
+        raise RuntimeError(f"Missing run_metadata.feature_branch in {config_path}")
+    return feature_branch.strip()
+
+
+def _load_story_title(change_id: str) -> str:
+    story_path = _intake_story_path(change_id)
+    if not story_path.is_file():
+        return change_id
+    with story_path.open("r", encoding="utf-8") as handle:
+        story = yaml.safe_load(handle) or {}
+    title = story.get("title") if isinstance(story, dict) else None
+    return str(title).strip() if title else change_id
+
+
+def _commit_dirty_worktree_for_pr(repo: str | Path, change_id: str) -> bool:
+    status = _repo_command_stdout(repo, ["git", "status", "--porcelain"])
+    if not status:
+        return False
+    _run_repo_command(repo, ["git", "add", "-A"])
+    _run_repo_command(repo, ["git", "commit", "-m", f"Implement {change_id}"])
+    return True
+
+
+def _create_ado_pull_request(change_id: str, repo: str | Path, feature_branch: str) -> dict:
+    current_branch = _repo_command_stdout(repo, ["git", "rev-parse", "--abbrev-ref", "HEAD"])
+    if current_branch != feature_branch:
+        raise RuntimeError(
+            f"PR stage expected target repo to be on {feature_branch!r}, but it is on {current_branch!r}"
+        )
+
+    committed_changes = _commit_dirty_worktree_for_pr(repo, change_id)
+    _run_repo_command(repo, ["git", "push", "-u", "origin", feature_branch])
+
+    title = f"{change_id}: {_load_story_title(change_id)}"
+    description = "\n".join(
+        [
+            f"Automated workflow PR for `{change_id}`.",
+            "",
+            "Workflow artifacts:",
+            f"- Story: `{AGENT_CONTEXT_ROOT}/{change_id}/intake/story.yaml`",
+            f"- Task plan: `{AGENT_CONTEXT_ROOT}/{change_id}/planning/tasks.yaml`",
+            f"- Assignments: `{AGENT_CONTEXT_ROOT}/{change_id}/planning/assignments.json`",
+            f"- QA report: `{AGENT_CONTEXT_ROOT}/{change_id}/qa/qa_report.yaml`",
+            "",
+            "The workflow will run a review-only PR agent after this PR is created.",
+        ]
+    )
+    command = [
+        "az",
+        "repos",
+        "pr",
+        "create",
+        "--source-branch",
+        feature_branch,
+        "--target-branch",
+        "develop",
+        "--title",
+        title,
+        "--description",
+        description,
+        "--detect",
+        "true",
+        "--output",
+        "json",
+    ]
+    result = _run_repo_command(repo, command)
+    raw_stdout = (result.stdout or "").strip()
+    try:
+        pr_payload = json.loads(raw_stdout) if raw_stdout else {}
+    except json.JSONDecodeError:
+        pr_payload = {"raw_output": raw_stdout}
+    if not isinstance(pr_payload, dict):
+        pr_payload = {"value": pr_payload}
+    pr_payload.setdefault("source_branch", feature_branch)
+    pr_payload.setdefault("target_branch", "develop")
+    pr_payload.setdefault("title", title)
+    pr_payload["committed_dirty_worktree"] = committed_changes
+
+    pr_dir = _pr_dir(change_id)
+    pr_dir.mkdir(parents=True, exist_ok=True)
+    with _pr_json_path(change_id).open("w", encoding="utf-8") as handle:
+        json.dump(pr_payload, handle, indent=2)
+        handle.write("\n")
+    return pr_payload
+
+
+@track_with_ui(
+    name="stage:pr-review",
+    type="tool",
+    metadata_getter=lambda change_id, repo, runner="claude", **_unused: _stage_trace_metadata(
+        stage="pr-review",
+        runner=runner,
+        change_id=change_id,
+    ),
+)
+def step_pr_review(
+    change_id: str,
+    repo: str,
+    runner: str = "claude",
+    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+) -> str:
+    logger.info("step_pr_review: change_id=%s runner=%s", change_id, runner)
+    _annotate_trace(stage="pr-review", runner=runner, change_id=change_id)
+    feature_branch = _load_workflow_feature_branch(change_id)
+    pr_payload = _create_ado_pull_request(change_id, repo, feature_branch)
+    review_path = _pr_review_path(change_id)
+    review_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt = (
+        f"Review the pull request created for change {change_id}.\n"
+        f"Target repo: {repo}\n"
+        f"Feature branch: {feature_branch}\n"
+        f"Target branch: develop\n"
+        f"PR metadata path: {_pr_json_path(change_id)}\n"
+        f"Story: {_intake_story_path(change_id)}\n"
+        f"Constraints: {_intake_constraints_path(change_id)}\n"
+        f"Task plan: {_task_plan_path(change_id)}\n"
+        f"Assignments: {_assignments_path(change_id)}\n"
+        f"Implementation reports: {AGENT_CONTEXT_ROOT}/{change_id}/execution/*/impl_report.yaml\n"
+        f"QA report: {AGENT_CONTEXT_ROOT}/{change_id}/qa/qa_report.yaml\n"
+        f"Write the complete review to {review_path}.\n"
+        "This is review-only. Do not modify code, tests, commits, branches, PR metadata, or any artifact except pr_review.md. "
+        "After writing the markdown review, stop."
+    )
+    resolved_model = resolve_agent_model("pr-reviewer", runner, runner_model)
+    result = run_agent_cmd(
+        runner=runner,
+        prompt=prompt,
+        agent="pr-reviewer",
+        repo=repo,
+        change_id=change_id,
+        **_agent_runner_kwargs(resolved_model),
+    )
+    if not review_path.is_file():
+        pr_id = pr_payload.get("pullRequestId") or pr_payload.get("pull_request_id") or pr_payload.get("id") or "unknown"
+        review_path.write_text(
+            "\n".join(
+                [
+                    "# Pull Request Review",
+                    "",
+                    "## Review Summary",
+                    "",
+                    "Risk level: unverified",
+                    "",
+                    "Overall: review artifact fallback",
+                    "",
+                    f"PR id: {pr_id}",
+                    "",
+                    "The reviewer agent did not create the expected markdown file. Its raw response is preserved below.",
+                    "",
+                    "## Reviewer Response",
+                    "",
+                    result or "",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+    logger.info("step_pr_review: completed change_id=%s review_path=%s", change_id, review_path)
+    return str(review_path)
 
 
 def step_lessons_optimizer(

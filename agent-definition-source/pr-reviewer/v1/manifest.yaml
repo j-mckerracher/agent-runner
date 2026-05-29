@@ -1,0 +1,9 @@
+name: pr-reviewer
+version: v1
+description: "Review-only pull request agent, v1"
+source: "agent-definition-source/pr-reviewer/v1/prompt.md"
+claude_code_agent_file: "12-pr-reviewer.agent.md"
+codex_agent_file: "12-pr-reviewer.agent.md"
+github_copilot_agent_file: "12-pr-reviewer.agent.md"
+gemini_agent_file: "12-pr-reviewer.agent.md"
+openai_compat_agent_file: "12-pr-reviewer.agent.md"

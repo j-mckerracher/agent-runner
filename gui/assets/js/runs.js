@@ -297,6 +297,10 @@ $("#submit-btn").addEventListener("click", async () => {
         extra_context: extraContext || null,
         mode: $("#f-mode").value,
     };
+    const agentOverrides = collectRunAgentOverrides();
+    if (Object.keys(agentOverrides).length) {
+        body.agent_llm_overrides = agentOverrides;
+    }
     if (!body.repo) {
         failSubmitValidation("Repo path is required.");
         return;
@@ -436,7 +440,11 @@ function getFailedStage(events) {
 function getLastErrorEvent(events) {
     for (let i = events.length - 1; i >= 0; i--) {
         const ev = events[i];
-        if (ev.type === "log" && ev.level === "error" && ev.msg)
+        if (
+            isPythonLogEvent(ev) &&
+            ev.level === "error" &&
+            ev.msg
+        )
             return ev;
     }
     return null;
@@ -461,6 +469,7 @@ function updateRunFeedback(job, events, surface = "runs") {
 function clearTerm(surface = "runs") {
     const ui = runSurface(surface);
     $(ui.term).innerHTML = "";
+    RUN_TERMINAL_TRIMMED_LOGS[surface] = 0;
     hideRunAlert(surface);
     activeStageGroup = null;
     setActiveSurfaceJob(surface, null);
@@ -620,7 +629,7 @@ function describeEvent(ev, surface = "runs", mode = "live") {
             ev.type === "cli.exit"
                 ? ` exit=${ev.exit_code} ${ev.duration_ms}ms`
                 : ` ${(ev.cmd || []).join(" ")} (${ev.argc || 0} args)`;
-    } else if (ev.type === "cli.stdout" || ev.type === "log") {
+    } else if (ev.type === "log") {
         const lvl = (ev.level || "").toLowerCase();
         cls += " log-" + lvl;
         cls +=
@@ -629,8 +638,9 @@ function describeEvent(ev, surface = "runs", mode = "live") {
             lvl === "critical"
                 ? " stderr"
                 : " stdout";
-        tag = ev.level ? ev.level.toUpperCase() : ev.type;
-        msg = ev.line || ev.msg || "";
+        tag = ev.level ? ev.level.toUpperCase() : "LOG";
+        const loggerName = ev.logger ? `${ev.logger}: ` : "";
+        msg = loggerName + (ev.line || ev.msg || "");
     } else if (ev.type === "cli.stderr") {
         cls += " stderr";
         msg = ev.line || "";
@@ -713,54 +723,69 @@ function appendFlatEvent(
     mode = "live",
 ) {
     const details = describeEvent(ev, surface, mode);
-    if (!details) return;
-    parent.appendChild(
-        buildEventRow(
-            details.cls,
-            details.tag,
-            details.msg,
-            formatEventTime(ev.ts),
-            Number(ev.depth || 0),
-        ),
+    if (!details) return null;
+    const row = buildEventRow(
+        details.cls,
+        details.tag,
+        details.msg,
+        formatEventTime(ev.ts),
+        Number(ev.depth || 0),
     );
+    if (isPythonLogEvent(ev)) row.dataset.terminalLogRow = "true";
+    parent.appendChild(row);
+    return row;
+}
+function renderTermLogLimitNotice(term, surface = "runs") {
+    const trimmed = RUN_TERMINAL_TRIMMED_LOGS[surface] || 0;
+    let note = term.querySelector(".log-limit-notice");
+    if (!trimmed) {
+        if (note) note.remove();
+        return;
+    }
+    if (!note) {
+        note = document.createElement("div");
+        note.className = "log-limit-notice";
+        term.prepend(note);
+    }
+    note.textContent = `${trimmed} older Python log line${trimmed === 1 ? "" : "s"} hidden to keep the UI responsive. Showing the latest ${RUN_TERMINAL_VISIBLE_LOG_LIMIT}.`;
+}
+function enforceTermLogLimit(term, surface = "runs") {
+    const rows = Array.from(
+        term.querySelectorAll('[data-terminal-log-row="true"]'),
+    );
+    const extra = rows.length - RUN_TERMINAL_VISIBLE_LOG_LIMIT;
+    if (extra <= 0) return;
+    rows.slice(0, extra).forEach((row) => row.remove());
+    RUN_TERMINAL_TRIMMED_LOGS[surface] =
+        (RUN_TERMINAL_TRIMMED_LOGS[surface] || 0) + extra;
+    renderTermLogLimitNotice(term, surface);
 }
 function appendEvent(ev, surface = "runs", mode = "live") {
-    const term = ensureTermReady(surface);
     const ui = runSurface(surface);
     collectTraceEvent(ev, surface);
     if (ev.stage) {
         $(ui.stage).textContent = ev.stage;
         $(ui.stage).classList.remove("metrics-skeleton");
     }
+    if (ev.type === "metrics" && mode === "live") {
+        renderSurfaceMetrics(surface);
+    }
+    if (ev.type === "job.end") activeStageGroup = null;
+    if (ev.seq) lastSeq = ev.seq;
+
     if (ev.type === "user.prompt") {
+        const term = ensureTermReady(surface);
         const form = buildUserPromptForm(ev);
-        (activeStageGroup
-            ? activeStageGroup.children
-            : term
-        ).appendChild(form);
+        term.appendChild(form);
         term.scrollTop = term.scrollHeight;
-        if (ev.seq) lastSeq = ev.seq;
         return;
     }
-    if (ev.type === "stage.start") {
-        activeStageGroup = null;
-        startStageGroup(term, ev);
-    } else if (ev.type === "stage.end") {
-        if (!finishStageGroup(ev))
-            appendFlatEvent(term, ev, surface, mode);
-    } else if (shouldNestInStage(ev)) {
-        appendFlatEvent(
-            activeStageGroup.children,
-            ev,
-            surface,
-            mode,
-        );
-    } else {
-        if (ev.type === "job.end") activeStageGroup = null;
-        appendFlatEvent(term, ev, surface, mode);
-    }
+    if (!isPythonLogEvent(ev)) return;
+
+    const term = ensureTermReady(surface);
+    appendFlatEvent(term, ev, surface, mode);
+    enforceTermLogLimit(term, surface);
     term.scrollTop = term.scrollHeight;
-    if (ev.seq) lastSeq = ev.seq;
 }
 function escapeHtml(s) {
     return String(s).replace(
@@ -952,18 +977,22 @@ async function selectJob(id, surface = "runs") {
             stageEl.classList.add("metrics-skeleton");
         }
         // Replay past events then attach stream
-        const events = await api(`/runs/${id}/events`);
+        const events = await api(
+            `/runs/${id}/events?limit=${RUN_REPLAY_EVENT_LIMIT}`,
+        );
         if (surface === "runs") {
             activeRunEvents = Array.isArray(events)
-                ? events.slice()
+                ? events
+                      .filter(isWorkflowHistoryEvent)
+                      .slice(-RUN_WORKFLOW_EVENT_LIMIT)
                 : [];
             renderRunWorkflow(activeRunJob, activeRunEvents);
         }
         updateRunFeedback(job, events, surface);
-        if (!events.length) {
+        if (!hasVisibleTerminalEvent(events)) {
             if (job.status === "failed")
                 setTermEmpty(
-                    "No structured logs were captured for this run. Review the failure summary above.",
+                    "No Python logs were captured for this run. Review the failure summary above.",
                     true,
                     surface,
                 );
@@ -971,10 +1000,10 @@ async function selectJob(id, surface = "runs") {
                 job.status === "running" ||
                 job.status === "queued"
             )
-                setTermEmpty("Waiting for logs...", false, surface);
+                setTermEmpty("Waiting for Python logs...", false, surface);
             else
                 setTermEmpty(
-                    "No logs were captured for this run.",
+                    "No Python logs were captured for this run.",
                     false,
                     surface,
                 );
@@ -1002,9 +1031,9 @@ async function selectJob(id, surface = "runs") {
                     }
                     if (
                         surface === "runs" &&
-                        ev.type !== "stream.end"
+                        ev.type !== "stream.end" &&
+                        rememberWorkflowEvent(ev)
                     ) {
-                        activeRunEvents.push(ev);
                         renderRunWorkflow(
                             activeRunJob,
                             activeRunEvents,

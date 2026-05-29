@@ -2,14 +2,14 @@
 
 **Agent Workbench is a local UI for AI-assisted software delivery.** It turns a manually pasted story, a local synthetic story fixture, or an Azure DevOps work item into a traceable multi-agent workflow you can launch, monitor, inspect, and evaluate locally.
 
-The current runner executes a six-stage workflow:
+The current runner executes a seven-stage workflow:
 
 ```text
-materialize → intake → task-generation → task-assignment → execution ⟳ qa
+materialize → intake → task-generation → task-assignment → execution ⟳ qa → pr-review
                                                                ↑ evaluator feedback |
 ```
 
-The `materialize` stage is a preflight stage. It verifies runner assets by default and refreshes generated runner assets only when the operator explicitly passes `--materialize`. Execution and QA use evaluator loops: a producer agent writes an artifact, an evaluator scores it, and evaluator feedback is injected into the next iteration unless the evaluator returns `PASS`. The historical lessons optimizer is disabled.
+The `materialize` stage is a preflight stage. It verifies runner assets by default and refreshes generated runner assets only when the operator explicitly passes `--materialize`. Execution and QA use evaluator loops: a producer agent writes an artifact, an evaluator scores it, and evaluator feedback is injected into the next iteration unless the evaluator returns `PASS`. The `pr-review` stage creates an Azure DevOps pull request against `develop`, writes a local markdown review, and stops without starting a fix loop. The historical lessons optimizer is disabled.
 
 | Runs | Opik observability |
 |---|---|
@@ -33,9 +33,8 @@ The `materialize` stage is a preflight stage. It verifies runner assets by defau
 The current platform is intentionally local-first and workflow-centric. The next wave of work is aimed at tightening the review loop, improving operator ergonomics, and making agent runs easier to supervise in real time.
 
 - **Pull request automation**
-  - add a dedicated PR agent
-  - create a PR automatically after code is pushed
-  - trigger PR review agents as part of the workflow
+  - refine the dedicated PR review agent
+  - enrich PR metadata and local review artifacts
   - keep the review loop running until critical PR feedback is resolved
   - add Veracode scanning directly into the workflow
 - **Smarter workflow orchestration**
@@ -415,6 +414,9 @@ agent-context/<change-id>/
 │       ├── logs/
 │       ├── screenshots/
 │       └── test_output/
+├── pr/
+│   ├── pr.json
+│   └── pr_review.md
 └── summary/
     ├── workflow_status.yaml
     ├── run_metrics.yaml

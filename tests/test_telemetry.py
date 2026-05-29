@@ -207,6 +207,30 @@ class TelemetryRouteTests(unittest.TestCase):
         self.assertEqual(r2.status_code, 200)
         self.assertEqual(r2.json()[0]["msg"], "from jsonl")
 
+    def test_medium__runs_events_limit_returns_recent_events_in_sequence_order(self):
+        from server import db
+
+        self._insert_job("job_limited_events")
+        for seq in range(1, 6):
+            db.insert_telemetry_event(
+                "job_limited_events",
+                {
+                    "seq": seq,
+                    "ts": f"2026-05-23T00:00:0{seq}Z",
+                    "type": "log",
+                    "source": "python_logging",
+                    "logger": "tests",
+                    "level": "info",
+                    "msg": f"event {seq}",
+                },
+            )
+
+        r = self.client.get("/runs/job_limited_events/events?limit=2")
+
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual([event["seq"] for event in r.json()], [4, 5])
+        self.assertEqual([event["msg"] for event in r.json()], ["event 4", "event 5"])
+
     def test_medium__telemetry_runs_returns_historical_jobs_and_filter_options(self):
         self._insert_job("job_telemetry_runs", change_id="TEL-RUNS", runner="copilot", model="gpt-5.5")
 

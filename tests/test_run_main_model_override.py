@@ -33,6 +33,26 @@ class RunMainArgParseTests(unittest.TestCase):
         args = run.parse_args(["--repo", "/tmp/repo", "--materialize"])
         self.assertFalse(args.skip_materialize)
 
+    def test_easy__parse_args_accepts_repeated_agent_overrides(self) -> None:
+        args = run.parse_args([
+            "--repo", "/tmp/repo",
+            "--agent-runner", "qa-engineer=codex",
+            "--agent-model", "qa-engineer=gpt-5.5",
+            "--agent-model", "qa-evaluator=deepseek-v4-pro:cloud",
+        ])
+
+        self.assertEqual(
+            args.agent_llm_overrides,
+            {
+                "qa-engineer": {"runner": "codex", "model": "gpt-5.5"},
+                "qa-evaluator": {"model": "deepseek-v4-pro:cloud"},
+            },
+        )
+
+    def test_easy__parse_args_rejects_invalid_agent_override_form(self) -> None:
+        with self.assertRaises(SystemExit):
+            run.parse_args(["--repo", "/tmp/repo", "--agent-runner", "qa-engineer"])
+
     def test_easy__story_source_metadata_counts_original_acceptance_criteria(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             story_path = Path(td) / "story.json"
@@ -68,6 +88,64 @@ class RunMainArgParseTests(unittest.TestCase):
         self.assertEqual(metadata["source"], "manual")
         self.assertEqual(metadata["manual_story_file"], str(story_path))
         self.assertEqual(metadata["original_ac_count"], 2)
+
+
+class RunAgentLlmOverrideResolverTests(unittest.TestCase):
+    def test_easy__no_overrides_uses_global_runner_and_model(self) -> None:
+        resolved = run.resolve_agent_llm_overrides(
+            runner="copilot",
+            model="gpt-5.4",
+            config={},
+        )
+
+        self.assertEqual(resolved["qa-engineer"], {"runner": "copilot", "model": "gpt-5.4"})
+        self.assertEqual(resolved["pr-reviewer"], {"runner": "copilot", "model": "gpt-5.4"})
+
+    def test_easy__runner_only_override_uses_runner_default_model(self) -> None:
+        resolved = run.resolve_agent_llm_overrides(
+            runner="copilot",
+            model="gpt-5.4",
+            config={},
+            agent_llm_overrides={"qa-engineer": {"runner": "codex"}},
+        )
+
+        self.assertEqual(resolved["qa-engineer"], {"runner": "codex", "model": "gpt-5.5"})
+        self.assertEqual(resolved["qa-evaluator"], {"runner": "copilot", "model": "gpt-5.4"})
+
+    def test_easy__runner_and_model_override_validates_closed_runner(self) -> None:
+        resolved = run.resolve_agent_llm_overrides(
+            runner="copilot",
+            model="gpt-5.4",
+            config={},
+            agent_llm_overrides={"intake": {"runner": "claude", "model": "claude-sonnet-4-6"}},
+        )
+
+        self.assertEqual(resolved["intake"], {"runner": "claude", "model": "claude-sonnet-4-6"})
+
+    def test_easy__invalid_agent_runner_and_model_raise_clear_errors(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Unknown agent override"):
+            run.resolve_agent_llm_overrides(
+                runner="copilot",
+                model="gpt-5.4",
+                config={},
+                agent_llm_overrides={"not-an-agent": {"runner": "codex"}},
+            )
+
+        with self.assertRaisesRegex(ValueError, "Unknown runner"):
+            run.resolve_agent_llm_overrides(
+                runner="copilot",
+                model="gpt-5.4",
+                config={},
+                agent_llm_overrides={"qa-engineer": {"runner": "bogus"}},
+            )
+
+        with self.assertRaisesRegex(ValueError, "not valid for runner 'claude'"):
+            run.resolve_agent_llm_overrides(
+                runner="copilot",
+                model="gpt-5.4",
+                config={},
+                agent_llm_overrides={"qa-engineer": {"runner": "claude", "model": "bogus"}},
+            )
 
 
 class RunMainStagePlumbingTests(unittest.TestCase):
@@ -108,6 +186,7 @@ class RunMainStagePlumbingTests(unittest.TestCase):
              patch("core.steps.step_intake"), \
              patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop"), \
              patch("core.evaluator_optimizer_loops.run_uow_eval_loop"), \
+             patch("core.steps.step_pr_review"), \
              patch("run.load_assignments", return_value={"batches": []}), \
              patch("core.steps.step_lessons_optimizer"):
             run.main(
@@ -131,6 +210,34 @@ class RunMainStagePlumbingTests(unittest.TestCase):
         handler = kwargs["handlers"][0]
         self.assertIsInstance(handler.formatter, LocalTimezoneFormatter)
         self.assertEqual(handler.formatter._style._fmt, DEFAULT_LOG_FORMAT)
+
+    def test_medium__event_log_handler_captures_only_selected_python_log_levels(self) -> None:
+        from server.events import read_all
+
+        with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as fh:
+            event_log_path = fh.name
+        try:
+            Path(event_log_path).write_text("", encoding="utf-8")
+            with patch.dict(run.os.environ, {"AGENT_RUNNER_EVENT_LOG": event_log_path}, clear=False):
+                run.configure_logging("warning")
+                test_logger = logging.getLogger("tests.python_log_level")
+                test_logger.info("hidden info")
+                test_logger.warning("shown warning")
+
+            events = [
+                event for event in read_all(event_log_path)
+                if event.get("logger") == "tests.python_log_level"
+            ]
+
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0]["source"], "python_logging")
+            self.assertEqual(events[0]["level"], "warning")
+            self.assertEqual(events[0]["msg"], "shown warning")
+        finally:
+            try:
+                Path(event_log_path).unlink()
+            except OSError:
+                pass
 
     def test_medium__explicit_model_flows_through_runner_model_kwargs(self) -> None:
         workflow_input = SimpleNamespace(
@@ -157,6 +264,7 @@ class RunMainStagePlumbingTests(unittest.TestCase):
              patch("core.steps.step_intake", intake_mock), \
              patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop"), \
              patch("core.evaluator_optimizer_loops.run_uow_eval_loop"), \
+             patch("core.steps.step_pr_review"), \
              patch("run.load_assignments", return_value={"batches": []}), \
              patch("core.steps.step_lessons_optimizer"):
             run.main(
@@ -171,6 +279,72 @@ class RunMainStagePlumbingTests(unittest.TestCase):
         kwargs = intake_mock.call_args.kwargs
         self.assertEqual(kwargs["runner"], "copilot")
         self.assertEqual(kwargs["runner_model"], "gpt-5.4")
+
+    def test_medium__agent_overrides_flow_to_stage_and_loop_calls(self) -> None:
+        workflow_input = SimpleNamespace(
+            repo="/tmp/repo",
+            change_id="TEST-OVERRIDE-001",
+            intake_mode="synthetic",
+            intake_source="/tmp/story.json",
+            branch_description_source="Test branch",
+        )
+        loop_calls: list[dict] = []
+        uow_calls: list[dict] = []
+
+        def fake_eval_loop(*_args, **kwargs):
+            loop_calls.append(kwargs)
+
+        def fake_uow_loop(**kwargs):
+            uow_calls.append(kwargs)
+
+        with patch.object(run, "resolve_workflow_input", return_value=workflow_input), \
+             patch.object(run, "use_runner_root"), \
+             patch.object(run, "clean_workspace"), \
+             patch.object(run, "_load_runner_config", return_value=self._config()), \
+             patch.object(run, "_emit"), \
+             patch.object(run, "_write_workflow_status"), \
+             patch.object(run, "_require_file"), \
+             patch.object(run, "_require_dir"), \
+             patch("core.opik_tracing.opik.configure"), \
+             patch("core.opik_tracing.opik.Opik", return_value=Mock()), \
+             patch("signal.signal"), \
+             patch("core.materialize.run_materialization"), \
+             patch("core.steps.step_intake") as intake_mock, \
+             patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop", side_effect=fake_eval_loop), \
+             patch("core.evaluator_optimizer_loops.run_uow_eval_loop", side_effect=fake_uow_loop), \
+             patch("core.steps.step_pr_review") as pr_review_mock, \
+             patch("run.load_assignments", return_value={"batches": [{"batch_id": 1, "parallel_execution": False, "uows": [{"uow_id": "UOW-001"}]}]}), \
+             patch("core.steps.step_lessons_optimizer"):
+            run.main(
+                repo="/tmp/repo",
+                story_file="/tmp/story.json",
+                runner="copilot",
+                model="gpt-5.4",
+                skip_materialize=True,
+                agent_llm_overrides={
+                    "intake": {"runner": "claude", "model": "claude-sonnet-4-6"},
+                    "task-generator": {"runner": "codex", "model": "gpt-5.5"},
+                    "task-plan-evaluator": {"runner": "openai-compat", "model": "judge:model"},
+                    "software-engineer-hyperagent": {"runner": "codex", "model": "gpt-5.4"},
+                    "implementation-evaluator": {"runner": "claude", "model": "claude-haiku-4-5-20251001"},
+                    "qa-engineer": {"runner": "gemini", "model": "gemini-2.5-flash"},
+                    "qa-evaluator": {"runner": "openai-compat", "model": "qa:judge"},
+                    "pr-reviewer": {"runner": "codex", "model": "gpt-5.2"},
+                },
+            )
+
+        self.assertEqual(intake_mock.call_args.kwargs["runner"], "claude")
+        self.assertEqual(intake_mock.call_args.kwargs["runner_model"], "claude-sonnet-4-6")
+        self.assertEqual(loop_calls[0]["runner"], "codex")
+        self.assertEqual(loop_calls[0]["runner_model"], "gpt-5.5")
+        self.assertEqual(loop_calls[0]["evaluator_runner"], "openai-compat")
+        self.assertEqual(loop_calls[0]["evaluator_runner_model"], "judge:model")
+        self.assertEqual(uow_calls[0]["runner"], "codex")
+        self.assertEqual(uow_calls[0]["evaluator_runner"], "claude")
+        self.assertEqual(loop_calls[-1]["runner"], "gemini")
+        self.assertEqual(loop_calls[-1]["evaluator_runner_model"], "qa:judge")
+        self.assertEqual(pr_review_mock.call_args.kwargs["runner"], "codex")
+        self.assertEqual(pr_review_mock.call_args.kwargs["runner_model"], "gpt-5.2")
 
     def test_medium__server_driven_runs_skip_duplicate_workspace_cleanup(self) -> None:
         workflow_input = SimpleNamespace(
@@ -197,6 +371,7 @@ class RunMainStagePlumbingTests(unittest.TestCase):
              patch("core.steps.step_intake"), \
              patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop"), \
              patch("core.evaluator_optimizer_loops.run_uow_eval_loop"), \
+             patch("core.steps.step_pr_review"), \
              patch("run.load_assignments", return_value={"batches": []}), \
              patch("core.steps.step_lessons_optimizer"):
             run.main(
@@ -208,6 +383,56 @@ class RunMainStagePlumbingTests(unittest.TestCase):
             )
 
         clean_workspace_mock.assert_not_called()
+
+    def test_medium__main_runs_pr_review_after_qa_as_terminal_stage(self) -> None:
+        workflow_input = SimpleNamespace(
+            repo="/tmp/repo",
+            change_id="TEST-PR-001",
+            intake_mode="synthetic",
+            intake_source="/tmp/story.json",
+            branch_description_source="Test branch",
+        )
+
+        stage_order: list[str] = []
+
+        def fake_eval_loop(producer_func, producer_input, evaluator_func, evaluator_prompt, **kwargs):  # noqa: ARG001
+            if "Perform QA validation" in producer_input:
+                stage_order.append("qa")
+
+        def fake_pr_review(**kwargs):  # noqa: ARG001
+            stage_order.append("pr-review")
+            return "/tmp/pr_review.md"
+
+        with patch.object(run, "resolve_workflow_input", return_value=workflow_input), \
+             patch.object(run, "use_runner_root"), \
+             patch.object(run, "clean_workspace"), \
+             patch.object(run, "_load_runner_config", return_value=self._config()), \
+             patch.object(run, "_emit"), \
+             patch.object(run, "_write_workflow_status") as write_status_mock, \
+             patch.object(run, "_require_file"), \
+             patch.object(run, "_require_dir"), \
+             patch("core.opik_tracing.opik.configure"), \
+             patch("core.opik_tracing.opik.Opik", return_value=Mock()), \
+             patch("signal.signal"), \
+             patch("core.materialize.run_materialization"), \
+             patch("core.steps.step_intake"), \
+             patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop", side_effect=fake_eval_loop), \
+             patch("core.evaluator_optimizer_loops.run_uow_eval_loop"), \
+             patch("core.steps.step_pr_review", side_effect=fake_pr_review) as pr_review_mock, \
+             patch("run.load_assignments", return_value={"batches": []}), \
+             patch("core.steps.step_lessons_optimizer") as lessons_mock:
+            run.main(
+                repo="/tmp/repo",
+                story_file="/tmp/story.json",
+                runner="copilot",
+                model="gpt-5-mini",
+                skip_materialize=True,
+            )
+
+        self.assertEqual(stage_order, ["qa", "pr-review"])
+        pr_review_mock.assert_called_once()
+        lessons_mock.assert_not_called()
+        self.assertEqual(write_status_mock.call_args.kwargs["last_completed_stage"], "pr-review")
 
 
 if __name__ == "__main__":

@@ -17,6 +17,10 @@
       "version": "v3"
     },
     {
+      "name": "pr-reviewer",
+      "version": "v1"
+    },
+    {
       "name": "qa",
       "version": "v2"
     },
@@ -211,7 +215,8 @@
     "script:request-user-input.py@source": "a73c5e274193b428c7da4f26ffbf9a54c51083edf451cec9a503a23d7a85877a",
     "script:validate-artifact-schema.py@source": "cedf70d4d04d5bee79182eea24c4792051174c708cf4476313ce37f9203441c9",
     "script:validate-diff-size.py@source": "d22f20f6eba1a6d32163a7d7a88c1110de4ab9a6a4c3794345d128ffc5a63880",
-    "script:validate-scope.py@source": "acdd22b90d0bde7897de5fadc41480f8960a2c25b86fce494a3fefcdc06d7383"
+    "script:validate-scope.py@source": "acdd22b90d0bde7897de5fadc41480f8960a2c25b86fce494a3fefcdc06d7383",
+    "agent:pr-reviewer@v1": "d1d5e3523fa4756e5615f6574fb7aa5323f925f4281bcb0731160d81e867f3a0"
   },
   "materialized_at": "2026-05-26T17:06:34Z"
 }

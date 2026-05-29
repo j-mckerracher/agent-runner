@@ -130,6 +130,15 @@ class JobProcess:
         cmd += ["--runner", self.job["runner"]]
         if self.job.get("model"):
             cmd += ["--model", self.job["model"]]
+        if self.job.get("agent_llm_overrides"):
+            overrides = json.loads(self.job.get("agent_llm_overrides") or "{}")
+            for agent, override in sorted(overrides.items()):
+                if not isinstance(override, dict):
+                    continue
+                if override.get("runner"):
+                    cmd += ["--agent-runner", f"{agent}={override['runner']}"]
+                if override.get("model"):
+                    cmd += ["--agent-model", f"{agent}={override['model']}"]
         if self.job.get("log_level"):
             cmd += ["--log-level", self.job["log_level"]]
         if self.job.get("extra_context"):

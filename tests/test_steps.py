@@ -8,15 +8,18 @@ Difficulty rubric for this file:
 """
 
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import yaml
 
 from core.steps import (
+    _create_ado_pull_request,
     _write_synthetic_intake_artifacts,
+    step_pr_review,
     step_intake,
     step_task_assigner,
     step_task_gen_producer,
@@ -223,6 +226,116 @@ class StepIntakeManualModeTests(unittest.TestCase):
                 )
 
             request_user_input.assert_not_called()
+
+
+class PullRequestStageTests(unittest.TestCase):
+    def _write_pr_stage_artifacts(self, root: Path, change_id: str = "WI-123") -> Path:
+        context_root = root / "agent-context"
+        intake_dir = context_root / change_id / "intake"
+        intake_dir.mkdir(parents=True, exist_ok=True)
+        (intake_dir / "config.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "run_metadata": {
+                        "feature_branch": "feature/wi-123-review-stage",
+                    }
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+        (intake_dir / "story.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "change_id": change_id,
+                    "title": "Review created PR",
+                    "acceptance_criteria": {"AC1": "Create a review artifact."},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+        return context_root
+
+    def _completed(self, command: list[str], stdout: str = "") -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    def test_medium__create_ado_pull_request_commits_dirty_worktree_and_targets_develop(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            context_root = self._write_pr_stage_artifacts(root)
+            commands: list[list[str]] = []
+
+            def fake_run(command, cwd, check, capture_output, text):  # noqa: ARG001
+                commands.append(list(command))
+                if command[:4] == ["git", "rev-parse", "--abbrev-ref", "HEAD"]:
+                    return self._completed(command, "feature/wi-123-review-stage\n")
+                if command[:3] == ["git", "status", "--porcelain"]:
+                    return self._completed(command, " M src/app.ts\n")
+                if command[:4] == ["az", "repos", "pr", "create"]:
+                    return self._completed(command, '{"pullRequestId": 42, "url": "https://example/pr/42"}\n')
+                return self._completed(command)
+
+            with (
+                patch("core.steps.AGENT_CONTEXT_ROOT", context_root),
+                patch("core.steps.subprocess.run", side_effect=fake_run),
+            ):
+                payload = _create_ado_pull_request("WI-123", "/tmp/target-repo", "feature/wi-123-review-stage")
+
+            self.assertEqual(payload["pullRequestId"], 42)
+            self.assertTrue(payload["committed_dirty_worktree"])
+            self.assertIn(["git", "add", "-A"], commands)
+            self.assertIn(["git", "commit", "-m", "Implement WI-123"], commands)
+            self.assertIn(["git", "push", "-u", "origin", "feature/wi-123-review-stage"], commands)
+            az_command = next(command for command in commands if command[:4] == ["az", "repos", "pr", "create"])
+            self.assertIn("--target-branch", az_command)
+            self.assertEqual(az_command[az_command.index("--target-branch") + 1], "develop")
+            pr_json = context_root / "WI-123" / "pr" / "pr.json"
+            self.assertEqual(json.loads(pr_json.read_text(encoding="utf-8"))["pullRequestId"], 42)
+
+    def test_medium__create_ado_pull_request_skips_commit_when_worktree_is_clean(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            context_root = self._write_pr_stage_artifacts(root)
+            commands: list[list[str]] = []
+
+            def fake_run(command, cwd, check, capture_output, text):  # noqa: ARG001
+                commands.append(list(command))
+                if command[:4] == ["git", "rev-parse", "--abbrev-ref", "HEAD"]:
+                    return self._completed(command, "feature/wi-123-review-stage\n")
+                if command[:3] == ["git", "status", "--porcelain"]:
+                    return self._completed(command, "")
+                if command[:4] == ["az", "repos", "pr", "create"]:
+                    return self._completed(command, '{"pullRequestId": 43}\n')
+                return self._completed(command)
+
+            with (
+                patch("core.steps.AGENT_CONTEXT_ROOT", context_root),
+                patch("core.steps.subprocess.run", side_effect=fake_run),
+            ):
+                payload = _create_ado_pull_request("WI-123", "/tmp/target-repo", "feature/wi-123-review-stage")
+
+            self.assertFalse(payload["committed_dirty_worktree"])
+            self.assertNotIn(["git", "commit", "-m", "Implement WI-123"], commands)
+
+    def test_medium__step_pr_review_invokes_reviewer_once_and_preserves_markdown_fallback(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            context_root = self._write_pr_stage_artifacts(root)
+            pr_payload = {"pullRequestId": 44}
+
+            with (
+                patch("core.steps.AGENT_CONTEXT_ROOT", context_root),
+                patch("core.steps._create_ado_pull_request", return_value=pr_payload),
+                patch("core.steps.resolve_agent_model", return_value="gpt-test"),
+                patch("core.steps.run_agent_cmd", return_value="review response") as run_agent_cmd,
+            ):
+                review_path = Path(step_pr_review("WI-123", "/tmp/target-repo", runner="copilot", runner_model="gpt-test"))
+
+            run_agent_cmd.assert_called_once()
+            self.assertEqual(run_agent_cmd.call_args.kwargs["agent"], "pr-reviewer")
+            self.assertTrue(review_path.is_file())
+            self.assertIn("review response", review_path.read_text(encoding="utf-8"))
 
 
 class CopilotPlanningFallbackTests(unittest.TestCase):

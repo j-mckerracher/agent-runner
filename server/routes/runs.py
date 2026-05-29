@@ -15,10 +15,11 @@ from pydantic import BaseModel, Field, field_validator
 from core.cli_logging import normalize_log_level
 from core.story_inputs import infer_manual_change_id, validate_manual_story
 from core.workflow_inputs import normalize_repo_path, resolve_workflow_input
+from run import resolve_agent_llm_overrides
 
 from .. import db
 from ..config import load_config
-from ..events import read_all
+from ..events import read_all, read_recent
 from ..jobs import manager
 from ..paths import user_responses_path_for
 from core.runner_models import KNOWN_RUNNERS, resolve_runner_model
@@ -71,6 +72,7 @@ class RunSubmit(BaseModel):
     change_id: Optional[str] = None
     runner: str = "claude"
     model: Optional[str] = None
+    agent_llm_overrides: dict[str, dict[str, str | None]] = Field(default_factory=dict)
     log_level: str = "warning"
     mode: str = Field("live", pattern="^(live|hermetic)$")
     run_kind: Optional[str] = None
@@ -108,6 +110,17 @@ async def submit_run(payload: RunSubmit) -> dict[str, Any]:
         except ValueError as exc:
             logger.warning("submit_run: invalid model=%s for runner=%s: %s", payload.model, payload.runner, exc)
             raise HTTPException(400, str(exc))
+    if payload.agent_llm_overrides:
+        try:
+            resolve_agent_llm_overrides(
+                runner=payload.runner,
+                model=payload.model,
+                config=cfg,
+                agent_llm_overrides=payload.agent_llm_overrides,
+            )
+        except ValueError as exc:
+            logger.warning("submit_run: invalid agent LLM override: %s", exc)
+            raise HTTPException(400, str(exc)) from exc
     if payload.run_kind and payload.run_kind != "regular":
         logger.warning("submit_run: invalid run_kind=%s", payload.run_kind)
         raise HTTPException(400, "regular runs must be submitted through /runs")
@@ -191,18 +204,24 @@ async def get_run(job_id: str) -> dict[str, Any]:
 
 
 @router.get("/{job_id}/events")
-async def get_run_events(job_id: str) -> list[dict[str, Any]]:
-    logger.debug("get_run_events: job_id=%s", job_id)
+async def get_run_events(
+    job_id: str,
+    limit: int | None = Query(None, ge=1, le=10000),
+) -> list[dict[str, Any]]:
+    logger.debug("get_run_events: job_id=%s limit=%s", job_id, limit)
     row = db.get_job(job_id)
     if not row:
         logger.warning("get_run_events: job_id=%s not found", job_id)
         raise HTTPException(404, "job not found")
-    events = db.list_telemetry_events([job_id])
+    events = db.list_telemetry_events([job_id], limit=limit)
     if not events:
         db.backfill_telemetry_events_for_job(row)
-        events = db.list_telemetry_events([job_id])
+        events = db.list_telemetry_events([job_id], limit=limit)
     if not events:
-        events = read_all(row["events_path"]) if row.get("events_path") else []
+        if row.get("events_path"):
+            events = read_recent(row["events_path"], limit) if limit else read_all(row["events_path"])
+        else:
+            events = []
     logger.debug("get_run_events: job_id=%s returning %d event(s)", job_id, len(events))
     return events
 

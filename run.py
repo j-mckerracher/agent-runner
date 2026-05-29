@@ -78,7 +78,79 @@ AGENT_NAMES = [
     "implementation-evaluator",
     "qa-engineer",
     "qa-evaluator",
+    "pr-reviewer",
 ]
+AGENT_NAME_SET = frozenset(AGENT_NAMES)
+
+
+def _parse_agent_override_arg(value: str) -> tuple[str, str]:
+    agent, sep, override = value.partition("=")
+    agent = agent.strip()
+    override = override.strip()
+    if not sep or not agent or not override:
+        raise argparse.ArgumentTypeError("agent overrides must use AGENT=VALUE")
+    return agent, override
+
+
+def _agent_override_pairs(values: list[tuple[str, str]] | None, field: str) -> dict[str, dict[str, str]]:
+    result: dict[str, dict[str, str]] = {}
+    for agent, override in values or []:
+        result.setdefault(agent, {})[field] = override
+    return result
+
+
+def _merge_agent_override_maps(*maps: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
+    merged: dict[str, dict[str, str]] = {}
+    for item in maps:
+        for agent, override in item.items():
+            merged.setdefault(agent, {}).update(override)
+    return merged
+
+
+def resolve_agent_llm_overrides(
+    *,
+    runner: str,
+    model: str | None,
+    config: dict | None,
+    agent_llm_overrides: dict[str, dict[str, str | None]] | None = None,
+) -> dict[str, dict[str, str | None]]:
+    """Resolve the per-agent runner/model map for this workflow run."""
+    overrides = agent_llm_overrides or {}
+    for agent, override in overrides.items():
+        if agent not in AGENT_NAME_SET:
+            raise ValueError(
+                f"Unknown agent override '{agent}'. Valid agents: {', '.join(AGENT_NAMES)}"
+            )
+        if not isinstance(override, dict):
+            raise ValueError(f"agent_llm_overrides[{agent}] must be an object")
+        unknown_keys = set(override) - {"runner", "model"}
+        if unknown_keys:
+            raise ValueError(
+                f"agent_llm_overrides[{agent}] has unsupported keys: {', '.join(sorted(unknown_keys))}"
+            )
+
+    resolved: dict[str, dict[str, str | None]] = {}
+    for agent in AGENT_NAMES:
+        override = overrides.get(agent) or {}
+        agent_runner = override.get("runner") or runner
+        if "model" in override:
+            agent_model = override.get("model")
+        elif "runner" in override:
+            agent_model = None
+        else:
+            agent_model = model
+        if not isinstance(agent_runner, str) or not agent_runner.strip():
+            raise ValueError(f"agent_llm_overrides[{agent}].runner must be a non-empty string")
+        if agent_model is not None and not isinstance(agent_model, str):
+            raise ValueError(f"agent_llm_overrides[{agent}].model must be a string")
+        llm_config = resolve_runner_llm_config(agent_runner, agent_model, config)
+        resolved[agent] = {"runner": agent_runner, "model": llm_config["model"]}
+    return resolved
+
+
+def _agent_llm_kwargs(agent_llms: dict[str, dict[str, str | None]], agent: str) -> dict[str, str | None]:
+    llm = agent_llms[agent]
+    return {"runner": llm["runner"], "runner_model": llm["model"]}
 
 
 def _emit(type: str, **fields) -> None:
@@ -158,6 +230,7 @@ def _workflow_stage_names(*, skip_lessons_optimizer: bool = True) -> list[str]:
         "task-assignment",
         "execution",
         "qa",
+        "pr-review",
     ]
 
 
@@ -654,7 +727,9 @@ def configure_logging(log_level: str) -> None:
     )
     if os.environ.get("AGENT_RUNNER_EVENT_LOG"):
         from server.events import EventEmitHandler
-        logging.getLogger().addHandler(EventEmitHandler())
+        event_handler = EventEmitHandler()
+        event_handler.setLevel(to_logging_level(log_level))
+        logging.getLogger().addHandler(event_handler)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -710,6 +785,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--agent-runner",
+        action="append",
+        type=_parse_agent_override_arg,
+        default=[],
+        metavar="AGENT=RUNNER",
+        help="Per-run runner override for one workflow agent. May be repeated.",
+    )
+    parser.add_argument(
+        "--agent-model",
+        action="append",
+        type=_parse_agent_override_arg,
+        default=[],
+        metavar="AGENT=MODEL",
+        help="Per-run model override for one workflow agent. May be repeated.",
+    )
+    parser.add_argument(
         "--extra-context",
         default=None,
         help=(
@@ -753,6 +844,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Logging verbosity: debug, info, warning, error, or critical.",
     )
     args = parser.parse_args(argv)
+    args.agent_llm_overrides = _merge_agent_override_maps(
+        _agent_override_pairs(args.agent_runner, "runner"),
+        _agent_override_pairs(args.agent_model, "model"),
+    )
     return args
 
 
@@ -766,6 +861,7 @@ def main(
     manual_story_file: str | None = None,
     runner: str = "claude",
     model: str | None = None,
+    agent_llm_overrides: dict[str, dict[str, str | None]] | None = None,
     extra_context: str | None = None,
     skip_lessons_optimizer: bool = True,
     skip_materialize: bool = True,
@@ -835,6 +931,12 @@ def main(
         logger.info("main: resolving runner LLM config runner=%s model=%s", runner, model)
         try:
             runner_llm_config = resolve_runner_llm_config(runner, model, config)
+            agent_llms = resolve_agent_llm_overrides(
+                runner=runner,
+                model=model,
+                config=config,
+                agent_llm_overrides=agent_llm_overrides,
+            )
             resolved_model = runner_llm_config["model"]
             logger.info("main: resolved_model=%s", resolved_model)
         except Exception as exc:
@@ -919,7 +1021,6 @@ def main(
         import core.steps as steps
         from core.evaluator_optimizer_loops import run_eval_optimizer_loop, run_uow_eval_loop
 
-        runner_model_kwargs: dict = {"runner_model": resolved_model}
         loop_iter_count = 1 if calibration_fast_mode else 3
 
         logger.info("main: entering workflow trace context")
@@ -957,15 +1058,15 @@ def main(
                 if _intake_artifact_dir.is_dir():
                     shutil.rmtree(_intake_artifact_dir)
                     logger.info("main: purged stale intake artifacts for change_id=%s", resolved_change_id)
-                print(f"[intake] Starting intake stage: runner={runner} model={resolved_model}")
+                intake_llm = agent_llms["intake"]
+                print(f"[intake] Starting intake stage: runner={intake_llm['runner']} model={intake_llm['model']}")
                 steps.step_intake(
                     intake_source=intake_source,
                     repo=resolved_repo,
                     change_id=resolved_change_id,
                     intake_mode=intake_mode,
-                    runner=runner,
                     extra_context=extra_context,
-                    **runner_model_kwargs,
+                    **_agent_llm_kwargs(agent_llms, "intake"),
                 )
                 last_completed_stage = "intake"
                 failed_stage = None
@@ -1013,8 +1114,9 @@ def main(
                     evaluator_func=steps.step_task_gen_evaluator,
                     evaluator_prompt=task_gen_evaluator_prompt,
                     iter_count=loop_iter_count,
-                    runner=runner,
-                    **runner_model_kwargs,
+                    **_agent_llm_kwargs(agent_llms, "task-generator"),
+                    evaluator_runner=agent_llms["task-plan-evaluator"]["runner"],
+                    evaluator_runner_model=agent_llms["task-plan-evaluator"]["model"],
                 )
                 last_completed_stage = "task-generation"
                 failed_stage = None
@@ -1044,8 +1146,9 @@ def main(
                     evaluator_func=steps.step_assignment_evaluator,
                     evaluator_prompt=assignment_evaluator_prompt,
                     iter_count=loop_iter_count,
-                    runner=runner,
-                    **runner_model_kwargs,
+                    **_agent_llm_kwargs(agent_llms, "task-assigner"),
+                    evaluator_runner=agent_llms["assignment-evaluator"]["runner"],
+                    evaluator_runner_model=agent_llms["assignment-evaluator"]["model"],
                 )
                 last_completed_stage = "task-assignment"
                 failed_stage = None
@@ -1080,8 +1183,9 @@ def main(
                             change_id=resolved_change_id,
                             repo=resolved_repo,
                             iter_count=loop_iter_count,
-                            runner=runner,
-                            **runner_model_kwargs,
+                            **_agent_llm_kwargs(agent_llms, "software-engineer-hyperagent"),
+                            evaluator_runner=agent_llms["implementation-evaluator"]["runner"],
+                            evaluator_runner_model=agent_llms["implementation-evaluator"]["model"],
                         )
                     except BaseException as exc:
                         _emit(
@@ -1168,10 +1272,23 @@ def main(
                     evaluator_func=steps.step_qa_evaluator,
                     evaluator_prompt=qa_evaluator_prompt,
                     iter_count=loop_iter_count,
-                    runner=runner,
-                    **runner_model_kwargs,
+                    **_agent_llm_kwargs(agent_llms, "qa-engineer"),
+                    evaluator_runner=agent_llms["qa-evaluator"]["runner"],
+                    evaluator_runner_model=agent_llms["qa-evaluator"]["model"],
                 )
                 last_completed_stage = "qa"
+                failed_stage = None
+
+            # ── Stage 6: Pull Request Creation + Review ─────────────────────
+            with _Stage("pr-review"):
+                failed_stage = "pr-review"
+                pr_review_path = steps.step_pr_review(
+                    change_id=resolved_change_id,
+                    repo=resolved_repo,
+                    **_agent_llm_kwargs(agent_llms, "pr-reviewer"),
+                )
+                print(f"PR review saved to {pr_review_path}")
+                last_completed_stage = "pr-review"
                 failed_stage = None
 
             # The lessons optimizer previously ran here and could inject rules
@@ -1263,6 +1380,7 @@ if __name__ == "__main__":
             manual_story_file=args.manual_story_file,
             runner=args.runner,
             model=args.model,
+            agent_llm_overrides=args.agent_llm_overrides,
             extra_context=args.extra_context,
             skip_lessons_optimizer=args.skip_lessons_optimizer,
             skip_materialize=args.skip_materialize,
