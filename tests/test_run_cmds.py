@@ -823,8 +823,7 @@ class RunnerCommandPayloadMatrixTests(unittest.TestCase):
                 self.assertEqual(cmd[cmd.index("--model") + 1], model)
                 self.assertIn("--sandbox", cmd)
                 self.assertEqual(cmd[cmd.index("--sandbox") + 1], "workspace-write")
-                self.assertIn("--ask-for-approval", cmd)
-                self.assertEqual(cmd[cmd.index("--ask-for-approval") + 1], "never")
+                self.assertNotIn("--ask-for-approval", cmd)
                 self.assertIn("--output-last-message", cmd)
                 self.assertEqual(cmd[-1], "SYSTEM\n\nSay OK")
 

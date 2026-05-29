@@ -1920,8 +1920,6 @@ def run_codex_cmd(
         "--skip-git-repo-check",
         "--sandbox",
         "workspace-write" if skip_permissions else "read-only",
-        "--ask-for-approval",
-        "never",
         "--color",
         "never",
         "--output-last-message",
