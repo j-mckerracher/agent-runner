@@ -236,6 +236,42 @@ function runOverrideSafeId(agentName) {
     return agentName.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
+const RUN_AGENT_OVERRIDES_STORAGE_KEY = "agent-runner.runAgentOverrides";
+
+function loadRunAgentOverrideSelections() {
+    try {
+        const raw = window.localStorage?.getItem(
+            RUN_AGENT_OVERRIDES_STORAGE_KEY,
+        );
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed.overrides === "object"
+            ? parsed.overrides
+            : {};
+    } catch {
+        return {};
+    }
+}
+
+function persistRunAgentOverrideSelections() {
+    const overrides = {};
+    WORKFLOW_STAGE_AGENTS.forEach((agentName) => {
+        const safe = runOverrideSafeId(agentName);
+        overrides[agentName] = {
+            runner: $(`#f-agent-runner-${safe}`)?.value || "",
+            model: $(`#f-agent-model-${safe}`)?.value?.trim() || "",
+        };
+    });
+    try {
+        window.localStorage?.setItem(
+            RUN_AGENT_OVERRIDES_STORAGE_KEY,
+            JSON.stringify({ version: 1, overrides }),
+        );
+    } catch {
+        // Ignore storage failures; the form remains usable without persistence.
+    }
+}
+
 function syncRunAgentOverrideModel(agentName) {
     const safe = runOverrideSafeId(agentName);
     const runnerEl = $(`#f-agent-runner-${safe}`);
@@ -287,6 +323,7 @@ function buildRunAgentOverridesUI() {
     const container = $("#f-agent-overrides");
     if (!container) return;
     container.innerHTML = "";
+    const savedSelections = loadRunAgentOverrideSelections();
     WORKFLOW_STAGE_AGENTS.forEach((agentName) => {
         const safe = runOverrideSafeId(agentName);
         const row = document.createElement("div");
@@ -321,8 +358,41 @@ function buildRunAgentOverridesUI() {
 
         row.append(label, runnerSelect, modelWrap);
         container.appendChild(row);
+        const saved = savedSelections[agentName] || {};
+        if (
+            saved.runner &&
+            [...runnerSelect.options].some(
+                (option) => option.value === saved.runner,
+            )
+        ) {
+            runnerSelect.value = saved.runner;
+        }
         syncRunAgentOverrideModel(agentName);
+        const modelEl = $(`#f-agent-model-${safe}`);
+        if (modelEl && saved.model) {
+            if (
+                modelEl.tagName === "INPUT" ||
+                [...modelEl.options].some(
+                    (option) => option.value === saved.model,
+                )
+            ) {
+                modelEl.value = saved.model;
+            }
+        }
     });
+    if (!container.dataset.persistenceBound) {
+        container.addEventListener("input", (event) => {
+            if (event.target?.id?.startsWith("f-agent-model-")) {
+                persistRunAgentOverrideSelections();
+            }
+        });
+        container.addEventListener("change", (event) => {
+            if (event.target?.id?.startsWith("f-agent-")) {
+                persistRunAgentOverrideSelections();
+            }
+        });
+        container.dataset.persistenceBound = "true";
+    }
 }
 
 function refreshRunAgentOverrideModelsUsingDefaultRunner() {
