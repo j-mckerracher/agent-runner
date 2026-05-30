@@ -33,6 +33,12 @@ class ServerMainTests(unittest.TestCase):
         config = server_main.build_logging_config("error")
 
         self.assertEqual(config["root"]["level"], "ERROR")
+        self.assertEqual(config["handlers"]["console"]["level"], "ERROR")
+        self.assertEqual(config["handlers"]["console"]["filters"], ["demote_httpx_healthcheck"])
+        self.assertEqual(
+            config["filters"]["demote_httpx_healthcheck"]["()"],
+            "core.cli_logging.DemoteHttpxHealthcheckFilter",
+        )
         self.assertEqual(config["loggers"]["uvicorn"]["level"], "ERROR")
         self.assertEqual(config["loggers"]["uvicorn.access"]["level"], "ERROR")
         self.assertEqual(config["formatters"]["standard"]["()"], "core.cli_logging.LocalTimezoneFormatter")

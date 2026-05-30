@@ -34,6 +34,12 @@ _LOGGING_CONFIG = {
             "class": "logging.StreamHandler",
             "stream": "ext://sys.stdout",
             "formatter": "standard",
+            "filters": ["demote_httpx_healthcheck"],
+        },
+    },
+    "filters": {
+        "demote_httpx_healthcheck": {
+            "()": "core.cli_logging.DemoteHttpxHealthcheckFilter",
         },
     },
     "root": {
@@ -56,8 +62,10 @@ logger = logging.getLogger(__name__)
 def build_logging_config(log_level: str) -> dict[str, Any]:
     config = cast(dict[str, Any], deepcopy(_LOGGING_CONFIG))
     root = cast(dict[str, Any], config["root"])
+    handlers = cast(dict[str, dict[str, Any]], config["handlers"])
     loggers = cast(dict[str, dict[str, Any]], config["loggers"])
     root["level"] = log_level.upper()
+    handlers["console"]["level"] = log_level.upper()
     loggers["uvicorn"]["level"] = log_level.upper()
     loggers["uvicorn.access"]["level"] = log_level.upper()
     return config

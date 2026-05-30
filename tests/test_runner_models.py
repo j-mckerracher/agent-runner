@@ -7,11 +7,13 @@ from core.runner_models import (
     CODEX_MODEL_CHOICES,
     OPENAI_COMPAT_MODEL_CHOICES,
     OPENAI_COMPAT_RETRY_DEFAULTS,
+    RUNNER_CHEAPEST_MODELS,
     RUNNER_DEFAULT_MODELS,
     RUNNER_MODEL_CHOICES,
     is_copilot_runner,
     resolve_agent_llm_config,
     resolve_agent_model,
+    resolve_runner_cheapest_model,
     resolve_runner_llm_config,
     resolve_runner_model,
 )
@@ -161,6 +163,34 @@ class TestResolveAgentModel(unittest.TestCase):
 
 
 class RunnerLlmConfigTests(unittest.TestCase):
+    def test_easy__cheapest_model_resolution_for_builtin_runners(self):
+        expected = {
+            "claude": "claude-haiku-4-5-20251001",
+            "codex": "gpt-5.4-nano",
+            "copilot": "gpt-5-mini",
+            "gemini": "gemini-2.0-flash-lite",
+            "openai-compat": RUNNER_CHEAPEST_MODELS["openai-compat"],
+        }
+
+        for runner, model in expected.items():
+            with self.subTest(runner=runner):
+                self.assertEqual(resolve_runner_cheapest_model(runner), model)
+
+    def test_easy__cheapest_model_resolution_for_alias_uses_configured_alias_model(self):
+        config = {
+            "runner_aliases": {
+                "ds4": {
+                    "provider": "openai-compat",
+                    "model": "deepseek-v4-pro:cloud",
+                }
+            }
+        }
+
+        self.assertEqual(
+            resolve_runner_cheapest_model("ds4", config=config),
+            "openai-compat/deepseek-v4-pro:cloud",
+        )
+
     def test_builtin_runner_rejects_invalid_explicit_model(self):
         with self.assertRaises(ValueError) as ctx:
             resolve_runner_llm_config("copilot", explicit_model="claude-sonnet-4-6")

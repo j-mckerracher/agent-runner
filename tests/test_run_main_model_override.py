@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from core.cli_logging import DEFAULT_LOG_FORMAT, LocalTimezoneFormatter
+from core.cli_logging import DEFAULT_LOG_FORMAT, DemoteHttpxHealthcheckFilter, LocalTimezoneFormatter
 import run
 
 
@@ -200,16 +200,33 @@ class RunMainStagePlumbingTests(unittest.TestCase):
         configure_logging_mock.assert_called_once_with("debug")
 
     def test_easy__configure_logging_uses_local_timezone_formatter(self) -> None:
+        httpx_logger = logging.getLogger("httpx")
+        original_filters = list(httpx_logger.filters)
+        httpx_logger.filters = [
+            log_filter
+            for log_filter in httpx_logger.filters
+            if not isinstance(log_filter, DemoteHttpxHealthcheckFilter)
+        ]
         with patch.dict(run.os.environ, {}, clear=True), patch.object(run.logging, "basicConfig") as basic_config_mock:
-            run.configure_logging("info")
+            try:
+                run.configure_logging("info")
 
-        kwargs = basic_config_mock.call_args.kwargs
-        self.assertEqual(kwargs["level"], logging.INFO)
-        self.assertTrue(kwargs["force"])
-        self.assertEqual(len(kwargs["handlers"]), 1)
-        handler = kwargs["handlers"][0]
-        self.assertIsInstance(handler.formatter, LocalTimezoneFormatter)
-        self.assertEqual(handler.formatter._style._fmt, DEFAULT_LOG_FORMAT)
+                kwargs = basic_config_mock.call_args.kwargs
+                self.assertEqual(kwargs["level"], logging.INFO)
+                self.assertTrue(kwargs["force"])
+                self.assertEqual(len(kwargs["handlers"]), 1)
+                handler = kwargs["handlers"][0]
+                self.assertEqual(handler.level, logging.INFO)
+                self.assertIsInstance(handler.formatter, LocalTimezoneFormatter)
+                self.assertEqual(handler.formatter._style._fmt, DEFAULT_LOG_FORMAT)
+                self.assertTrue(
+                    any(
+                        isinstance(log_filter, DemoteHttpxHealthcheckFilter)
+                        for log_filter in httpx_logger.filters
+                    )
+                )
+            finally:
+                httpx_logger.filters = original_filters
 
     def test_medium__event_log_handler_captures_only_selected_python_log_levels(self) -> None:
         from server.events import read_all

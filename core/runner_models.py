@@ -47,6 +47,7 @@ DEFAULT_COPILOT_MODEL = "gpt-5-mini"
 # Suggested presets for the codex runner. Any model name is accepted;
 # these appear as suggestions in the UI and are not an allowlist.
 CODEX_MODEL_CHOICES = (
+    "gpt-5.4-nano",
     "gpt-5.5",
     "gpt-5.4",
     "gpt-5.4-mini",
@@ -83,6 +84,14 @@ RUNNER_DEFAULT_MODELS: dict[str, str] = {
     "codex": DEFAULT_CODEX_MODEL,
     "copilot": DEFAULT_COPILOT_MODEL,
     "gemini": DEFAULT_GEMINI_MODEL,
+    "openai-compat": DEFAULT_OPENAI_COMPAT_MODEL,
+}
+
+RUNNER_CHEAPEST_MODELS: dict[str, str] = {
+    "claude": "claude-haiku-4-5-20251001",
+    "codex": "gpt-5.4-nano",
+    "copilot": "gpt-5-mini",
+    "gemini": "gemini-2.0-flash-lite",
     "openai-compat": DEFAULT_OPENAI_COMPAT_MODEL,
 }
 
@@ -223,6 +232,27 @@ def resolve_runner_model(
                     )
             return _qualify_model_for_runner(runner_lower, explicit_model, config)
         return _qualify_model_for_runner(runner_lower, RUNNER_DEFAULT_MODELS[runner_lower], config)
+
+    raise ValueError(
+        f"Unknown runner: '{runner}'. Must be a known provider "
+        f"({', '.join(sorted(KNOWN_RUNNERS))}) or a custom alias defined in runner_aliases."
+    )
+
+
+def resolve_runner_cheapest_model(
+    runner: str,
+    config: dict | None = None,
+) -> str:
+    """Resolve the cheapest known model for a runner or the configured model for an alias."""
+    alias = _resolve_alias(runner, config) or _resolve_alias(runner.lower(), config)
+    if alias is not None:
+        return _resolve_alias_model(alias)
+
+    runner_lower = runner.lower()
+    if runner_lower == "openai-compat":
+        return resolve_runner_model(runner_lower, None, config)
+    if runner_lower in RUNNER_CHEAPEST_MODELS:
+        return _qualify_model_for_runner(runner_lower, RUNNER_CHEAPEST_MODELS[runner_lower], config)
 
     raise ValueError(
         f"Unknown runner: '{runner}'. Must be a known provider "

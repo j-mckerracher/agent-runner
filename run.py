@@ -13,7 +13,13 @@ import yaml
 
 from dotenv import load_dotenv
 
-from core.cli_logging import DEFAULT_LOG_FORMAT, LocalTimezoneFormatter, normalize_log_level, to_logging_level
+from core.cli_logging import (
+    DEFAULT_LOG_FORMAT,
+    LocalTimezoneFormatter,
+    install_httpx_healthcheck_filter,
+    normalize_log_level,
+    to_logging_level,
+)
 from core.workspace_cleanup import clean_change_workspace
 from core.ssl_compat import configure_system_ssl
 from core.runner_models import (
@@ -21,6 +27,7 @@ from core.runner_models import (
     RUNNER_MODEL_CHOICES,
     resolve_runner_llm_config,
 )
+from core.runner_failover import RunnerFailoverPolicy, discover_prior_runner_candidates
 from core.story_inputs import count_acceptance_criteria
 from core.workflow_inputs import DEFAULT_TEST_STORY_FILE, resolve_workflow_input
 
@@ -217,6 +224,33 @@ def _record_current_job_metadata(**fields) -> None:
         db.update_job(job_id, **clean)
     except Exception:
         pass
+
+
+def _build_runner_failover_policy(
+    *,
+    config: dict,
+    current_runner: str,
+    history_limit: int = 200,
+) -> RunnerFailoverPolicy:
+    try:
+        from server import db
+        prior_jobs = db.list_jobs(limit=history_limit)
+    except Exception as exc:
+        logger.warning("runner failover disabled: could not read local job history: %s", exc)
+        return RunnerFailoverPolicy([])
+
+    candidates = discover_prior_runner_candidates(
+        prior_jobs,
+        config=config,
+        current_runner=current_runner,
+    )
+    logger.info(
+        "runner failover initialized: current_runner=%s candidate_count=%d candidates=%s",
+        current_runner,
+        len(candidates),
+        [candidate.runner for candidate in candidates],
+    )
+    return RunnerFailoverPolicy(candidates)
 
 
 def _workflow_stage_names(*, skip_lessons_optimizer: bool = True) -> list[str]:
@@ -718,17 +752,20 @@ def _load_runner_config() -> dict:
 # ====================== CLI ====================== #
 
 def configure_logging(log_level: str) -> None:
+    logging_level = to_logging_level(log_level)
     console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging_level)
     console_handler.setFormatter(LocalTimezoneFormatter(DEFAULT_LOG_FORMAT))
     logging.basicConfig(
-        level=to_logging_level(log_level),
+        level=logging_level,
         handlers=[console_handler],
         force=True,
     )
+    install_httpx_healthcheck_filter()
     if os.environ.get("AGENT_RUNNER_EVENT_LOG"):
         from server.events import EventEmitHandler
         event_handler = EventEmitHandler()
-        event_handler.setLevel(to_logging_level(log_level))
+        event_handler.setLevel(logging_level)
         logging.getLogger().addHandler(event_handler)
 
 
@@ -870,6 +907,8 @@ def main(
     log_level: str = "warning",
 ):
     configure_logging(log_level)
+    from core.run_cmds import set_runner_failover_policy
+    set_runner_failover_policy(None)
     if headless:
         os.environ["AGENT_RUNNER_HEADLESS"] = "1"
         os.environ.setdefault("AGENT_RUNNER_USER_ESCALATION", "auto")
@@ -944,6 +983,10 @@ def main(
                          runner, model, type(exc).__name__, exc)
             print(f"[ERROR] Failed to resolve runner model config: {type(exc).__name__}: {exc}")
             raise
+
+        set_runner_failover_policy(
+            _build_runner_failover_policy(config=config, current_runner=runner)
+        )
 
         from core.opik_tracing import build_opik_tracer, maybe_trace
 
@@ -1355,6 +1398,8 @@ def main(
                 last_completed_stage=last_completed_stage,
             )
         _emit("job.end", status=final_status, exit_code=final_exit)
+    finally:
+        set_runner_failover_policy(None)
 
     return intake_source
 

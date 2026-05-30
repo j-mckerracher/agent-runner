@@ -30,9 +30,18 @@ from .runner_models import (
     _provider_for_runner,
     resolve_runner_transport_config,
 )
+from .runner_failover import (
+    RunnerFailoverCandidate,
+    RunnerFailoverPolicy,
+    is_usage_exhaustion_error_text,
+    is_usage_exhaustion_exception,
+    usage_exhaustion_error_text,
+    usage_exhaustion_reason,
+)
 from .ui_trace_bridge import track_with_ui
 
 logger = logging.getLogger(__name__)
+_RUNNER_FAILOVER_POLICY: RunnerFailoverPolicy | None = None
 
 _TRANSIENT_COPILOT_ERROR_MARKERS = (
     "http2: server sent goaway",
@@ -144,6 +153,8 @@ def _classify_error(text: str, *, runner: str | None = None) -> str | None:
     normalized = (text or "").lower()
     if not normalized:
         return None
+    if is_usage_exhaustion_error_text(normalized):
+        return "usage_exhausted"
     if any(marker in normalized for marker in ("429", "rate limit", "too many requests")):
         return "rate_limit"
     if any(marker in normalized for marker in ("timeout", "timed out")):
@@ -153,6 +164,11 @@ def _classify_error(text: str, *, runner: str | None = None) -> str | None:
     if is_transient_runner_failure_text(normalized, runner=runner):
         return "transient"
     return "non_transient"
+
+
+def set_runner_failover_policy(policy: RunnerFailoverPolicy | None) -> None:
+    global _RUNNER_FAILOVER_POLICY
+    _RUNNER_FAILOVER_POLICY = policy
 
 
 def _emit_llm_call_event(
@@ -2335,7 +2351,7 @@ def run_agent_cmd(
     agent: str,
     **kwargs,
 ) -> str:
-    """Dispatch to the selected CLI runner based on runner."""
+    """Dispatch to the selected CLI runner, failing over on usage exhaustion."""
     logger.debug("run_agent_cmd: runner=%s agent=%s", runner, agent)
     if is_disabled_agent(agent):
         logger.error("run_agent_cmd: disabled agent requested: %s", agent)
@@ -2344,6 +2360,7 @@ def run_agent_cmd(
     extra_skills = kwargs.pop("extra_skills", None)
     repo = kwargs.pop("repo", None)
     change_id = kwargs.pop("change_id", None)
+    failover_policy = kwargs.pop("runner_failover_policy", None) or _RUNNER_FAILOVER_POLICY
 
     # ── Force-escalation test hook ─────────────────────────────────────────
     # Remove (or unset the env var) after escalation testing is complete.
@@ -2352,6 +2369,136 @@ def run_agent_cmd(
     # ──────────────────────────────────────────────────────────────────────
     # copilot_effort is no longer supported — accept and discard for backward compat.
     kwargs.pop("copilot_effort", None)
+    active_runner = runner
+    active_model = runner_model
+    while True:
+        if failover_policy is not None and failover_policy.is_exhausted(active_runner):
+            candidate = failover_policy.next_candidate(excluding=[active_runner])
+            if candidate is None:
+                _emit_failover_unavailable(
+                    exhausted_runner=active_runner,
+                    exhausted_model=active_model,
+                    agent=agent,
+                    reason="previously exhausted",
+                )
+                raise RuntimeError(
+                    f"Runner {active_runner!r} is already exhausted and no eligible prior fallback runner is available."
+                )
+            _emit_failover(
+                exhausted_runner=active_runner,
+                exhausted_model=active_model,
+                fallback=candidate,
+                agent=agent,
+                reason="previously exhausted",
+            )
+            active_runner = candidate.runner
+            active_model = candidate.model
+
+        try:
+            return _dispatch_agent_cmd(
+                runner=active_runner,
+                prompt=prompt,
+                agent=agent,
+                runner_model=active_model,
+                extra_skills=extra_skills,
+                repo=repo,
+                change_id=change_id,
+                **kwargs,
+            )
+        except Exception as exc:
+            if failover_policy is None or not is_usage_exhaustion_exception(exc):
+                raise
+            reason = usage_exhaustion_reason(usage_exhaustion_error_text(exc)) or "usage exhausted"
+            failover_policy.mark_exhausted(active_runner, model=active_model, reason=reason)
+            candidate = failover_policy.next_candidate(excluding=[active_runner])
+            if candidate is None:
+                _emit_failover_unavailable(
+                    exhausted_runner=active_runner,
+                    exhausted_model=active_model,
+                    agent=agent,
+                    reason=reason,
+                )
+                raise RuntimeError(
+                    f"Runner {active_runner!r} exhausted usage/quota ({reason}) and no eligible prior fallback runner is available."
+                ) from exc
+            _emit_failover(
+                exhausted_runner=active_runner,
+                exhausted_model=active_model,
+                fallback=candidate,
+                agent=agent,
+                reason=reason,
+            )
+            active_runner = candidate.runner
+            active_model = candidate.model
+
+
+def _emit_failover(
+    *,
+    exhausted_runner: str,
+    exhausted_model: str | None,
+    fallback: RunnerFailoverCandidate,
+    agent: str,
+    reason: str,
+) -> None:
+    logger.warning(
+        "runner.failover: exhausted_runner=%s exhausted_model=%s fallback_runner=%s fallback_model=%s agent=%s reason=%s",
+        exhausted_runner,
+        exhausted_model,
+        fallback.runner,
+        fallback.model,
+        agent,
+        reason,
+    )
+    print(
+        f"[runner.failover] {exhausted_runner} usage exhausted; "
+        f"retrying {agent} with {fallback.runner} ({fallback.model})."
+    )
+    _emit_event(
+        "runner.failover",
+        exhausted_runner=exhausted_runner,
+        exhausted_model=exhausted_model,
+        fallback_runner=fallback.runner,
+        fallback_model=fallback.model,
+        agent=agent,
+        reason=reason,
+    )
+
+
+def _emit_failover_unavailable(
+    *,
+    exhausted_runner: str,
+    exhausted_model: str | None,
+    agent: str,
+    reason: str,
+) -> None:
+    logger.error(
+        "runner.failover_unavailable: exhausted_runner=%s exhausted_model=%s agent=%s reason=%s",
+        exhausted_runner,
+        exhausted_model,
+        agent,
+        reason,
+    )
+    _emit_event(
+        "runner.failover_unavailable",
+        exhausted_runner=exhausted_runner,
+        exhausted_model=exhausted_model,
+        agent=agent,
+        reason=reason,
+    )
+
+
+def _dispatch_agent_cmd(
+    *,
+    runner: str,
+    prompt: str,
+    agent: str,
+    runner_model: str | None,
+    extra_skills: list[str] | None,
+    repo: str | None,
+    change_id: str | None,
+    **kwargs,
+) -> str:
+    """Dispatch to the selected CLI runner based on runner."""
     runner_lower = runner.lower()
     if is_copilot_runner(runner):
         if runner_lower == "copilot":
