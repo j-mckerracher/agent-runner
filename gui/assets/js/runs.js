@@ -170,6 +170,11 @@ function renderHistory() {
         if (j.id === activeJobId) opt.selected = true;
         wrap.appendChild(opt);
     });
+    if (activeJobId && items.some((job) => job.id === activeJobId)) {
+        wrap.value = activeJobId;
+    } else {
+        wrap.selectedIndex = -1;
+    }
     const total = allItems.length;
     const count = items.length;
     const countText =
@@ -247,9 +252,24 @@ $("#history-runner-filter")?.addEventListener("change", (event) => {
     RUN_HISTORY_STATE.runner = event.target.value || "all";
     renderHistory();
 });
-$("#history")?.addEventListener("change", (e) => {
-    if (e.target.value) selectJob(e.target.value);
-});
+let lastHistorySelection = { id: "", at: 0 };
+function handleHistorySelection(event) {
+    const id = event.currentTarget?.value || "";
+    if (!id) return;
+    const now = Date.now();
+    if (
+        id === lastHistorySelection.id &&
+        now - lastHistorySelection.at < 250
+    ) {
+        return;
+    }
+    lastHistorySelection = { id, at: now };
+    selectJob(id);
+}
+const historyList = $("#history");
+historyList?.addEventListener("input", handleHistorySelection);
+historyList?.addEventListener("change", handleHistorySelection);
+historyList?.addEventListener("click", handleHistorySelection);
 $("#history-toggle")?.addEventListener("click", () => {
     RUN_HISTORY_STATE.collapsed = !RUN_HISTORY_STATE.collapsed;
     syncHistoryDisclosure();
@@ -619,7 +639,10 @@ function describeEvent(ev, surface = "runs", mode = "live") {
     let cls = "ev";
     let tag = ev.type;
     let msg = "";
-    if (ev.type === "stage.start" || ev.type === "stage.end") {
+    if (ev.type === "job.start") {
+        cls += " stage";
+        msg = ` ${ev.change_id || ""}${ev.runner ? ` · ${ev.runner}` : ""}${ev.model ? `/${ev.model}` : ""}`;
+    } else if (ev.type === "stage.start" || ev.type === "stage.end") {
         cls += " stage";
         tag = `▾ ${ev.stage}`;
         msg = ev.type === "stage.end" ? ` (${ev.status})` : "";
@@ -654,6 +677,20 @@ function describeEvent(ev, surface = "runs", mode = "live") {
         } else {
             msg = ` ${ev.status || "ok"}${ev.duration_ms != null ? ` · ${ev.duration_ms}ms` : ""}${meta ? ` · ${meta}` : ""}${ev.error ? ` · ${ev.error}` : ""}`;
         }
+    } else if (ev.type === "llm.call") {
+        cls += ev.status === "ok" ? " stdout" : " stderr";
+        tag = `${ev.runner || "llm"}${ev.agent ? `/${ev.agent}` : ""}`;
+        const parts = [
+            ev.status || "unknown",
+            ev.model,
+            ev.duration_ms != null ? `${ev.duration_ms}ms` : "",
+            ev.tokens_in != null || ev.tokens_out != null
+                ? `${ev.tokens_in || 0} in / ${ev.tokens_out || 0} out`
+                : "",
+            ev.cost_usd != null ? formatMoney(Number(ev.cost_usd)) : "",
+            ev.error_category,
+        ].filter(Boolean);
+        msg = ` ${parts.join(" · ")}`;
     } else if (ev.type === "job.end") {
         cls += " end";
         msg = ` ${ev.status} (exit ${ev.exit_code})`;
@@ -668,7 +705,14 @@ function describeEvent(ev, surface = "runs", mode = "live") {
             " No response received — continuing with open questions.";
     } else if (ev.type === "metrics") {
         if (mode === "live") renderSurfaceMetrics(surface);
-        return null;
+        cls += " trace";
+        tag = "metrics";
+        const parts = [
+            ev.tokens_in != null ? `${ev.tokens_in} in` : "",
+            ev.tokens_out != null ? `${ev.tokens_out} out` : "",
+            ev.cost_usd != null ? formatMoney(Number(ev.cost_usd)) : "",
+        ].filter(Boolean);
+        msg = parts.length ? ` ${parts.join(" · ")}` : " updated";
     }
     return { cls, tag, msg };
 }
@@ -731,7 +775,7 @@ function appendFlatEvent(
         formatEventTime(ev.ts),
         Number(ev.depth || 0),
     );
-    if (isPythonLogEvent(ev)) row.dataset.terminalLogRow = "true";
+    row.dataset.terminalLogRow = "true";
     parent.appendChild(row);
     return row;
 }
@@ -747,7 +791,7 @@ function renderTermLogLimitNotice(term, surface = "runs") {
         note.className = "log-limit-notice";
         term.prepend(note);
     }
-    note.textContent = `${trimmed} older Python log line${trimmed === 1 ? "" : "s"} hidden to keep the UI responsive. Showing the latest ${RUN_TERMINAL_VISIBLE_LOG_LIMIT}.`;
+    note.textContent = `${trimmed} older terminal event${trimmed === 1 ? "" : "s"} hidden to keep the UI responsive. Showing the latest ${RUN_TERMINAL_VISIBLE_LOG_LIMIT}.`;
 }
 function enforceTermLogLimit(term, surface = "runs") {
     const rows = Array.from(
@@ -776,11 +820,13 @@ function appendEvent(ev, surface = "runs", mode = "live") {
     if (ev.type === "user.prompt") {
         const term = ensureTermReady(surface);
         const form = buildUserPromptForm(ev);
+        form.dataset.terminalLogRow = "true";
         term.appendChild(form);
+        enforceTermLogLimit(term, surface);
         term.scrollTop = term.scrollHeight;
         return;
     }
-    if (!isPythonLogEvent(ev)) return;
+    if (!isTerminalVisibleEvent(ev)) return;
 
     const term = ensureTermReady(surface);
     appendFlatEvent(term, ev, surface, mode);
@@ -992,7 +1038,7 @@ async function selectJob(id, surface = "runs") {
         if (!hasVisibleTerminalEvent(events)) {
             if (job.status === "failed")
                 setTermEmpty(
-                    "No Python logs were captured for this run. Review the failure summary above.",
+                    "No terminal-visible run events were captured. Review the failure summary above.",
                     true,
                     surface,
                 );
@@ -1000,10 +1046,10 @@ async function selectJob(id, surface = "runs") {
                 job.status === "running" ||
                 job.status === "queued"
             )
-                setTermEmpty("Waiting for Python logs...", false, surface);
+                setTermEmpty("Waiting for run events...", false, surface);
             else
                 setTermEmpty(
-                    "No Python logs were captured for this run.",
+                    "No terminal-visible run events were captured.",
                     false,
                     surface,
                 );

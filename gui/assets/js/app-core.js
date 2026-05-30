@@ -75,6 +75,7 @@ const STREAM_EVENT_TYPES = [
     "metrics",
     "opik.start",
     "opik.end",
+    "llm.call",
     "job.end",
     "stream.end",
     "user.prompt",
@@ -89,10 +90,30 @@ function isPythonLogEvent(ev) {
         (ev.source === "python_logging" || !!ev.logger)
     );
 }
-function hasVisibleTerminalEvent(events) {
-    return (events || []).some(
-        (ev) => isPythonLogEvent(ev) || ev.type === "user.prompt",
+const TERMINAL_VISIBLE_EVENT_TYPES = new Set([
+    "job.start",
+    "job.end",
+    "stage.start",
+    "stage.end",
+    "cli.invoke",
+    "cli.exit",
+    "cli.stderr",
+    "metrics",
+    "opik.start",
+    "opik.end",
+    "llm.call",
+    "user.prompt",
+    "user.response",
+    "user.prompt.timeout",
+]);
+function isTerminalVisibleEvent(ev) {
+    return (
+        !!ev &&
+        (isPythonLogEvent(ev) || TERMINAL_VISIBLE_EVENT_TYPES.has(ev.type))
     );
+}
+function hasVisibleTerminalEvent(events) {
+    return (events || []).some(isTerminalVisibleEvent);
 }
 function isWorkflowHistoryEvent(ev) {
     return !!ev && RUN_WORKFLOW_EVENT_TYPES.has(ev.type);
