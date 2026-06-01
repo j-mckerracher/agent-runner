@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import re
@@ -11,6 +12,41 @@ from .runner_models import DEFAULT_GEMINI_MODEL
 from .ui_trace_bridge import start_span_with_ui, track_with_ui
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_json_object(text: str) -> dict | None:
+    stripped = (text or "").strip()
+    if not stripped:
+        return None
+    candidates = [stripped]
+    fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", stripped, flags=re.DOTALL | re.IGNORECASE)
+    if fence_match:
+        candidates.insert(0, fence_match.group(1).strip())
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
+def _persist_impl_evaluator_feedback(*, change_id: str, uow_id: str, iteration: int, evaluator_out: str) -> Path:
+    uow_dir = steps.AGENT_CONTEXT_ROOT / change_id / "execution" / uow_id
+    path = uow_dir / f"eval_impl_{iteration}.json"
+    payload = _extract_json_object(evaluator_out)
+    if payload is None:
+        payload = {
+            "artifact_evaluated": "impl_report.yaml",
+            "status": "PASS" if "PASS" in (evaluator_out or "") else "FAIL",
+            "raw_response": evaluator_out or "",
+        }
+    else:
+        payload.setdefault("artifact_evaluated", "impl_report.yaml")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
 
 
 def _extract_change_id(text: str) -> str:
@@ -86,6 +122,7 @@ def run_uow_eval_loop(
         extra_metadata={"uow_id": uow_id},
     )
     producer_out, evaluator_out = "", ""
+    evaluator_feedback_path: Path | None = None
     effective_evaluator_runner = evaluator_runner or runner
     effective_evaluator_model = evaluator_runner_model if evaluator_runner_model is not None else runner_model
     actual_iterations = 0
@@ -135,6 +172,7 @@ def run_uow_eval_loop(
                     change_id=change_id,
                     repo=repo,
                     evaluator_feedback=evaluator_out if i > 0 else "",
+                    evaluator_feedback_path=str(evaluator_feedback_path) if i > 0 and evaluator_feedback_path else "",
                     runner=runner,
                     runner_model=runner_model,
                 )
@@ -158,6 +196,12 @@ def run_uow_eval_loop(
                     repo=repo,
                     runner=effective_evaluator_runner,
                     runner_model=effective_evaluator_model,
+                )
+                evaluator_feedback_path = _persist_impl_evaluator_feedback(
+                    change_id=change_id,
+                    uow_id=uow_id,
+                    iteration=iteration,
+                    evaluator_out=evaluator_out,
                 )
                 passed = "PASS" in evaluator_out
                 logger.info("run_uow_eval_loop: iteration %d/%d uow_id=%s passed=%s", iteration, iter_count, uow_id, passed)

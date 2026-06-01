@@ -1122,6 +1122,11 @@ def build_intake_prompt(
         prompt += (
             f"Normalize the result into canonical intake artifacts under {AGENT_CONTEXT_ROOT}/{change_id}/intake/."
         )
+        prompt += (
+            "\nAfter gathering and normalizing the intake items, use the interrogate-eng skill to "
+            "interrogate the story into planner-ready, implementation- and QA-grade requirements. "
+            "The interrogate-eng skill must NEVER be used for evaluations."
+        )
         if extra_context:
             prompt += f"\n\nAdditional context from the user:\n{extra_context}\n"
         return prompt
@@ -1135,6 +1140,11 @@ def build_intake_prompt(
     prompt += "Do NOT require or use the azure-devops-cli skill unless the fixture explicitly includes ADO metadata.\n"
     prompt += (
         f"Normalize the result into canonical intake artifacts under {AGENT_CONTEXT_ROOT}/{change_id}/intake/."
+    )
+    prompt += (
+        "\nAfter gathering and normalizing the intake items, use the interrogate-eng skill to "
+        "interrogate the story into planner-ready, implementation- and QA-grade requirements. "
+        "The interrogate-eng skill must NEVER be used for evaluations."
     )
     if extra_context:
         prompt += f"\n\nAdditional context from the user:\n{extra_context}\n"
@@ -1377,6 +1387,7 @@ def step_software_engineer(
     change_id: str,
     repo: str,
     evaluator_feedback: str = "",
+    evaluator_feedback_path: str = "",
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
 ) -> str:
@@ -1397,8 +1408,14 @@ def step_software_engineer(
     )
     if evaluator_feedback:
         logger.debug("step_software_engineer: uow_id=%s including evaluator feedback (len=%d)", uow_id, len(evaluator_feedback))
+        feedback_path_line = (
+            f"The evaluator feedback was saved to {evaluator_feedback_path}; read that file for structured details. "
+            if evaluator_feedback_path
+            else ""
+        )
         prompt += (
-            f"\n\n## Evaluator Issues to Fix:\n{evaluator_feedback}\n\n"
+            f"\n\n## Evaluator Issues to Fix:\n{feedback_path_line}"
+            f"The same feedback is included inline below.\n{evaluator_feedback}\n\n"
             f"Address every issue listed above. If resolving an issue requires a blocking "
             f"product decision, compatibility approval, or user-only clarification, use the "
             f"user escalation protocol and continue after receiving the response."

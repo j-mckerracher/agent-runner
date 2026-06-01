@@ -315,6 +315,19 @@ class OpenaiCompatToolRuntimeTests(unittest.TestCase):
         )
         self.assertNotIn("write_lessons_optimizer_report", tool_names)
 
+    def test_medium__list_dir_caps_large_workspace_results(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir)
+            for index in range(run_cmds._OPENAI_COMPAT_LIST_DIR_ENTRY_LIMIT + 25):
+                (repo / f"file-{index:04d}.txt").write_text("x", encoding="utf-8")
+
+            runtime = run_cmds._OpenaiCompatToolRuntime(repo=str(repo), change_id=None)
+            result = json.loads(runtime.execute("list_dir", {"path": str(repo), "max_depth": 1}))
+
+            self.assertTrue(result["truncated"])
+            self.assertEqual(result["entry_limit"], run_cmds._OPENAI_COMPAT_LIST_DIR_ENTRY_LIMIT)
+            self.assertEqual(len(result["entries"]), run_cmds._OPENAI_COMPAT_LIST_DIR_ENTRY_LIMIT)
+
     def test_medium__write_task_plan_serializes_parseable_yaml_and_injects_story_id(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             runtime, context_root = self._runtime(tmpdir)
@@ -409,6 +422,76 @@ class OpenaiCompatToolRuntimeTests(unittest.TestCase):
             self.assertEqual(report["change_id"], "CHANGE-1")
             self.assertIn("fields: changed_files", report["implementation_summary"])
             self.assertEqual(result["format"], "yaml")
+
+    def test_medium__write_impl_report_accepts_parseable_string_report(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runtime, context_root = self._runtime(tmpdir)
+            yaml_report = "\n".join(
+                [
+                    "status: complete",
+                    "implementation_summary: Alpha helper verified",
+                    "definition_of_done_status:",
+                    "  - item: Alpha order preserved",
+                    "    met: true",
+                    "    evidence: pytest passed",
+                ]
+            )
+            result = json.loads(
+                runtime.execute(
+                    "write_impl_report",
+                    {
+                        "uow_id": "UOW-004",
+                        "report": yaml_report,
+                    },
+                )
+            )
+
+            self.assertNotIn("error", result)
+            report_path = context_root / "CHANGE-1" / "execution" / "UOW-004" / "impl_report.yaml"
+            report = yaml.safe_load(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(report["uow_id"], "UOW-004")
+            self.assertEqual(report["change_id"], "CHANGE-1")
+            self.assertEqual(report["definition_of_done_status"][0]["item"], "Alpha order preserved")
+
+            json_report = json.dumps(
+                {
+                    "status": "complete",
+                    "implementation_summary": "Beta helper verified",
+                    "definition_of_done_status": [],
+                }
+            )
+            result = json.loads(
+                runtime.execute(
+                    "write_impl_report",
+                    {
+                        "uow_id": "UOW-005",
+                        "report": json_report,
+                    },
+                )
+            )
+
+            self.assertNotIn("error", result)
+            report_path = context_root / "CHANGE-1" / "execution" / "UOW-005" / "impl_report.yaml"
+            report = yaml.safe_load(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(report["implementation_summary"], "Beta helper verified")
+
+    def test_medium__write_impl_report_rejects_unparseable_string_report_with_hints(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runtime, context_root = self._runtime(tmpdir)
+            result = json.loads(
+                runtime.execute(
+                    "write_impl_report",
+                    {
+                        "uow_id": "UOW-004",
+                        "report": "not: [valid",
+                    },
+                )
+            )
+
+            self.assertIn("error", result)
+            self.assertIn("report string must be parseable", result["error"])
+            self.assertIn("execution/<uow_id>/impl_report.yaml", result["artifact_hints"])
+            self.assertFalse((context_root / "CHANGE-1" / "execution" / "UOW-004" / "impl_report.yaml").exists())
 
     def test_medium__write_impl_report_rejects_mismatched_identity(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -576,6 +659,54 @@ class OpenaiCompatToolRuntimeTests(unittest.TestCase):
                 self.assertNotIn("error", result)
                 self.assertEqual(target_file.read_text(encoding="utf-8"), "hello\n")
 
+    def test_medium__write_file_allows_target_repo_github_scripts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir) / "workspace"
+            repo.mkdir()
+            context_root = Path(tmpdir) / "agent-context"
+            with patch("core.run_cmds._OPENAI_COMPAT_AGENT_CONTEXT_ROOT", context_root):
+                runtime = run_cmds._OpenaiCompatToolRuntime(repo=str(repo), change_id="CHANGE-1")
+                target_file = repo / ".github" / "scripts" / "generate-obsidian-archive.py"
+                result = json.loads(
+                    runtime.execute(
+                        "write_file",
+                        {
+                            "path": str(target_file),
+                            "content": "print('archive')\n",
+                        },
+                    )
+                )
+
+                self.assertNotIn("error", result)
+                self.assertEqual(target_file.read_text(encoding="utf-8"), "print('archive')\n")
+
+    def test_medium__write_file_rejects_runner_root_github_scripts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner_root = (Path(tmpdir) / "agent-workbench").resolve()
+            runner_root.mkdir()
+            context_root = Path(tmpdir) / "agent-context"
+            with (
+                patch("core.run_cmds._OPENAI_COMPAT_RUNNER_ROOT", runner_root),
+                patch("core.run_cmds._OPENAI_COMPAT_AGENT_CONTEXT_ROOT", context_root),
+            ):
+                runtime = run_cmds._OpenaiCompatToolRuntime(repo=str(runner_root), change_id="CHANGE-1")
+                target_file = runner_root / ".github" / "scripts" / "generate-runner-asset.py"
+                result = json.loads(
+                    runtime.execute(
+                        "write_file",
+                        {
+                            "path": str(target_file),
+                            "content": "print('runner')\n",
+                        },
+                    )
+                )
+
+                self.assertIn("error", result)
+                self.assertIn("generated runner agent assets", result["error"])
+                self.assertIn(str(runner_root), result["allowed_write_roots"])
+                self.assertIn("planning/tasks.yaml", result["artifact_hints"])
+                self.assertFalse(target_file.exists())
+
     def test_medium__write_file_rejects_agent_prompt_paths(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             repo = Path(tmpdir) / "repo"
@@ -587,9 +718,6 @@ class OpenaiCompatToolRuntimeTests(unittest.TestCase):
                     repo / "agent-definition-source" / "intake" / "v1" / "prompt.md",
                     repo / "agent-skill-source" / "scope-and-security" / "v1" / "SKILL.md",
                     repo / "agent-script-source" / "init-artifact-dirs.py",
-                    repo / ".claude" / "agents" / "intake.agent.md",
-                    repo / ".codex" / "skills" / "artifact-io" / "SKILL.md",
-                    repo / ".openai-compat" / "scripts" / "init-session-log.py",
                 ]
                 for target_file in protected_paths:
                     with self.subTest(path=target_file):

@@ -243,6 +243,7 @@ def tail(text: str | None, limit: int = 3000) -> str:
 def workflow_env(event_log_path: Path | None = None) -> dict[str, str]:
     env = os.environ.copy()
     env["AGENT_RUNNER_HEADLESS"] = "1"
+    env["AGENT_RUNNER_EVALUATION_RUN"] = "1"
     env.setdefault("AGENT_RUNNER_USER_ESCALATION", "auto")
     env.setdefault("PYTHONUNBUFFERED", "1")
     if event_log_path is not None:
@@ -319,6 +320,18 @@ def prepare_workspace(repo: str, sha: str, workspace: Path) -> None:
     result = run_cmd(["git", "checkout", "--detach", sha], cwd=workspace)
     if result.returncode != 0:
         raise RuntimeError(f"git checkout failed:\n{tail(result.stderr)}")
+    hydrate_local_dependency_tree(repo, workspace)
+
+
+def hydrate_local_dependency_tree(repo: str, workspace: Path) -> None:
+    source = Path(repo).expanduser()
+    if not source.exists() or not source.is_dir():
+        return
+    source_node_modules = source / "node_modules"
+    workspace_node_modules = workspace / "node_modules"
+    if not source_node_modules.is_dir() or workspace_node_modules.exists():
+        return
+    workspace_node_modules.symlink_to(source_node_modules.resolve(), target_is_directory=True)
 
 
 def build_workflow_command(
@@ -478,6 +491,41 @@ def parse_junit(path: Path) -> TestSummary:
         skipped = sum(1 for case in cases if case["status"] == "skipped")
     passed = max(total - failed - errors - skipped, 0)
     return TestSummary(total=total, passed=passed, failed=failed, skipped=skipped, errors=errors, cases=cases)
+
+
+HIDDEN_TEST_SETUP_FAILURE_PATTERNS = (
+    (
+        "angular jit compiler unavailable",
+        (
+            "needs to be compiled using the JIT compiler",
+            "@angular/compiler",
+        ),
+    ),
+)
+
+
+def hidden_test_setup_failure_reason(
+    completed: subprocess.CompletedProcess[str],
+    summary: TestSummary,
+) -> str | None:
+    """Return a benchmark-harness setup failure reason, if output proves one.
+
+    Gold-master verification expects behavioral assertion failures. These
+    patterns identify crashes where the hidden test environment itself cannot
+    execute, so the benchmark is invalid regardless of candidate behavior.
+    """
+    chunks = [completed.stdout or "", completed.stderr or ""]
+    chunks.extend(str(case.get("message") or "") for case in summary.cases)
+    output = "\n".join(chunks)
+    for chunk in chunks:
+        if chunk.strip().startswith("Missing local TypeScript runner at node_modules/.bin/tsx"):
+            return "missing local TypeScript runner"
+        if "AssertionError: Missing local TypeScript runner at node_modules/.bin/tsx" in chunk:
+            return "missing local TypeScript runner"
+    for reason, patterns in HIDDEN_TEST_SETUP_FAILURE_PATTERNS:
+        if all(pattern in output for pattern in patterns):
+            return reason
+    return None
 
 
 def _case_matches_test(case: dict[str, Any], test_name: str) -> bool:
@@ -658,6 +706,10 @@ def run_one(path: Path, args: argparse.Namespace, *, trial_index: int = 1) -> di
             gold_hidden, gold_summary = run_hidden_tests(path, workspace, args.test_timeout)
             if gold_hidden.returncode == 0:
                 result.error = "hidden tests unexpectedly passed on gold master"
+                return finalize_result(result, start)
+            setup_failure = hidden_test_setup_failure_reason(gold_hidden, gold_summary)
+            if setup_failure:
+                result.error = f"hidden tests errored on gold master: {setup_failure}"
                 return finalize_result(result, start)
             if gold_hidden.returncode in {2, 3, 4, 5} or gold_summary.errors:
                 result.error = f"hidden tests errored on gold master: pytest exit {gold_hidden.returncode}"

@@ -451,6 +451,52 @@ class RunMainStagePlumbingTests(unittest.TestCase):
         lessons_mock.assert_not_called()
         self.assertEqual(write_status_mock.call_args.kwargs["last_completed_stage"], "pr-review")
 
+    def test_medium__main_skips_pr_review_for_evaluation_runs(self) -> None:
+        workflow_input = SimpleNamespace(
+            repo="/tmp/repo",
+            change_id="TEST-EVAL-001",
+            intake_mode="synthetic",
+            intake_source="/tmp/story.json",
+            branch_description_source="Test branch",
+        )
+
+        stage_order: list[str] = []
+
+        def fake_eval_loop(producer_func, producer_input, evaluator_func, evaluator_prompt, **kwargs):  # noqa: ARG001
+            if "Perform QA validation" in producer_input:
+                stage_order.append("qa")
+
+        with patch.dict(run.os.environ, {"AGENT_RUNNER_EVALUATION_RUN": "1"}, clear=False), \
+             patch.object(run, "resolve_workflow_input", return_value=workflow_input), \
+             patch.object(run, "use_runner_root"), \
+             patch.object(run, "clean_workspace"), \
+             patch.object(run, "_load_runner_config", return_value=self._config()), \
+             patch.object(run, "_emit"), \
+             patch.object(run, "_write_workflow_status") as write_status_mock, \
+             patch.object(run, "_require_file"), \
+             patch.object(run, "_require_dir"), \
+             patch("core.opik_tracing.opik.configure"), \
+             patch("core.opik_tracing.opik.Opik", return_value=Mock()), \
+             patch("signal.signal"), \
+             patch("core.materialize.run_materialization"), \
+             patch("core.steps.step_intake"), \
+             patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop", side_effect=fake_eval_loop), \
+             patch("core.evaluator_optimizer_loops.run_uow_eval_loop"), \
+             patch("core.steps.step_pr_review") as pr_review_mock, \
+             patch("run.load_assignments", return_value={"batches": []}), \
+             patch("core.steps.step_lessons_optimizer"):
+            run.main(
+                repo="/tmp/repo",
+                story_file="/tmp/story.json",
+                runner="copilot",
+                model="gpt-5-mini",
+                skip_materialize=True,
+            )
+
+        self.assertEqual(stage_order, ["qa"])
+        pr_review_mock.assert_not_called()
+        self.assertEqual(write_status_mock.call_args.kwargs["last_completed_stage"], "qa")
+
 
 if __name__ == "__main__":
     unittest.main()

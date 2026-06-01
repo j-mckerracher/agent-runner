@@ -1323,16 +1323,21 @@ def main(
                 failed_stage = None
 
             # ── Stage 6: Pull Request Creation + Review ─────────────────────
-            with _Stage("pr-review"):
-                failed_stage = "pr-review"
-                pr_review_path = steps.step_pr_review(
-                    change_id=resolved_change_id,
-                    repo=resolved_repo,
-                    **_agent_llm_kwargs(agent_llms, "pr-reviewer"),
-                )
-                print(f"PR review saved to {pr_review_path}")
-                last_completed_stage = "pr-review"
+            if os.environ.get("AGENT_RUNNER_EVALUATION_RUN", "").strip().lower() in {"1", "true", "yes"}:
+                print("Evaluation run detected; skipping PR creation and review.")
+                last_completed_stage = "qa"
                 failed_stage = None
+            else:
+                with _Stage("pr-review"):
+                    failed_stage = "pr-review"
+                    pr_review_path = steps.step_pr_review(
+                        change_id=resolved_change_id,
+                        repo=resolved_repo,
+                        **_agent_llm_kwargs(agent_llms, "pr-reviewer"),
+                    )
+                    print(f"PR review saved to {pr_review_path}")
+                    last_completed_stage = "pr-review"
+                    failed_stage = None
 
             # The lessons optimizer previously ran here and could inject rules
             # into agent prompt files. It is now disabled unconditionally so

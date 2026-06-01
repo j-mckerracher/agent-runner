@@ -73,6 +73,7 @@ _OPENAI_COMPAT_LOCAL_API_DEFAULT = "http://127.0.0.1:11434"
 _OPENAI_COMPAT_TRANSIENT_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
 _OPENAI_COMPAT_MAX_TOOL_STEPS = 40
 _OPENAI_COMPAT_TOOL_RESULT_LIMIT = 12000
+_OPENAI_COMPAT_LIST_DIR_ENTRY_LIMIT = 500
 _OPENAI_COMPAT_RUNNER_ROOT = Path(__file__).resolve().parent.parent
 _OPENAI_COMPAT_AGENT_CONTEXT_ROOT = _OPENAI_COMPAT_RUNNER_ROOT / "agent-context"
 _RUNNER_LOGS_ROOT = _OPENAI_COMPAT_RUNNER_ROOT / "logs"
@@ -666,13 +667,16 @@ def _forbidden_write_path(path: Path) -> str | None:
         return f"writing agent configuration source files is not allowed: {path}"
     if path.suffix == ".md" and lower_name in {"prompt.md", "agents.md"}:
         return f"writing agent prompt files is not allowed: {path}"
-    for index, part in enumerate(parts[:-1]):
-        if (
-            part in _PROTECTED_RUNNER_ASSET_PARENTS
-            and index + 1 < len(parts)
-            and parts[index + 1] in _PROTECTED_RUNNER_ASSET_DIRS
-        ):
-            return f"writing generated runner agent assets is not allowed: {path}"
+    try:
+        runner_relative_parts = path.relative_to(_OPENAI_COMPAT_RUNNER_ROOT).parts
+    except ValueError:
+        runner_relative_parts = ()
+    if (
+        len(runner_relative_parts) >= 3
+        and runner_relative_parts[0] in _PROTECTED_RUNNER_ASSET_PARENTS
+        and runner_relative_parts[1] in _PROTECTED_RUNNER_ASSET_DIRS
+    ):
+        return f"writing generated runner agent assets is not allowed: {path}"
     if any(marker in lower_name for marker in (".env", "secret", "credential", "password")):
         return f"writing sensitive files is not allowed: {path.name}"
     return None
@@ -768,12 +772,12 @@ class _OpenaiCompatToolRuntime:
                 "type": "function",
                 "function": {
                     "name": "write_impl_report",
-                    "description": "Write the current UoW implementation report as canonical YAML. The report argument must be a JSON object; this tool owns the impl_report.yaml path and YAML formatting.",
+                    "description": "Write the current UoW implementation report as canonical YAML. The report argument should be a JSON object, not YAML document text; if you already produced YAML/JSON text, pass a parseable mapping string here instead of using write_file. This tool owns the impl_report.yaml path and YAML formatting.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "uow_id": {"type": "string"},
-                            "report": {"type": "object"},
+                            "report": {"oneOf": [{"type": "object"}, {"type": "string"}]},
                         },
                         "required": ["uow_id", "report"],
                     },
@@ -881,11 +885,18 @@ class _OpenaiCompatToolRuntime:
             raise ValueError(f"path is not a directory: {path}")
         max_depth = max(0, min(int(args.get("max_depth") or 1), 3))
         entries: list[dict[str, str]] = []
+        truncated = False
 
         def walk(current: Path, depth: int) -> None:
+            nonlocal truncated
+            if truncated:
+                return
             for child in sorted(current.iterdir(), key=lambda item: item.name):
                 if child.name.startswith("."):
                     continue
+                if len(entries) >= _OPENAI_COMPAT_LIST_DIR_ENTRY_LIMIT:
+                    truncated = True
+                    return
                 rel_path = child.relative_to(path)
                 entries.append(
                     {
@@ -895,9 +906,16 @@ class _OpenaiCompatToolRuntime:
                 )
                 if child.is_dir() and depth < max_depth:
                     walk(child, depth + 1)
+                    if truncated:
+                        return
 
         walk(path, 0)
-        return {"path": str(path), "entries": entries}
+        return {
+            "path": str(path),
+            "entries": entries,
+            "truncated": truncated,
+            "entry_limit": _OPENAI_COMPAT_LIST_DIR_ENTRY_LIMIT,
+        }
 
     def _read_file(self, args: dict) -> dict:
         path = self._resolve_path(str(args.get("path") or ""), allow_write=False)
@@ -950,6 +968,24 @@ class _OpenaiCompatToolRuntime:
             raise ValueError(f"{key} must be an object")
         return dict(payload)
 
+    def _structured_payload_or_parseable_string(self, args: dict, key: str) -> dict:
+        payload = args.get(key)
+        if isinstance(payload, dict):
+            return dict(payload)
+        if isinstance(payload, str):
+            errors: list[str] = []
+            for parser_name, parser in (("JSON", json.loads), ("YAML", yaml.safe_load)):
+                try:
+                    parsed = parser(payload)
+                except Exception as exc:
+                    errors.append(f"{parser_name}: {exc}")
+                    continue
+                if isinstance(parsed, dict):
+                    return dict(parsed)
+                raise ValueError(f"{key} string must parse to an object, got {type(parsed).__name__}")
+            raise ValueError(f"{key} string must be parseable as JSON or YAML object ({'; '.join(errors)})")
+        raise ValueError(f"{key} must be an object")
+
     def _ensure_identity(self, payload: dict, key: str, expected: str, *, default_if_missing: bool = True) -> None:
         actual = payload.get(key)
         if actual is None:
@@ -999,7 +1035,7 @@ class _OpenaiCompatToolRuntime:
         self._require_change_context("impl_report.yaml")
         uow_id = str(args.get("uow_id") or "").strip()
         uow_id = self._simple_dir_name(uow_id, name="uow_id")
-        report = self._structured_payload(args, "report")
+        report = self._structured_payload_or_parseable_string(args, "report")
         self._ensure_identity(report, "uow_id", uow_id)
         self._ensure_identity(report, "change_id", self.change_id)
         return self._write_structured_yaml(
@@ -1060,6 +1096,19 @@ class _OpenaiCompatToolRuntime:
         )
         return response
 
+    def _tool_error_result(self, exc: Exception) -> dict:
+        return {
+            "error": f"{type(exc).__name__}: {exc}",
+            "allowed_read_roots": [str(root) for root in self.read_roots],
+            "allowed_write_roots": [str(root) for root in self.write_roots],
+            "artifact_hints": {
+                "planning/tasks.yaml": "Use write_task_plan with an artifact object.",
+                "planning/assignments.json": "Use write_assignments with an artifact object.",
+                "execution/<uow_id>/impl_report.yaml": "Use write_impl_report with uow_id and a report object. Do not use write_file; if you have YAML/JSON text, pass a parseable mapping string as report.",
+                "qa/qa_report.yaml": "Use write_qa_report with a report object.",
+            },
+        }
+
     def execute(self, tool_name: str, arguments: dict) -> str:
         logger.info("_OpenaiCompatToolRuntime.execute: tool=%s", tool_name)
         try:
@@ -1085,7 +1134,7 @@ class _OpenaiCompatToolRuntime:
                 result = {"error": f"unknown tool: {tool_name}"}
         except Exception as exc:
             logger.warning("_OpenaiCompatToolRuntime.execute: tool=%s failed: %s", tool_name, exc)
-            result = {"error": f"{type(exc).__name__}: {exc}"}
+            result = self._tool_error_result(exc)
         return json.dumps(result, ensure_ascii=False)
 
 

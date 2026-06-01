@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -117,6 +118,142 @@ class EvaluatorOptimizerLoopTelemetryTests(unittest.TestCase):
                 yaml.safe_load(snapshot.read_text(encoding="utf-8"))["definition_of_done_status"][0]["item"],
                 "Output format preserved: status remains visible",
             )
+            eval_path = uow_dir / "eval_impl_1.json"
+            self.assertTrue(eval_path.is_file())
+            self.assertEqual(json.loads(eval_path.read_text(encoding="utf-8"))["raw_response"], "PASS")
+
+    def test_medium__uow_eval_loop_persists_feedback_and_passes_path_to_next_iteration(self):
+        from core.evaluator_optimizer_loops import run_uow_eval_loop
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "agent-context"
+            uow_dir = root / "CHANGE-1" / "execution" / "UOW-001"
+            uow_dir.mkdir(parents=True)
+            (uow_dir / "uow_spec.yaml").write_text(
+                yaml.safe_dump(
+                    {
+                        "uow_id": "UOW-001",
+                        "title": "Implement alpha ordering helper",
+                        "implementation_hints": ["libs/orders/alpha-order/alpha-order-helper.ts"],
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+            software_engineer_calls = []
+            evaluator_outputs = [
+                json.dumps(
+                    {
+                        "artifact_evaluated": "impl_report.yaml",
+                        "status": "FAIL",
+                        "issues": [{"description": "Missing alpha verification"}],
+                    }
+                ),
+                "PASS",
+            ]
+
+            def software_engineer(**kwargs) -> str:
+                software_engineer_calls.append(kwargs)
+                (uow_dir / "impl_report.yaml").write_text(
+                    yaml.safe_dump(
+                        {
+                            "change_id": "CHANGE-1",
+                            "uow_id": "UOW-001",
+                            "status": "complete",
+                            "implementation_summary": "Alpha order helper verified",
+                            "definition_of_done_status": [
+                                {
+                                    "item": "Alpha order preserved",
+                                    "met": True,
+                                    "evidence": "alpha order helper verified",
+                                }
+                            ],
+                        },
+                        sort_keys=False,
+                    ),
+                    encoding="utf-8",
+                )
+                return "implemented"
+
+            def evaluator(**_kwargs) -> str:
+                return evaluator_outputs.pop(0)
+
+            with patch("core.evaluator_optimizer_loops.steps.AGENT_CONTEXT_ROOT", root), patch(
+                "core.evaluator_optimizer_loops.steps.step_software_engineer", side_effect=software_engineer
+            ), patch("core.evaluator_optimizer_loops.steps.step_software_engineer_evaluator", side_effect=evaluator):
+                run_uow_eval_loop(
+                    "UOW-001",
+                    "CHANGE-1",
+                    repo="/tmp/repo",
+                    iter_count=2,
+                    runner="claude",
+                    runner_model="claude-sonnet",
+                )
+
+            eval_path = uow_dir / "eval_impl_1.json"
+            self.assertTrue(eval_path.is_file())
+            self.assertEqual(json.loads(eval_path.read_text(encoding="utf-8"))["status"], "FAIL")
+            self.assertEqual(software_engineer_calls[0]["evaluator_feedback"], "")
+            self.assertEqual(software_engineer_calls[0]["evaluator_feedback_path"], "")
+            self.assertIn("Missing alpha verification", software_engineer_calls[1]["evaluator_feedback"])
+            self.assertEqual(software_engineer_calls[1]["evaluator_feedback_path"], str(eval_path))
+
+    def test_medium__uow_eval_loop_saves_fenced_json_feedback_as_object(self):
+        from core.evaluator_optimizer_loops import run_uow_eval_loop
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "agent-context"
+            uow_dir = root / "CHANGE-1" / "execution" / "UOW-001"
+            uow_dir.mkdir(parents=True)
+            (uow_dir / "uow_spec.yaml").write_text(
+                yaml.safe_dump(
+                    {
+                        "uow_id": "UOW-001",
+                        "title": "Implement alpha ordering helper",
+                        "implementation_hints": ["libs/orders/alpha-order/alpha-order-helper.ts"],
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+
+            def software_engineer(**_kwargs) -> str:
+                (uow_dir / "impl_report.yaml").write_text(
+                    yaml.safe_dump(
+                        {
+                            "change_id": "CHANGE-1",
+                            "uow_id": "UOW-001",
+                            "status": "complete",
+                            "implementation_summary": "Alpha order helper verified",
+                            "definition_of_done_status": [
+                                {"item": "Alpha order preserved", "met": True, "evidence": "alpha verified"}
+                            ],
+                        },
+                        sort_keys=False,
+                    ),
+                    encoding="utf-8",
+                )
+                return "implemented"
+
+            def evaluator(**_kwargs) -> str:
+                return '```json\n{"status":"PASS","summary":"alpha verified"}\n```'
+
+            with patch("core.evaluator_optimizer_loops.steps.AGENT_CONTEXT_ROOT", root), patch(
+                "core.evaluator_optimizer_loops.steps.step_software_engineer", side_effect=software_engineer
+            ), patch("core.evaluator_optimizer_loops.steps.step_software_engineer_evaluator", side_effect=evaluator):
+                run_uow_eval_loop(
+                    "UOW-001",
+                    "CHANGE-1",
+                    repo="/tmp/repo",
+                    iter_count=1,
+                    runner="claude",
+                    runner_model="claude-sonnet",
+                )
+
+            payload = json.loads((uow_dir / "eval_impl_1.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["status"], "PASS")
+            self.assertEqual(payload["summary"], "alpha verified")
+            self.assertEqual(payload["artifact_evaluated"], "impl_report.yaml")
 
 
 if __name__ == "__main__":

@@ -75,6 +75,7 @@ class EvalRunnerProgressTests(unittest.TestCase):
 
         self.assertEqual(env["AGENT_RUNNER_EVENT_LOG"], "/tmp/events.jsonl")
         self.assertEqual(env["AGENT_RUNNER_HEADLESS"], "1")
+        self.assertEqual(env["AGENT_RUNNER_EVALUATION_RUN"], "1")
 
     def test_progress_tracks_stage_completion_without_lessons(self):
         progress = eval_runner.WorkflowProgress(stages=eval_runner.workflow_stage_names(include_lessons=False))
@@ -113,6 +114,217 @@ class EvalRunnerProgressTests(unittest.TestCase):
 
 
 class EvalRunnerStructuredResultTests(unittest.TestCase):
+    def test_hydrate_local_dependency_tree_links_node_modules(self):
+        with tempfile.TemporaryDirectory(prefix="eval-source-") as source_dir, tempfile.TemporaryDirectory(prefix="eval-workspace-") as workspace_dir:
+            source = Path(source_dir)
+            workspace = Path(workspace_dir)
+            (source / "node_modules" / ".bin").mkdir(parents=True)
+            (source / "node_modules" / ".bin" / "tsx").write_text("#!/bin/sh\n", encoding="utf-8")
+
+            eval_runner.hydrate_local_dependency_tree(str(source), workspace)
+
+            self.assertTrue((workspace / "node_modules").is_symlink())
+            self.assertTrue((workspace / "node_modules" / ".bin" / "tsx").exists())
+
+    def test_hydrate_local_dependency_tree_ignores_remote_repo(self):
+        with tempfile.TemporaryDirectory(prefix="eval-workspace-") as workspace_dir:
+            workspace = Path(workspace_dir)
+
+            eval_runner.hydrate_local_dependency_tree("https://example.com/repo.git", workspace)
+
+            self.assertFalse((workspace / "node_modules").exists())
+
+    def test_gold_master_angular_jit_output_is_setup_failure(self):
+        completed = subprocess.CompletedProcess(
+            ["pytest"],
+            1,
+            stdout="",
+            stderr=(
+                "The injectable 'PlatformLocation' needs to be compiled using the JIT compiler, "
+                "but '@angular/compiler' is not available."
+            ),
+        )
+        summary = eval_runner.TestSummary()
+
+        reason = eval_runner.hidden_test_setup_failure_reason(completed, summary)
+
+        self.assertEqual(reason, "angular jit compiler unavailable")
+
+    def test_gold_master_missing_tsx_junit_message_is_setup_failure(self):
+        completed = subprocess.CompletedProcess(["pytest"], 1, stdout="", stderr="")
+        summary = eval_runner.TestSummary(
+            total=1,
+            failed=1,
+            cases=[
+                {
+                    "classname": "hidden_tests",
+                    "name": "test_ac1_behavior",
+                    "status": "failed",
+                    "message": "Missing local TypeScript runner at node_modules/.bin/tsx. Install dependencies.",
+                }
+            ],
+        )
+
+        reason = eval_runner.hidden_test_setup_failure_reason(completed, summary)
+
+        self.assertEqual(reason, "missing local TypeScript runner")
+
+    def test_gold_master_behavioral_assertion_failure_is_not_setup_failure(self):
+        completed = subprocess.CompletedProcess(
+            ["pytest"],
+            1,
+            stdout="assert classification.category == ErrorCategory.AUTHENTICATION",
+            stderr="",
+        )
+        summary = eval_runner.TestSummary(
+            total=1,
+            failed=1,
+            cases=[
+                {
+                    "classname": "hidden_tests",
+                    "name": "test_ac1_behavior",
+                    "status": "failed",
+                    "message": "expected a dedicated auth/access category, not api",
+                }
+            ],
+        )
+
+        reason = eval_runner.hidden_test_setup_failure_reason(completed, summary)
+
+        self.assertIsNone(reason)
+
+    def test_gold_master_echoed_hidden_test_source_is_not_setup_failure(self):
+        completed = subprocess.CompletedProcess(
+            ["pytest"],
+            1,
+            stdout=(
+                "E       AssertionError: TypeScript behavioral assertions failed.\n"
+                "E       >       assert tsx.exists(), (\n"
+                "E                   \"Missing local TypeScript runner at node_modules/.bin/tsx. \"\n"
+            ),
+            stderr="",
+        )
+        summary = eval_runner.TestSummary(
+            total=1,
+            failed=1,
+            cases=[
+                {
+                    "classname": "hidden_tests",
+                    "name": "test_ac1_behavior",
+                    "status": "failed",
+                    "message": "TypeScript behavioral assertions failed.",
+                }
+            ],
+        )
+
+        reason = eval_runner.hidden_test_setup_failure_reason(completed, summary)
+
+        self.assertIsNone(reason)
+
+    def test_gold_master_behavioral_failure_allows_workflow_to_continue(self):
+        with tempfile.TemporaryDirectory(prefix="eval-runner-bench-") as tmpdir:
+            bench = Path(tmpdir)
+            (bench / "story.json").write_text(
+                json.dumps(
+                    {
+                        "change_id": "TEST-1",
+                        "title": "Test benchmark",
+                        "description": "Exercise runner flow.",
+                        "acceptance_criteria": ["AC1: Passes"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (bench / "hidden_tests.py").write_text(
+                'AC_TEST_MAP = {"AC1": ["test_ac1_pass"]}\n\ndef test_ac1_pass():\n    assert True\n',
+                encoding="utf-8",
+            )
+            args = Namespace(
+                keep_sandbox=False,
+                repo="/repo",
+                sha="sha",
+                test_timeout=30,
+                no_verify_gold_fails=False,
+                allow_hidden_skips=False,
+                project_test_command=None,
+            )
+            gold_completed = subprocess.CompletedProcess(["pytest"], 1, stdout="assert auth category", stderr="")
+            gold_summary = eval_runner.TestSummary(
+                total=1,
+                failed=1,
+                cases=[{"classname": "hidden_tests", "name": "test_ac1_pass", "status": "failed", "message": "wrong category"}],
+            )
+            hidden_completed = subprocess.CompletedProcess(["pytest"], 0, stdout="", stderr="")
+            hidden_summary = eval_runner.TestSummary(
+                total=1,
+                passed=1,
+                cases=[{"classname": "hidden_tests", "name": "test_ac1_pass", "status": "passed", "message": ""}],
+            )
+
+            with (
+                patch.object(eval_runner, "prepare_workspace"),
+                patch.object(eval_runner, "run_hidden_tests", side_effect=[(gold_completed, gold_summary), (hidden_completed, hidden_summary)]),
+                patch.object(eval_runner, "invoke_workflow", return_value=subprocess.CompletedProcess(["run.py"], 0, stdout="", stderr="")) as workflow,
+                patch.object(eval_runner, "collect_session_metrics", return_value={}),
+            ):
+                result = eval_runner.run_one(bench, args)
+
+        self.assertEqual(result["status"], "PASS")
+        workflow.assert_called_once()
+
+    def test_gold_master_setup_failure_stops_before_workflow(self):
+        with tempfile.TemporaryDirectory(prefix="eval-runner-bench-") as tmpdir:
+            bench = Path(tmpdir)
+            (bench / "story.json").write_text(
+                json.dumps(
+                    {
+                        "change_id": "TEST-1",
+                        "title": "Test benchmark",
+                        "description": "Exercise runner flow.",
+                        "acceptance_criteria": ["AC1: Passes"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (bench / "hidden_tests.py").write_text(
+                'AC_TEST_MAP = {"AC1": ["test_ac1_pass"]}\n\ndef test_ac1_pass():\n    assert True\n',
+                encoding="utf-8",
+            )
+            args = Namespace(
+                keep_sandbox=False,
+                repo="/repo",
+                sha="sha",
+                test_timeout=30,
+                no_verify_gold_fails=False,
+                allow_hidden_skips=False,
+                project_test_command=None,
+            )
+            gold_completed = subprocess.CompletedProcess(["pytest"], 1, stdout="", stderr="")
+            gold_summary = eval_runner.TestSummary(
+                total=1,
+                failed=1,
+                cases=[
+                    {
+                        "classname": "hidden_tests",
+                        "name": "test_ac1_pass",
+                        "status": "failed",
+                        "message": "Missing local TypeScript runner at node_modules/.bin/tsx.",
+                    }
+                ],
+            )
+
+            with (
+                patch.object(eval_runner, "prepare_workspace"),
+                patch.object(eval_runner, "run_hidden_tests", return_value=(gold_completed, gold_summary)),
+                patch.object(eval_runner, "invoke_workflow") as workflow,
+                patch.object(eval_runner, "collect_session_metrics", return_value={}),
+            ):
+                result = eval_runner.run_one(bench, args)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertEqual(result["error"], "hidden tests errored on gold master: missing local TypeScript runner")
+        workflow.assert_not_called()
+
     def test_parse_junit_maps_ac_results_and_skips(self):
         with tempfile.TemporaryDirectory(prefix="eval-runner-junit-") as tmpdir:
             junit = Path(tmpdir) / "hidden.xml"
