@@ -2,17 +2,22 @@
 from __future__ import annotations
 
 import re
+import logging
+import shutil
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .. import db
+from ..paths import AGENT_CONTEXT_ROOT, LOGS_ROOT, data_dir
 from ..telemetry_analysis import build_chart_payload, build_run_profile
 
 router = APIRouter(prefix="/telemetry", tags=["telemetry"])
+logger = logging.getLogger(__name__)
 
 MAX_ALL_RUNS = 5000
 KNOWN_STAGES = (
@@ -248,6 +253,78 @@ def _filter_options() -> dict[str, list[str]]:
             cur.execute(f"SELECT DISTINCT {column} FROM jobs WHERE {column} IS NOT NULL AND {column}!='' ORDER BY {column}")
             out[key] = [str(row[0]) for row in cur.fetchall()]
     return out
+
+
+def _safe_event_cleanup_roots() -> list[Path]:
+    return [data_dir().resolve(), LOGS_ROOT.resolve(), AGENT_CONTEXT_ROOT.resolve()]
+
+
+def _is_safe_event_path(path: Path, roots: list[Path]) -> bool:
+    try:
+        resolved = path.expanduser().resolve()
+    except OSError:
+        return False
+    if resolved.name != "events.jsonl":
+        return False
+    return any(resolved == root or root in resolved.parents for root in roots)
+
+
+def _remove_file_if_exists(path: Path) -> int:
+    if not path.exists():
+        return 0
+    if not path.is_file():
+        return 0
+    path.unlink()
+    return 1
+
+
+def _remove_events_tree(path: Path) -> int:
+    if not path.exists():
+        return 0
+    if not path.is_dir():
+        return 0
+    count = sum(1 for item in path.rglob("*") if item.is_file())
+    shutil.rmtree(path)
+    return count
+
+
+def _cleanup_event_files(event_paths: list[str]) -> int:
+    deleted = 0
+    events_dir = data_dir() / "events"
+    try:
+        deleted += _remove_events_tree(events_dir)
+    except OSError as exc:
+        logger.warning("delete_all_telemetry: failed to remove %s: %s", events_dir, exc)
+
+    roots = _safe_event_cleanup_roots()
+    for raw_path in event_paths:
+        path = Path(raw_path)
+        if not _is_safe_event_path(path, roots):
+            logger.warning("delete_all_telemetry: skipped unsafe event path %s", raw_path)
+            continue
+        try:
+            deleted += _remove_file_if_exists(path)
+            deleted += _remove_file_if_exists(Path(f"{path}.lock"))
+        except OSError as exc:
+            logger.warning("delete_all_telemetry: failed to remove %s: %s", path, exc)
+    return deleted
+
+
+@router.delete("/data")
+async def delete_telemetry_data() -> dict[str, Any]:
+    try:
+        result = db.delete_all_telemetry()
+    except db.TelemetryDeletionBlocked as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot delete telemetry while {exc.active_count} active job(s) exist.",
+        ) from exc
+    deleted_event_files = _cleanup_event_files(result.get("event_paths", []))
+    return {
+        "deleted_jobs": result["deleted_jobs"],
+        "deleted_events": result["deleted_events"],
+        "deleted_event_files": deleted_event_files,
+    }
 
 
 @router.get("/runs")

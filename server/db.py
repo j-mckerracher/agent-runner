@@ -85,6 +85,13 @@ CREATE INDEX IF NOT EXISTS idx_telemetry_events_kind ON telemetry_events(kind);
 
 _lock = threading.RLock()
 _conns: dict[str, sqlite3.Connection] = {}
+ACTIVE_JOB_STATUSES = ("queued", "running", "awaiting_input")
+
+
+class TelemetryDeletionBlocked(RuntimeError):
+    def __init__(self, active_count: int):
+        super().__init__("Cannot delete telemetry while active jobs exist")
+        self.active_count = active_count
 
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
@@ -351,6 +358,35 @@ def count_telemetry_events(job_id: str) -> int:
         cur.execute("SELECT COUNT(*) FROM telemetry_events WHERE job_id=?", (job_id,))
         (count,) = cur.fetchone()
     return int(count)
+
+
+def delete_all_telemetry() -> dict[str, Any]:
+    """Delete all persisted run telemetry and return deleted row counts."""
+    conn = _get_conn()
+    with _lock:
+        cur = conn.cursor()
+        try:
+            placeholders = ",".join("?" for _ in ACTIVE_JOB_STATUSES)
+            cur.execute(f"SELECT COUNT(*) FROM jobs WHERE status IN ({placeholders})", ACTIVE_JOB_STATUSES)
+            (active_count,) = cur.fetchone()
+            if int(active_count):
+                raise TelemetryDeletionBlocked(int(active_count))
+
+            cur.execute("SELECT events_path FROM jobs WHERE events_path IS NOT NULL AND events_path!=''")
+            event_paths = [str(row[0]) for row in cur.fetchall() if row[0]]
+            cur.execute("SELECT COUNT(*) FROM telemetry_events")
+            (deleted_events,) = cur.fetchone()
+            cur.execute("SELECT COUNT(*) FROM jobs")
+            (deleted_jobs,) = cur.fetchone()
+            cur.execute("DELETE FROM telemetry_events")
+            cur.execute("DELETE FROM jobs")
+            return {
+                "deleted_jobs": int(deleted_jobs),
+                "deleted_events": int(deleted_events),
+                "event_paths": event_paths,
+            }
+        finally:
+            cur.close()
 
 
 def _stable_backfill_seq(raw_seq: Any, line_number: int, used: set[int]) -> int:

@@ -1977,6 +1977,58 @@ function resetTelemetryFilters() {
     TELEMETRY_STATE.missingEventsOnly = false;
     scheduleTelemetryRefresh();
 }
+function clearTelemetryAfterDelete() {
+    TELEMETRY_STATE.loaded = false;
+    TELEMETRY_STATE.loading = false;
+    TELEMETRY_STATE.selectedIds.clear();
+    TELEMETRY_STATE.visibleRuns = [];
+    TELEMETRY_STATE.selectionMode = "all";
+    TELEMETRY_STATE.aggregate = null;
+    TELEMETRY_STATE.detailJobId = null;
+    TELEMETRY_STATE.failedStage = null;
+    TELEMETRY_STATE.missingEventsOnly = false;
+    const detail = $("#telemetry-detail");
+    if (detail) {
+        detail.classList.remove("show");
+        detail.dataset.jobId = "";
+        detail.innerHTML = "";
+    }
+}
+function setTelemetryDeleteMessage(message, isError = false, kind = "") {
+    toast(message, isError, kind);
+    const meta = $("#telemetry-meta");
+    if (meta) meta.textContent = message;
+}
+async function deleteAllTelemetryData() {
+    setTelemetryDeleteMessage("Delete all data clicked.");
+    if (
+        !confirm(
+            "Delete all run telemetry data? This cannot be undone.",
+        )
+    ) {
+        setTelemetryDeleteMessage("Delete all data canceled.");
+        return;
+    }
+    const button = $("#telemetry-delete-all");
+    if (button) button.disabled = true;
+    setTelemetryDeleteMessage("Deleting telemetry data...");
+    try {
+        await api("/telemetry/data", { method: "DELETE" });
+        clearTelemetryAfterDelete();
+        await refreshTelemetry();
+        setTelemetryDeleteMessage(
+            "Telemetry data deleted.",
+            false,
+            "success",
+        );
+    } catch (e) {
+        toast(e.message, true);
+        const meta = $("#telemetry-meta");
+        if (meta) meta.textContent = e.message;
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
 function applyTelemetryPreset(preset) {
     TELEMETRY_STATE.failedStage = null;
     TELEMETRY_STATE.missingEventsOnly = false;
@@ -2047,6 +2099,11 @@ function initTelemetry() {
         "click",
         resetTelemetryFilters,
     );
+    const deleteButton = $("#telemetry-delete-all");
+    if (deleteButton) {
+        deleteButton.dataset.telemetryDeleteBound = "main";
+        deleteButton.addEventListener("click", deleteAllTelemetryData);
+    }
     $("#telemetry-all")?.addEventListener("click", () => {
         TELEMETRY_STATE.selectedIds.clear();
         TELEMETRY_STATE.selectionMode = "all";

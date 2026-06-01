@@ -35,6 +35,8 @@ class GuiTelemetryRegressionTests(unittest.TestCase):
         compact_html = re.sub(r"\s+", " ", html)
 
         self.assertIn("/static/vendor/echarts.min.js", markup)
+        self.assertIn('id="telemetry-delete-all"', markup)
+        self.assertIn('class="btn danger"', markup)
         self.assertRegex(html, re.compile(r'<option value="all" selected>\s*All time\s*</option>'))
         self.assertRegex(html, re.compile(r'chartBucket:\s*"day"'))
         self.assertRegex(html, re.compile(r'rollup:\s*"run"'))
@@ -43,6 +45,26 @@ class GuiTelemetryRegressionTests(unittest.TestCase):
         self.assertRegex(html, re.compile(r'bucket:\s*TELEMETRY_STATE\.chartBucket \|\| "day"'))
         self.assertIn('api(`/telemetry/runs/${jobId}/profile`)', html)
         self.assertIn("function telemetryChartsAvailable()", html)
+        self.assertIn('api("/telemetry/data", { method: "DELETE" })', html)
+        self.assertIn("function clearTelemetryAfterDelete()", html)
+        self.assertRegex(
+            markup,
+            re.compile(
+                r'<script src="/static/assets/js/telemetry\.js\?v=[^"]+"></script>',
+            ),
+        )
+        self.assertIn(
+            'deleteButton.dataset.telemetryDeleteBound = "main"',
+            html,
+        )
+        self.assertIn(
+            'button.dataset.telemetryDeleteBound = "fallback"',
+            markup,
+        )
+        self.assertIn('deleteButton.addEventListener("click", deleteAllTelemetryData)', html)
+        self.assertIn('setTelemetryDeleteMessage("Delete all data clicked.")', html)
+        self.assertIn("toast(e.message, true)", html)
+        self.assertIn('"Telemetry data deleted."', html)
         self.assertIn("Stage Token Use", compact_html)
         self.assertIn('id="telemetry-chart-stage-token-boxplot"', html)
         self.assertIn("payload.stage_token_boxplot || []", html)

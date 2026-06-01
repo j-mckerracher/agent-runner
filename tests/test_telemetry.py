@@ -73,6 +73,50 @@ class TelemetryDbTests(unittest.TestCase):
         self.assertEqual(events[0]["type"], "stage.start")
         self.assertEqual(db.count_telemetry_events("job_one"), 1)
 
+    def test_medium__delete_all_telemetry_removes_jobs_and_events(self):
+        from server import db
+
+        db.insert_job({
+            "id": "job_delete_all",
+            "change_id": "DELETE-ALL",
+            "status": "succeeded",
+            "run_kind": "regular",
+            "mode": "live",
+            "runner": "claude",
+            "repo": self.tmpdir,
+            "submitted_at": "2026-05-23T00:00:00Z",
+            "events_path": str(Path(self.tmpdir) / "events.jsonl"),
+        })
+        db.insert_telemetry_event("job_delete_all", {"seq": 1, "ts": "2026-05-23T00:00:00Z", "type": "log"})
+
+        result = db.delete_all_telemetry()
+
+        self.assertEqual(result["deleted_jobs"], 1)
+        self.assertEqual(result["deleted_events"], 1)
+        self.assertEqual(result["event_paths"], [str(Path(self.tmpdir) / "events.jsonl")])
+        self.assertEqual(db.list_jobs(limit=10), [])
+        self.assertEqual(db.list_telemetry_events(["job_delete_all"]), [])
+
+    def test_medium__delete_all_telemetry_blocks_active_jobs(self):
+        from server import db
+
+        for status in db.ACTIVE_JOB_STATUSES:
+            with self.subTest(status=status):
+                db.insert_job({
+                    "id": f"job_{status}",
+                    "change_id": f"ACTIVE-{status}",
+                    "status": status,
+                    "run_kind": "regular",
+                    "mode": "live",
+                    "runner": "claude",
+                    "repo": self.tmpdir,
+                    "submitted_at": "2026-05-23T00:00:00Z",
+                })
+                with self.assertRaises(db.TelemetryDeletionBlocked):
+                    db.delete_all_telemetry()
+                db.update_job(f"job_{status}", status="succeeded")
+                db.delete_all_telemetry()
+
     def test_medium__backfill_tolerates_bad_seq_missing_ts_and_malformed_rows(self):
         from server import db
 
@@ -241,6 +285,44 @@ class TelemetryRouteTests(unittest.TestCase):
         self.assertGreaterEqual(payload["count"], 1)
         self.assertTrue(any(item["id"] == "job_telemetry_runs" for item in payload["items"]))
         self.assertIn("copilot", payload["filter_options"]["runners"])
+
+    def test_medium__telemetry_delete_data_endpoint_removes_rows_and_event_files(self):
+        from server import db
+        from server.paths import data_dir
+
+        events_path = data_dir() / "events" / "job_delete_route" / "events.jsonl"
+        events_path.parent.mkdir(parents=True, exist_ok=True)
+        events_path.write_text(json.dumps({"seq": 1, "type": "log"}) + "\n", encoding="utf-8")
+        legacy_path = data_dir() / "legacy" / "events.jsonl"
+        legacy_path.parent.mkdir(parents=True, exist_ok=True)
+        legacy_path.write_text(json.dumps({"seq": 1, "type": "log"}) + "\n", encoding="utf-8")
+        self._insert_job("job_delete_route", change_id="DELETE-ROUTE", events_path=str(legacy_path))
+        db.insert_telemetry_event("job_delete_route", {"seq": 1, "ts": "2026-05-23T00:00:00Z", "type": "log"})
+
+        r = self.client.delete("/telemetry/data")
+
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertGreaterEqual(body["deleted_jobs"], 1)
+        self.assertGreaterEqual(body["deleted_events"], 1)
+        self.assertGreaterEqual(body["deleted_event_files"], 2)
+        self.assertFalse(events_path.exists())
+        self.assertFalse(legacy_path.exists())
+        self.assertEqual(db.list_jobs(limit=10), [])
+        self.assertEqual(db.list_telemetry_events(["job_delete_route"]), [])
+
+    def test_medium__telemetry_delete_data_endpoint_blocks_active_jobs(self):
+        from server import db
+
+        self._insert_job("job_delete_active", status="running")
+
+        r = self.client.delete("/telemetry/data")
+
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("active job", r.json()["detail"])
+        self.assertIsNotNone(db.get_job("job_delete_active"))
+        db.update_job("job_delete_active", status="succeeded")
+        self.client.delete("/telemetry/data")
 
     def test_medium__telemetry_query_selected_ignores_visible_filters(self):
         from server import db

@@ -15,7 +15,10 @@
         />
         <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
         <script src="/static/vendor/echarts.min.js"></script>
-        <link rel="stylesheet" href="/static/assets/css/app.css" />
+        <link
+            rel="stylesheet"
+            href="/static/assets/css/app.css?v=telemetry-delete-20260601"
+        />
     </head>
     <body>
         <!-- DOM stays in this file; styles and behavior live under gui/assets/. -->
@@ -707,6 +710,13 @@
                                         type="button"
                                     >
                                         Reset filters
+                                    </button>
+                                    <button
+                                        class="btn danger"
+                                        id="telemetry-delete-all"
+                                        type="button"
+                                    >
+                                        Delete all data
                                     </button>
                                 </div>
                             </div>
@@ -2203,11 +2213,63 @@
         <!-- GUI behavior is split by concern. Load order matters because these
              plain scripts share top-level browser state, matching the previous
              single-inline-script behavior while making the code navigable. -->
-        <script src="/static/assets/js/app-core.js"></script>
-        <script src="/static/assets/js/telemetry.js"></script>
-        <script src="/static/assets/js/app-shell.js"></script>
-        <script src="/static/assets/js/runs.js"></script>
-        <script src="/static/assets/js/content-views.js"></script>
+        <script src="/static/assets/js/app-core.js?v=telemetry-delete-20260601"></script>
+        <script src="/static/assets/js/telemetry.js?v=telemetry-delete-20260601"></script>
+        <script>
+            (() => {
+                const button = document.getElementById(
+                    "telemetry-delete-all",
+                );
+                if (!button || button.dataset.telemetryDeleteBound) return;
+                button.dataset.telemetryDeleteBound = "fallback";
+                const setMessage = (message, isError = false, kind = "") => {
+                    if (typeof toast === "function")
+                        toast(message, isError, kind);
+                    const meta =
+                        document.getElementById("telemetry-meta");
+                    if (meta) meta.textContent = message;
+                };
+                button.addEventListener("click", async () => {
+                    setMessage("Delete all data clicked.");
+                    if (
+                        !confirm(
+                            "Delete all run telemetry data? This cannot be undone.",
+                        )
+                    ) {
+                        setMessage("Delete all data canceled.");
+                        return;
+                    }
+                    button.disabled = true;
+                    setMessage("Deleting telemetry data...");
+                    try {
+                        await api("/telemetry/data", {
+                            method: "DELETE",
+                        });
+                        setMessage(
+                            "Telemetry data deleted.",
+                            false,
+                            "success",
+                        );
+                        if (typeof clearTelemetryAfterDelete === "function")
+                            clearTelemetryAfterDelete();
+                        if (typeof refreshTelemetry === "function")
+                            await refreshTelemetry();
+                        else window.location.reload();
+                    } catch (e) {
+                        if (typeof toast === "function")
+                            toast(e.message, true);
+                        const meta =
+                            document.getElementById("telemetry-meta");
+                        if (meta) meta.textContent = e.message;
+                    } finally {
+                        button.disabled = false;
+                    }
+                });
+            })();
+        </script>
+        <script src="/static/assets/js/app-shell.js?v=telemetry-delete-20260601"></script>
+        <script src="/static/assets/js/runs.js?v=telemetry-delete-20260601"></script>
+        <script src="/static/assets/js/content-views.js?v=telemetry-delete-20260601"></script>
 
         <script type="importmap">
             {
@@ -2216,6 +2278,9 @@
                 }
             }
         </script>
-        <script type="module" src="/static/assets/js/background.js"></script>
+        <script
+            type="module"
+            src="/static/assets/js/background.js?v=telemetry-delete-20260601"
+        ></script>
     </body>
 </html>

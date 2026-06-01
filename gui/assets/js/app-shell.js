@@ -6,27 +6,41 @@
  */
 
 // Navigation
+function navigateTo(viewName) {
+    $$("#nav .nav-item").forEach((n) =>
+        n.classList.toggle("active", n.dataset.view === viewName),
+    );
+    $$(".view").forEach((s) =>
+        s.classList.toggle("active", s.dataset.view === viewName),
+    );
+    const sidebarWF = $("#sidebar-workflow");
+    if (sidebarWF)
+        sidebarWF.classList.toggle("is-visible", viewName === "runs");
+    syncTelemetryPolling();
+    if (viewName === "agents") loadAgents();
+    if (viewName === "corpus") loadCorpus();
+    if (viewName === "evaluate") loadEvaluate();
+    if (viewName === "telemetry") refreshTelemetry();
+    if (viewName === "settings") loadSettings();
+}
+
 $$("#nav .nav-item").forEach((item) => {
-    item.addEventListener("click", () => {
-        $$("#nav .nav-item").forEach((n) =>
-            n.classList.remove("active"),
-        );
-        item.classList.add("active");
-        const v = item.dataset.view;
-        $$(".view").forEach((s) =>
-            s.classList.toggle("active", s.dataset.view === v),
-        );
-        /* Show sidebar workflow rail only on Runs tab */
-        const sidebarWF = $("#sidebar-workflow");
-        if (sidebarWF)
-            sidebarWF.classList.toggle("is-visible", v === "runs");
-        syncTelemetryPolling();
-        if (v === "agents") loadAgents();
-        if (v === "corpus") loadCorpus();
-        if (v === "evaluate") loadEvaluate();
-        if (v === "telemetry") refreshTelemetry();
-        if (v === "settings") loadSettings();
-    });
+    item.addEventListener("click", () => navigateTo(item.dataset.view));
+});
+
+// Keyboard shortcuts: Cmd/Ctrl+1-6 to switch pages
+const VIEW_KEYS = {
+    "1": "runs", "2": "telemetry", "3": "agents",
+    "4": "evaluate", "5": "corpus", "6": "settings",
+};
+
+document.addEventListener("keydown", (e) => {
+    const mod = navigator.platform.includes("Mac") ? e.metaKey : e.ctrlKey;
+    if (!mod) return;
+    const view = VIEW_KEYS[e.key];
+    if (!view) return;
+    e.preventDefault();
+    navigateTo(view);
 });
 
 // Health
