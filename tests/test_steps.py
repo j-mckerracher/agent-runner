@@ -144,6 +144,7 @@ class StepIntakeSyntheticModeTests(unittest.TestCase):
             with (
                 patch("core.steps.AGENT_CONTEXT_ROOT", root / "agent-context"),
                 patch("core.steps.run_agent_cmd", side_effect=_fake_runner) as run_agent_cmd,
+                patch("core.user_escalation.request_user_input", side_effect=RuntimeError("no interactive channel")),
             ):
                 result = step_intake(
                     intake_source="https://dev.azure.com/example/project/_workitems/edit/123456",

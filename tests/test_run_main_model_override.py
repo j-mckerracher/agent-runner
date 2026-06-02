@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import json
 import tempfile
+from contextlib import ExitStack
 from types import SimpleNamespace
 import unittest
 from pathlib import Path
@@ -170,8 +171,60 @@ class RunMainStagePlumbingTests(unittest.TestCase):
             branch_description_source="Test branch description",
         )
 
-        with patch.object(run, "configure_logging") as configure_logging_mock, \
-             patch.object(run, "resolve_workflow_input", return_value=workflow_input), \
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(run, "AGENT_CONTEXT_ROOT", Path(tmpdir) / "agent-context"))
+                configure_logging_mock = stack.enter_context(patch.object(run, "configure_logging"))
+                stack.enter_context(patch.object(run, "resolve_workflow_input", return_value=workflow_input))
+                stack.enter_context(patch.object(run, "use_runner_root"))
+                stack.enter_context(patch.object(run, "clean_workspace"))
+                stack.enter_context(patch.object(run, "_load_runner_config", return_value=self._config()))
+                stack.enter_context(patch.object(run, "_emit"))
+                stack.enter_context(patch.object(run, "_write_workflow_status"))
+                stack.enter_context(patch.object(run, "_require_file"))
+                stack.enter_context(patch.object(run, "_require_dir"))
+                stack.enter_context(patch.object(run, "prepare_repo_branch", return_value="feature/test-branch"))
+                stack.enter_context(patch("core.opik_tracing.opik.configure"))
+                stack.enter_context(patch("core.opik_tracing.opik.Opik", return_value=Mock()))
+                stack.enter_context(patch("signal.signal"))
+                stack.enter_context(patch("core.materialize.run_materialization"))
+                stack.enter_context(patch("core.steps.step_intake"))
+                stack.enter_context(patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop"))
+                stack.enter_context(patch("core.evaluator_optimizer_loops.run_uow_eval_loop"))
+                stack.enter_context(patch("core.steps.step_pr_review"))
+                stack.enter_context(patch("run.load_assignments", return_value={"batches": []}))
+                stack.enter_context(patch("core.steps.step_lessons_optimizer"))
+                run.main(
+                    repo="/tmp/repo",
+                    story_file="/tmp/story.json",
+                    runner="copilot",
+                    log_level="debug",
+                    skip_materialize=True,
+                )
+
+        configure_logging_mock.assert_called_once_with("debug")
+
+    def test_easy__main_prepares_repo_branch_before_intake(self) -> None:
+        workflow_input = SimpleNamespace(
+            repo="/tmp/repo",
+            change_id="TEST-BRANCH-001",
+            intake_mode="synthetic",
+            intake_source="/tmp/story.json",
+            branch_description_source="Fix flaky invoice export",
+        )
+        call_order: list[str] = []
+        class StopAfterIntake(RuntimeError):
+            pass
+
+        def fake_prepare_repo_branch(**kwargs):
+            call_order.append("branch")
+            return "feature/test-branch"
+
+        def fake_step_intake(**kwargs):
+            call_order.append("intake")
+            raise StopAfterIntake("stop after intake")
+
+        with patch.object(run, "resolve_workflow_input", return_value=workflow_input), \
              patch.object(run, "use_runner_root"), \
              patch.object(run, "clean_workspace"), \
              patch.object(run, "_load_runner_config", return_value=self._config()), \
@@ -179,25 +232,33 @@ class RunMainStagePlumbingTests(unittest.TestCase):
              patch.object(run, "_write_workflow_status"), \
              patch.object(run, "_require_file"), \
              patch.object(run, "_require_dir"), \
+             patch.object(run, "prepare_repo_branch", side_effect=fake_prepare_repo_branch) as prepare_repo_branch_mock, \
              patch("core.opik_tracing.opik.configure"), \
              patch("core.opik_tracing.opik.Opik", return_value=Mock()), \
              patch("signal.signal"), \
              patch("core.materialize.run_materialization"), \
-             patch("core.steps.step_intake"), \
+             patch("core.steps.step_intake", side_effect=fake_step_intake) as intake_mock, \
              patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop"), \
              patch("core.evaluator_optimizer_loops.run_uow_eval_loop"), \
              patch("core.steps.step_pr_review"), \
              patch("run.load_assignments", return_value={"batches": []}), \
              patch("core.steps.step_lessons_optimizer"):
-            run.main(
-                repo="/tmp/repo",
-                story_file="/tmp/story.json",
-                runner="copilot",
-                log_level="debug",
-                skip_materialize=True,
-            )
+            with self.assertRaises(StopAfterIntake):
+                run.main(
+                    repo="/tmp/repo",
+                    story_file="/tmp/story.json",
+                    runner="copilot",
+                    model="gpt-5.4",
+                    skip_materialize=True,
+                )
 
-        configure_logging_mock.assert_called_once_with("debug")
+        prepare_repo_branch_mock.assert_called_once_with(
+            repo="/tmp/repo",
+            change_id="TEST-BRANCH-001",
+            description_source="Fix flaky invoice export",
+        )
+        intake_mock.assert_called_once()
+        self.assertEqual(call_order[:2], ["branch", "intake"])
 
     def test_easy__configure_logging_uses_local_timezone_formatter(self) -> None:
         httpx_logger = logging.getLogger("httpx")
@@ -266,31 +327,35 @@ class RunMainStagePlumbingTests(unittest.TestCase):
         )
 
         intake_mock = Mock()
-        with patch.object(run, "resolve_workflow_input", return_value=workflow_input), \
-             patch.object(run, "use_runner_root"), \
-             patch.object(run, "clean_workspace"), \
-             patch.object(run, "_load_runner_config", return_value=self._config()), \
-             patch.object(run, "_emit"), \
-             patch.object(run, "_write_workflow_status"), \
-             patch.object(run, "_require_file"), \
-             patch.object(run, "_require_dir"), \
-             patch("core.opik_tracing.opik.configure"), \
-             patch("core.opik_tracing.opik.Opik", return_value=Mock()), \
-             patch("signal.signal"), \
-             patch("core.materialize.run_materialization"), \
-             patch("core.steps.step_intake", intake_mock), \
-             patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop"), \
-             patch("core.evaluator_optimizer_loops.run_uow_eval_loop"), \
-             patch("core.steps.step_pr_review"), \
-             patch("run.load_assignments", return_value={"batches": []}), \
-             patch("core.steps.step_lessons_optimizer"):
-            run.main(
-                repo="/tmp/repo",
-                story_file="/tmp/story.json",
-                runner="copilot",
-                model="gpt-5.4",
-                skip_materialize=True,
-            )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(run, "AGENT_CONTEXT_ROOT", Path(tmpdir) / "agent-context"))
+                stack.enter_context(patch.object(run, "resolve_workflow_input", return_value=workflow_input))
+                stack.enter_context(patch.object(run, "use_runner_root"))
+                stack.enter_context(patch.object(run, "clean_workspace"))
+                stack.enter_context(patch.object(run, "_load_runner_config", return_value=self._config()))
+                stack.enter_context(patch.object(run, "_emit"))
+                stack.enter_context(patch.object(run, "_write_workflow_status"))
+                stack.enter_context(patch.object(run, "_require_file"))
+                stack.enter_context(patch.object(run, "_require_dir"))
+                stack.enter_context(patch.object(run, "prepare_repo_branch", return_value="feature/test-branch"))
+                stack.enter_context(patch("core.opik_tracing.opik.configure"))
+                stack.enter_context(patch("core.opik_tracing.opik.Opik", return_value=Mock()))
+                stack.enter_context(patch("signal.signal"))
+                stack.enter_context(patch("core.materialize.run_materialization"))
+                stack.enter_context(patch("core.steps.step_intake", intake_mock))
+                stack.enter_context(patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop"))
+                stack.enter_context(patch("core.evaluator_optimizer_loops.run_uow_eval_loop"))
+                stack.enter_context(patch("core.steps.step_pr_review"))
+                stack.enter_context(patch("run.load_assignments", return_value={"batches": []}))
+                stack.enter_context(patch("core.steps.step_lessons_optimizer"))
+                run.main(
+                    repo="/tmp/repo",
+                    story_file="/tmp/story.json",
+                    runner="copilot",
+                    model="gpt-5.4",
+                    skip_materialize=True,
+                )
 
         intake_mock.assert_called_once()
         kwargs = intake_mock.call_args.kwargs
@@ -314,41 +379,45 @@ class RunMainStagePlumbingTests(unittest.TestCase):
         def fake_uow_loop(**kwargs):
             uow_calls.append(kwargs)
 
-        with patch.object(run, "resolve_workflow_input", return_value=workflow_input), \
-             patch.object(run, "use_runner_root"), \
-             patch.object(run, "clean_workspace"), \
-             patch.object(run, "_load_runner_config", return_value=self._config()), \
-             patch.object(run, "_emit"), \
-             patch.object(run, "_write_workflow_status"), \
-             patch.object(run, "_require_file"), \
-             patch.object(run, "_require_dir"), \
-             patch("core.opik_tracing.opik.configure"), \
-             patch("core.opik_tracing.opik.Opik", return_value=Mock()), \
-             patch("signal.signal"), \
-             patch("core.materialize.run_materialization"), \
-             patch("core.steps.step_intake") as intake_mock, \
-             patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop", side_effect=fake_eval_loop), \
-             patch("core.evaluator_optimizer_loops.run_uow_eval_loop", side_effect=fake_uow_loop), \
-             patch("core.steps.step_pr_review") as pr_review_mock, \
-             patch("run.load_assignments", return_value={"batches": [{"batch_id": 1, "parallel_execution": False, "uows": [{"uow_id": "UOW-001"}]}]}), \
-             patch("core.steps.step_lessons_optimizer"):
-            run.main(
-                repo="/tmp/repo",
-                story_file="/tmp/story.json",
-                runner="copilot",
-                model="gpt-5.4",
-                skip_materialize=True,
-                agent_llm_overrides={
-                    "intake": {"runner": "claude", "model": "claude-sonnet-4-6"},
-                    "task-generator": {"runner": "codex", "model": "gpt-5.5"},
-                    "task-plan-evaluator": {"runner": "openai-compat", "model": "judge:model"},
-                    "software-engineer-hyperagent": {"runner": "codex", "model": "gpt-5.4"},
-                    "implementation-evaluator": {"runner": "claude", "model": "claude-haiku-4-5-20251001"},
-                    "qa-engineer": {"runner": "gemini", "model": "gemini-2.5-flash"},
-                    "qa-evaluator": {"runner": "openai-compat", "model": "qa:judge"},
-                    "pr-reviewer": {"runner": "codex", "model": "gpt-5.2"},
-                },
-            )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(run, "AGENT_CONTEXT_ROOT", Path(tmpdir) / "agent-context"))
+                stack.enter_context(patch.object(run, "resolve_workflow_input", return_value=workflow_input))
+                stack.enter_context(patch.object(run, "use_runner_root"))
+                stack.enter_context(patch.object(run, "clean_workspace"))
+                stack.enter_context(patch.object(run, "_load_runner_config", return_value=self._config()))
+                stack.enter_context(patch.object(run, "_emit"))
+                stack.enter_context(patch.object(run, "_write_workflow_status"))
+                stack.enter_context(patch.object(run, "_require_file"))
+                stack.enter_context(patch.object(run, "_require_dir"))
+                stack.enter_context(patch.object(run, "prepare_repo_branch", return_value="feature/test-branch"))
+                stack.enter_context(patch("core.opik_tracing.opik.configure"))
+                stack.enter_context(patch("core.opik_tracing.opik.Opik", return_value=Mock()))
+                stack.enter_context(patch("signal.signal"))
+                stack.enter_context(patch("core.materialize.run_materialization"))
+                intake_mock = stack.enter_context(patch("core.steps.step_intake"))
+                stack.enter_context(patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop", side_effect=fake_eval_loop))
+                stack.enter_context(patch("core.evaluator_optimizer_loops.run_uow_eval_loop", side_effect=fake_uow_loop))
+                pr_review_mock = stack.enter_context(patch("core.steps.step_pr_review"))
+                stack.enter_context(patch("run.load_assignments", return_value={"batches": [{"batch_id": 1, "parallel_execution": False, "uows": [{"uow_id": "UOW-001"}]}]}))
+                stack.enter_context(patch("core.steps.step_lessons_optimizer"))
+                run.main(
+                    repo="/tmp/repo",
+                    story_file="/tmp/story.json",
+                    runner="copilot",
+                    model="gpt-5.4",
+                    skip_materialize=True,
+                    agent_llm_overrides={
+                        "intake": {"runner": "claude", "model": "claude-sonnet-4-6"},
+                        "task-generator": {"runner": "codex", "model": "gpt-5.5"},
+                        "task-plan-evaluator": {"runner": "openai-compat", "model": "judge:model"},
+                        "software-engineer-hyperagent": {"runner": "codex", "model": "gpt-5.4"},
+                        "implementation-evaluator": {"runner": "claude", "model": "claude-haiku-4-5-20251001"},
+                        "qa-engineer": {"runner": "gemini", "model": "gemini-2.5-flash"},
+                        "qa-evaluator": {"runner": "openai-compat", "model": "qa:judge"},
+                        "pr-reviewer": {"runner": "codex", "model": "gpt-5.2"},
+                    },
+                )
 
         self.assertEqual(intake_mock.call_args.kwargs["runner"], "claude")
         self.assertEqual(intake_mock.call_args.kwargs["runner_model"], "claude-sonnet-4-6")
@@ -372,32 +441,36 @@ class RunMainStagePlumbingTests(unittest.TestCase):
             branch_description_source="Test branch",
         )
 
-        with patch.dict(run.os.environ, {"AGENT_RUNNER_EVENT_LOG": "/tmp/events.jsonl"}, clear=False), \
-             patch.object(run, "resolve_workflow_input", return_value=workflow_input), \
-             patch.object(run, "use_runner_root"), \
-             patch.object(run, "clean_workspace") as clean_workspace_mock, \
-             patch.object(run, "_load_runner_config", return_value=self._config()), \
-             patch.object(run, "_emit"), \
-             patch.object(run, "_write_workflow_status"), \
-             patch.object(run, "_require_file"), \
-             patch.object(run, "_require_dir"), \
-             patch("core.opik_tracing.opik.configure"), \
-             patch("core.opik_tracing.opik.Opik", return_value=Mock()), \
-             patch("signal.signal"), \
-             patch("core.materialize.run_materialization"), \
-             patch("core.steps.step_intake"), \
-             patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop"), \
-             patch("core.evaluator_optimizer_loops.run_uow_eval_loop"), \
-             patch("core.steps.step_pr_review"), \
-             patch("run.load_assignments", return_value={"batches": []}), \
-             patch("core.steps.step_lessons_optimizer"):
-            run.main(
-                repo="/tmp/repo",
-                story_file="/tmp/story.json",
-                runner="copilot",
-                model="gpt-5-mini",
-                skip_materialize=True,
-            )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(run, "AGENT_CONTEXT_ROOT", Path(tmpdir) / "agent-context"))
+                stack.enter_context(patch.dict(run.os.environ, {"AGENT_RUNNER_EVENT_LOG": "/tmp/events.jsonl"}, clear=False))
+                stack.enter_context(patch.object(run, "resolve_workflow_input", return_value=workflow_input))
+                stack.enter_context(patch.object(run, "use_runner_root"))
+                clean_workspace_mock = stack.enter_context(patch.object(run, "clean_workspace"))
+                stack.enter_context(patch.object(run, "_load_runner_config", return_value=self._config()))
+                stack.enter_context(patch.object(run, "_emit"))
+                stack.enter_context(patch.object(run, "_write_workflow_status"))
+                stack.enter_context(patch.object(run, "_require_file"))
+                stack.enter_context(patch.object(run, "_require_dir"))
+                stack.enter_context(patch.object(run, "prepare_repo_branch", return_value="feature/test-branch"))
+                stack.enter_context(patch("core.opik_tracing.opik.configure"))
+                stack.enter_context(patch("core.opik_tracing.opik.Opik", return_value=Mock()))
+                stack.enter_context(patch("signal.signal"))
+                stack.enter_context(patch("core.materialize.run_materialization"))
+                stack.enter_context(patch("core.steps.step_intake"))
+                stack.enter_context(patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop"))
+                stack.enter_context(patch("core.evaluator_optimizer_loops.run_uow_eval_loop"))
+                stack.enter_context(patch("core.steps.step_pr_review"))
+                stack.enter_context(patch("run.load_assignments", return_value={"batches": []}))
+                stack.enter_context(patch("core.steps.step_lessons_optimizer"))
+                run.main(
+                    repo="/tmp/repo",
+                    story_file="/tmp/story.json",
+                    runner="copilot",
+                    model="gpt-5-mini",
+                    skip_materialize=True,
+                )
 
         clean_workspace_mock.assert_not_called()
 
@@ -420,31 +493,35 @@ class RunMainStagePlumbingTests(unittest.TestCase):
             stage_order.append("pr-review")
             return "/tmp/pr_review.md"
 
-        with patch.object(run, "resolve_workflow_input", return_value=workflow_input), \
-             patch.object(run, "use_runner_root"), \
-             patch.object(run, "clean_workspace"), \
-             patch.object(run, "_load_runner_config", return_value=self._config()), \
-             patch.object(run, "_emit"), \
-             patch.object(run, "_write_workflow_status") as write_status_mock, \
-             patch.object(run, "_require_file"), \
-             patch.object(run, "_require_dir"), \
-             patch("core.opik_tracing.opik.configure"), \
-             patch("core.opik_tracing.opik.Opik", return_value=Mock()), \
-             patch("signal.signal"), \
-             patch("core.materialize.run_materialization"), \
-             patch("core.steps.step_intake"), \
-             patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop", side_effect=fake_eval_loop), \
-             patch("core.evaluator_optimizer_loops.run_uow_eval_loop"), \
-             patch("core.steps.step_pr_review", side_effect=fake_pr_review) as pr_review_mock, \
-             patch("run.load_assignments", return_value={"batches": []}), \
-             patch("core.steps.step_lessons_optimizer") as lessons_mock:
-            run.main(
-                repo="/tmp/repo",
-                story_file="/tmp/story.json",
-                runner="copilot",
-                model="gpt-5-mini",
-                skip_materialize=True,
-            )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(run, "AGENT_CONTEXT_ROOT", Path(tmpdir) / "agent-context"))
+                stack.enter_context(patch.object(run, "resolve_workflow_input", return_value=workflow_input))
+                stack.enter_context(patch.object(run, "use_runner_root"))
+                stack.enter_context(patch.object(run, "clean_workspace"))
+                stack.enter_context(patch.object(run, "_load_runner_config", return_value=self._config()))
+                stack.enter_context(patch.object(run, "_emit"))
+                write_status_mock = stack.enter_context(patch.object(run, "_write_workflow_status"))
+                stack.enter_context(patch.object(run, "_require_file"))
+                stack.enter_context(patch.object(run, "_require_dir"))
+                stack.enter_context(patch.object(run, "prepare_repo_branch", return_value="feature/test-branch"))
+                stack.enter_context(patch("core.opik_tracing.opik.configure"))
+                stack.enter_context(patch("core.opik_tracing.opik.Opik", return_value=Mock()))
+                stack.enter_context(patch("signal.signal"))
+                stack.enter_context(patch("core.materialize.run_materialization"))
+                stack.enter_context(patch("core.steps.step_intake"))
+                stack.enter_context(patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop", side_effect=fake_eval_loop))
+                stack.enter_context(patch("core.evaluator_optimizer_loops.run_uow_eval_loop"))
+                pr_review_mock = stack.enter_context(patch("core.steps.step_pr_review", side_effect=fake_pr_review))
+                stack.enter_context(patch("run.load_assignments", return_value={"batches": []}))
+                lessons_mock = stack.enter_context(patch("core.steps.step_lessons_optimizer"))
+                run.main(
+                    repo="/tmp/repo",
+                    story_file="/tmp/story.json",
+                    runner="copilot",
+                    model="gpt-5-mini",
+                    skip_materialize=True,
+                )
 
         self.assertEqual(stage_order, ["qa", "pr-review"])
         pr_review_mock.assert_called_once()
@@ -466,32 +543,36 @@ class RunMainStagePlumbingTests(unittest.TestCase):
             if "Perform QA validation" in producer_input:
                 stage_order.append("qa")
 
-        with patch.dict(run.os.environ, {"AGENT_RUNNER_EVALUATION_RUN": "1"}, clear=False), \
-             patch.object(run, "resolve_workflow_input", return_value=workflow_input), \
-             patch.object(run, "use_runner_root"), \
-             patch.object(run, "clean_workspace"), \
-             patch.object(run, "_load_runner_config", return_value=self._config()), \
-             patch.object(run, "_emit"), \
-             patch.object(run, "_write_workflow_status") as write_status_mock, \
-             patch.object(run, "_require_file"), \
-             patch.object(run, "_require_dir"), \
-             patch("core.opik_tracing.opik.configure"), \
-             patch("core.opik_tracing.opik.Opik", return_value=Mock()), \
-             patch("signal.signal"), \
-             patch("core.materialize.run_materialization"), \
-             patch("core.steps.step_intake"), \
-             patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop", side_effect=fake_eval_loop), \
-             patch("core.evaluator_optimizer_loops.run_uow_eval_loop"), \
-             patch("core.steps.step_pr_review") as pr_review_mock, \
-             patch("run.load_assignments", return_value={"batches": []}), \
-             patch("core.steps.step_lessons_optimizer"):
-            run.main(
-                repo="/tmp/repo",
-                story_file="/tmp/story.json",
-                runner="copilot",
-                model="gpt-5-mini",
-                skip_materialize=True,
-            )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(run, "AGENT_CONTEXT_ROOT", Path(tmpdir) / "agent-context"))
+                stack.enter_context(patch.dict(run.os.environ, {"AGENT_RUNNER_EVALUATION_RUN": "1"}, clear=False))
+                stack.enter_context(patch.object(run, "resolve_workflow_input", return_value=workflow_input))
+                stack.enter_context(patch.object(run, "use_runner_root"))
+                stack.enter_context(patch.object(run, "clean_workspace"))
+                stack.enter_context(patch.object(run, "_load_runner_config", return_value=self._config()))
+                stack.enter_context(patch.object(run, "_emit"))
+                write_status_mock = stack.enter_context(patch.object(run, "_write_workflow_status"))
+                stack.enter_context(patch.object(run, "_require_file"))
+                stack.enter_context(patch.object(run, "_require_dir"))
+                stack.enter_context(patch.object(run, "prepare_repo_branch", return_value="feature/test-branch"))
+                stack.enter_context(patch("core.opik_tracing.opik.configure"))
+                stack.enter_context(patch("core.opik_tracing.opik.Opik", return_value=Mock()))
+                stack.enter_context(patch("signal.signal"))
+                stack.enter_context(patch("core.materialize.run_materialization"))
+                stack.enter_context(patch("core.steps.step_intake"))
+                stack.enter_context(patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop", side_effect=fake_eval_loop))
+                stack.enter_context(patch("core.evaluator_optimizer_loops.run_uow_eval_loop"))
+                pr_review_mock = stack.enter_context(patch("core.steps.step_pr_review"))
+                stack.enter_context(patch("run.load_assignments", return_value={"batches": []}))
+                stack.enter_context(patch("core.steps.step_lessons_optimizer"))
+                run.main(
+                    repo="/tmp/repo",
+                    story_file="/tmp/story.json",
+                    runner="copilot",
+                    model="gpt-5-mini",
+                    skip_materialize=True,
+                )
 
         self.assertEqual(stage_order, ["qa"])
         pr_review_mock.assert_not_called()

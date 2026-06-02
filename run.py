@@ -28,6 +28,7 @@ from core.runner_models import (
     resolve_runner_llm_config,
 )
 from core.runner_failover import RunnerFailoverPolicy, discover_prior_runner_candidates
+from core.repo_prep import prepare_repo_branch
 from core.story_inputs import count_acceptance_criteria
 from core.workflow_inputs import DEFAULT_TEST_STORY_FILE, resolve_workflow_input
 
@@ -929,6 +930,7 @@ def main(
     resolved_model: str | None = None
     failed_stage: str | None = None
     last_completed_stage: str | None = None
+    feature_branch: str | None = None
     tracer = None
 
     try:
@@ -1020,6 +1022,20 @@ def main(
         if headless:
             print("Headless mode enabled (human escalations will be auto-answered).")
 
+        logger.info(
+            "main: preparing working branch repo=%s change_id=%s description_source=%r",
+            resolved_repo,
+            resolved_change_id,
+            workflow_input.branch_description_source,
+        )
+        feature_branch = prepare_repo_branch(
+            repo=resolved_repo,
+            change_id=resolved_change_id,
+            description_source=workflow_input.branch_description_source,
+        )
+        logger.info("main: prepared working branch %s", feature_branch)
+        print(f"Feature branch: {feature_branch}")
+
         _emit(
             "job.start",
             change_id=resolved_change_id,
@@ -1027,6 +1043,7 @@ def main(
             runner=runner,
             model=resolved_model,
             intake_mode=intake_mode,
+            feature_branch=feature_branch,
         )
         story_source_metadata = _story_source_metadata(intake_mode=intake_mode, intake_source=intake_source)
         _emit(
