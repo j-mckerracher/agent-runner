@@ -1,0 +1,58 @@
+id: task-generator.context.schema-examples-v1
+agent: task-generator
+version: 1
+description: >
+  Adds a compact good example to the baseline schema guidance. Use this when
+  malformed or under-specified task plans are the dominant failure mode.
+includes:
+  schema_summary: |
+    Required fields per task: id, title, ac_mapping. Strongly preferred fields:
+    description, dependencies, priority, complexity, and definition_of_done for
+    UI or verification-heavy changes.
+  good_example:
+    story_summary: Add validation for imported CSV rows.
+    tasks_yaml: |
+      story_id: EVAL-EXAMPLE
+      librarian_queries: []
+      librarian_exploration_summaries: []
+      tasks:
+        - id: T1
+          title: Validate imported CSV rows
+          description: Add row-level validation for required fields, data types, and duplicate identifiers before records are accepted.
+          ac_mapping: [AC1, AC2]
+          dependencies: []
+          priority: high
+          complexity: moderate
+        - id: T2
+          title: Surface validation errors to users
+          description: Present actionable error messages that identify row number, field, and reason while preserving valid-row processing behavior.
+          ac_mapping: [AC2, AC3]
+          dependencies: [T1]
+          priority: high
+          complexity: moderate
+        - id: T3
+          title: Add import validation tests
+          description: Cover valid imports, missing required fields, duplicate identifiers, and mixed valid/invalid row behavior.
+          ac_mapping: [AC1, AC2, AC3, AC4]
+          dependencies: [T1, T2]
+          priority: high
+          complexity: simple
+          definition_of_done:
+            - Unit tests cover validation edge cases.
+            - UI or API tests verify surfaced error messages when applicable.
+      ac_coverage_matrix:
+        AC1: [T1, T3]
+        AC2: [T1, T2, T3]
+        AC3: [T2, T3]
+        AC4: [T3]
+      notes: Keep validation scoped to CSV import behavior.
+  anti_patterns:
+    - A single task that maps every AC without a separate verification task.
+    - Dependencies that point to missing task IDs.
+    - Tasks that mention broad rewrites, new services, or unrelated migrations not requested by the story.
+excludes:
+  - Long chain-of-thought rationale.
+  - Full source file contents unless specifically needed by the prompt.
+budget:
+  max_context_tokens: 7000
+  max_repo_fact_tokens: 1500

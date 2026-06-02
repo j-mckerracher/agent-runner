@@ -1,0 +1,18 @@
+id: task-generator.context.scoped-repo-facts-v1
+agent: task-generator
+description: Encourages the task generator to use only scoped repository hints supplied by the eval case or Reference Librarian.
+prompt_addendum: |
+  Treat eval-supplied repository hints as scoped planning evidence, not as permission to rewrite broad systems. If likely relevant files are listed in constraints.md, plan around those files first. If the story needs knowledge that is not in the hints, query the Reference Librarian rather than inventing file locations.
+
+  The task plan should prefer narrow, reversible changes and explicit verification tasks over broad refactors.
+includes:
+  - scoped repository file hints
+  - known patterns and anti-patterns from constraints.md
+  - intake/story.yaml
+  - intake/constraints.md
+excludes:
+  - raw full-repo dumps
+  - unverified file paths invented by the agent
+budget:
+  max_context_tokens: 6000
+  max_repo_fact_tokens: 1500

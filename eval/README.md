@@ -482,3 +482,76 @@ Each run writes two files to `eval/reports/`:
 
 - `<YYYY-MM-DD-HHMMss>-<difficulty>.json` — timestamped copy, e.g. `2026-05-20-143022-easy.json`
 - `latest.json` — always overwritten with the most recent run
+
+---
+
+## Single-Agent Artifact Evals
+
+The workflow benchmark runner remains the end-to-end acceptance gate. The
+single-agent eval runner is a cheaper optimization loop for prompt and context
+changes before you spend a full workflow run.
+
+The first supported agent is `task-generator`. It writes and scores
+`planning/tasks.yaml` from prepared `intake/story.yaml` and
+`intake/constraints.md` artifacts.
+
+### Dry-run smoke check
+
+```bash
+python3 eval/agent_runner.py \
+  --agent task-generator \
+  --dataset eval/agent_datasets/task-generator/smoke.jsonl \
+  --dry-run
+```
+
+Dry-run mode writes a deterministic valid task plan. Use it to validate the
+harness, datasets, reports, and CI gates without calling an LLM runner.
+
+### Run a real task-generator eval
+
+```bash
+python3 eval/agent_runner.py \
+  --agent task-generator \
+  --dataset eval/agent_datasets/task-generator/smoke.jsonl \
+  --runner openai-compat \
+  --model minimax-m2.7:cloud \
+  --context-pack schema-examples-v1 \
+  --runs 3
+```
+
+Reports are written to `eval/agent_reports/task-generator/` and mirrored to
+`eval/agent_reports/task-generator/latest.json`.
+
+### Compare prompt and context variants
+
+```bash
+python3 eval/agent_runner.py \
+  --agent task-generator \
+  --dataset eval/agent_datasets/task-generator/regression.jsonl \
+  --runner openai-compat \
+  --model minimax-m2.7:cloud \
+  --context-pack ac-checklist-v1 \
+  --prompt-path agent-definition-source/task-generator/v3-candidate/prompt.md \
+  --compare-to eval/agent_reports/task-generator/baseline.json \
+  --runs 3
+```
+
+Promotion criteria should include the single-agent report and the existing
+end-to-end workflow benchmark report. A candidate prompt or context pack should
+not be promoted if easy/medium workflow benchmarks regress.
+
+### Opik logging
+
+Add `--opik` to attempt Opik trace and feedback-score logging. The local JSON
+report remains the source of truth, and the run degrades safely when Opik is not
+configured.
+
+```bash
+python3 eval/agent_runner.py \
+  --agent task-generator \
+  --dataset eval/agent_datasets/task-generator/smoke.jsonl \
+  --runner openai-compat \
+  --model minimax-m2.7:cloud \
+  --context-pack baseline \
+  --opik
+```

@@ -1,0 +1,34 @@
+id: task-generator.context.baseline
+agent: task-generator
+version: 1
+description: >
+  Minimal task-generator eval context. Use this pack to compare prompt changes
+  without changing the surrounding guidance.
+includes:
+  schema_summary: |
+    planning/tasks.yaml must be a YAML mapping with:
+      story_id: <change id>
+      tasks:
+        - id: T1
+          title: short actionable title
+          description: what this task accomplishes
+          ac_mapping: [AC1, AC2]
+          dependencies: []
+          priority: high|medium|low
+          complexity: simple|moderate|complex
+      ac_coverage_matrix:
+        AC1: [T1]
+      notes: important considerations or risks
+  quality_checklist:
+    - Every acceptance criterion appears in at least one task ac_mapping entry.
+    - Dependencies must reference existing task ids and must not form cycles.
+    - Produce 2 to 8 broad implementation/verification tasks unless the eval case specifies a tighter range.
+    - Include testing or verification coverage when any acceptance criterion requires behavior validation.
+    - Avoid inventing scope not supported by the story, constraints, or repository context.
+excludes:
+  - Full repository dumps.
+  - Raw secret values or environment files.
+  - Changes to source code; the task-generator only writes planning artifacts.
+budget:
+  max_context_tokens: 6000
+  max_repo_fact_tokens: 1500

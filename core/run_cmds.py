@@ -18,7 +18,7 @@ import yaml
 from .opik_compat import opik_context
 
 from .agent_catalog import is_disabled_agent
-from .agent_prompts import load_agent_system_prompt
+from .agent_prompts import has_agent_prompt_override, load_agent_system_prompt
 from .materialized_paths import normalize_runner, runner_skill_dir
 from .runner_models import (
     DEFAULT_CODEX_MODEL,
@@ -1527,7 +1527,23 @@ def run_claude_cmd(
     print(f"Starting Claude Code via {agent}...")
     print(f"Prompt: {prompt}")
     print(f"Model: {model}")
-    cmd = ["claude", "-p", prompt, "--agent", agent, "--model", model, "--output-format", "json"]
+    active_prompt = prompt
+    use_custom_agent = True
+    if has_agent_prompt_override(agent):
+        active_prompt = _build_embedded_agent_prompt(
+            prompt=prompt,
+            agent=agent,
+            runner="claude",
+        )
+        use_custom_agent = False
+        logger.info(
+            "run_claude_cmd: using embedded prompt because a prompt override is active for agent=%s",
+            agent,
+        )
+    cmd = ["claude", "-p", active_prompt]
+    if use_custom_agent:
+        cmd.extend(["--agent", agent])
+    cmd.extend(["--model", model, "--output-format", "json"])
     if skip_permissions:
         cmd.append("--dangerously-skip-permissions")
     if extra_flags:
@@ -1536,12 +1552,12 @@ def run_claude_cmd(
                       env=_without_claude_auth_env(),
                       stream_output=stream_output,
                       model=model,
-                      prompt_text=prompt,
+                      prompt_text=active_prompt,
                       attempt=1,
                       max_attempts=1)
     stdout_raw = result.stdout or ""
     text_out = stdout_raw
-    ti = _estimate_tokens(prompt)
+    ti = _estimate_tokens(active_prompt)
     to = _estimate_tokens(text_out)
     cu = 0.0
     parse_ok = False
@@ -1551,7 +1567,7 @@ def run_claude_cmd(
         to = int(parsed.get("total_output_tokens") or 0)
         cu = float(parsed.get("cost_usd") or 0.0)
         if ti == 0 and to == 0:
-            ti = _estimate_tokens(prompt)
+            ti = _estimate_tokens(active_prompt)
             to = _estimate_tokens(str(parsed.get("result") or stdout_raw))
         if cu == 0.0 and (ti > 0 or to > 0):
             cu = round((ti / 1_000_000 * 3.0) + (to / 1_000_000 * 15.0), 6)
@@ -1561,7 +1577,7 @@ def run_claude_cmd(
         parse_ok = True
     except (json.JSONDecodeError, ValueError, TypeError):
         logger.warning("run_claude_cmd: could not parse JSON output for agent=%s", agent)
-        ti = _estimate_tokens(prompt)
+        ti = _estimate_tokens(active_prompt)
         to = _estimate_tokens(text_out)
         if ti > 0 or to > 0:
             _emit_event("metrics", tokens_in=ti, tokens_out=to, cost_usd=0.0)
@@ -1580,7 +1596,7 @@ def run_claude_cmd(
             model=model,
             status="error",
             duration_ms=_runner_duration_ms(result),
-            prompt_text=prompt,
+            prompt_text=active_prompt,
             response_text=text_out,
             prompt_tokens=ti,
             completion_tokens=to,
@@ -1599,7 +1615,7 @@ def run_claude_cmd(
         model=model,
         status="ok",
         duration_ms=_runner_duration_ms(result),
-        prompt_text=prompt,
+        prompt_text=active_prompt,
         response_text=text_out,
         prompt_tokens=ti,
         completion_tokens=to,
@@ -1664,7 +1680,11 @@ def run_copilot_cmd(
     print(f"Prompt: {prompt}")
     if cli_cmd == "copilot":
         print(f"Model: {model}")
-    use_custom_agent = not _COPILOT_EMBEDDED_AGENT_FALLBACK.get(cli_cmd, False)
+    prompt_override_active = has_agent_prompt_override(agent)
+    use_custom_agent = (
+        not prompt_override_active
+        and not _COPILOT_EMBEDDED_AGENT_FALLBACK.get(cli_cmd, False)
+    )
     active_prompt = prompt
     if not use_custom_agent:
         active_prompt = _build_embedded_agent_prompt(

@@ -1,0 +1,20 @@
+id: task-generator.context.ac-checklist-v1
+agent: task-generator
+description: Adds an explicit acceptance-criteria coverage checklist for prompt/context optimization experiments.
+prompt_addendum: |
+  Use this checklist before finalizing planning/tasks.yaml:
+
+  1. List every AC id from intake/story.yaml.
+  2. Ensure each AC id appears in at least one task ac_mapping entry.
+  3. Ensure ac_coverage_matrix contains the same AC ids and references real task ids.
+  4. Add at least one verification or test-oriented definition-of-done item for the mapped ACs.
+  5. Remove any task that is not traceable to an AC, explicit constraint, or necessary migration step.
+includes:
+  - AC coverage checklist
+  - intake/story.yaml
+  - intake/constraints.md
+excludes:
+  - speculative features
+  - tasks unrelated to acceptance criteria
+budget:
+  max_context_tokens: 5000
