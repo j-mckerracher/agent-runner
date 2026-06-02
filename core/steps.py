@@ -165,6 +165,7 @@ def _build_synthetic_config_artifact(
     repo: str,
     fixture: dict,
     created_at: str,
+    feature_branch: str | None = None,
 ) -> dict:
     return {
         "change_id": change_id,
@@ -185,7 +186,7 @@ def _build_synthetic_config_artifact(
             "status": "intake_complete",
             "current_stage": "intake",
             "started_at": created_at,
-            "feature_branch": build_feature_branch_name(change_id, fixture.get("title")),
+            "feature_branch": feature_branch or build_feature_branch_name(change_id, fixture.get("title")),
         },
     }
 
@@ -275,6 +276,7 @@ def _build_manual_config_artifact(
     repo: str,
     manual_story: dict,
     created_at: str,
+    feature_branch: str | None = None,
 ) -> dict:
     return {
         "change_id": change_id,
@@ -295,7 +297,7 @@ def _build_manual_config_artifact(
             "status": "intake_complete",
             "current_stage": "intake",
             "started_at": created_at,
-            "feature_branch": build_feature_branch_name(change_id, manual_story.get("title")),
+            "feature_branch": feature_branch or build_feature_branch_name(change_id, manual_story.get("title")),
         },
     }
 
@@ -347,7 +349,13 @@ def _write_yaml_artifact(path: Path, payload: dict) -> None:
         yaml.safe_dump(payload, handle, sort_keys=False)
 
 
-def _write_synthetic_intake_artifacts(*, intake_source: str, repo: str, change_id: str) -> str:
+def _write_synthetic_intake_artifacts(
+    *,
+    intake_source: str,
+    repo: str,
+    change_id: str,
+    feature_branch: str | None = None,
+) -> str:
     fixture_path = Path(intake_source).expanduser().resolve()
     with fixture_path.open("r", encoding="utf-8") as handle:
         fixture = json.load(handle)
@@ -365,6 +373,7 @@ def _write_synthetic_intake_artifacts(*, intake_source: str, repo: str, change_i
         repo=repo,
         fixture=fixture,
         created_at=created_at,
+        feature_branch=feature_branch,
     )
     constraints_text = _build_synthetic_constraints_markdown(
         change_id=change_id,
@@ -392,7 +401,13 @@ def _write_synthetic_intake_artifacts(*, intake_source: str, repo: str, change_i
     )
 
 
-def _write_manual_intake_artifacts(*, intake_source: str, repo: str, change_id: str) -> str:
+def _write_manual_intake_artifacts(
+    *,
+    intake_source: str,
+    repo: str,
+    change_id: str,
+    feature_branch: str | None = None,
+) -> str:
     manual_story_path = Path(intake_source).expanduser().resolve()
     manual_story = load_manual_story(str(manual_story_path))
 
@@ -407,6 +422,7 @@ def _write_manual_intake_artifacts(*, intake_source: str, repo: str, change_id: 
         repo=repo,
         manual_story=manual_story,
         created_at=created_at,
+        feature_branch=feature_branch,
     )
     constraints_text = _build_manual_constraints_markdown(
         change_id=change_id,
@@ -432,6 +448,41 @@ def _write_manual_intake_artifacts(*, intake_source: str, repo: str, change_id: 
         f"(story.yaml, config.yaml, constraints.md); normalized {normalized_count} acceptance criteria; "
         f"feature branch {config_payload['run_metadata']['feature_branch']}."
     )
+
+
+def _normalize_intake_feature_branch_config(*, change_id: str, repo: str, feature_branch: str | None) -> bool:
+    if not feature_branch:
+        return False
+
+    config_path = _intake_config_path(change_id)
+    if config_path.is_file():
+        with config_path.open("r", encoding="utf-8") as handle:
+            config_payload = yaml.safe_load(handle) or {}
+        if not isinstance(config_payload, dict):
+            raise ValueError(f"Intake config must be a YAML mapping: {config_path}")
+    else:
+        config_payload = {
+            "change_id": change_id,
+            "code_repo": repo,
+            "intake_mode": "ado",
+        }
+
+    run_metadata = config_payload.get("run_metadata")
+    if not isinstance(run_metadata, dict):
+        run_metadata = {}
+        config_payload["run_metadata"] = run_metadata
+
+    if run_metadata.get("feature_branch") == feature_branch:
+        return False
+
+    run_metadata["feature_branch"] = feature_branch
+    _write_yaml_artifact(config_path, config_payload)
+    logger.info(
+        "_normalize_intake_feature_branch_config: recorded feature branch for change_id=%s branch=%s",
+        change_id,
+        feature_branch,
+    )
+    return True
 
 
 def _confirm_acceptance_criteria(change_id: str, intake_mode: str) -> None:
@@ -1156,6 +1207,7 @@ def build_intake_prompt(
     runner: str = "claude",
     ado_work_item_json: str | None = None,
     extra_context: str | None = None,
+    feature_branch: str | None = None,
 ) -> str:
     if not intake_source:
         raise ValueError("intake_source cannot be empty.")
@@ -1166,6 +1218,9 @@ def build_intake_prompt(
         prompt = f"Intake the following Azure DevOps story link: {intake_source}\n"
         prompt += f"Change ID: {change_id}\n"
         prompt += f"Target repo: {repo}\n"
+        if feature_branch:
+            prompt += f"Prepared feature branch: {feature_branch}\n"
+            prompt += "Set run_metadata.feature_branch in config.yaml exactly to the prepared feature branch.\n"
         if runner == "gemini" and ado_work_item_json:
             prompt += (
                 "The work item data has already been fetched for you. "
@@ -1222,6 +1277,7 @@ def step_intake(
     runner: str = "claude",
     runner_model: str | None = DEFAULT_GEMINI_MODEL,
     extra_context: str | None = None,
+    feature_branch: str | None = None,
 ):
     logger.info("step_intake: change_id=%s mode=%s runner=%s source=%s", change_id, intake_mode, runner, intake_source)
     print(f"Received intake source ({intake_mode}): {intake_source}")
@@ -1236,6 +1292,7 @@ def step_intake(
             intake_source=intake_source,
             repo=repo,
             change_id=change_id,
+            feature_branch=feature_branch,
         )
         logger.info("step_intake: synthetic artifacts written change_id=%s", change_id)
         _confirm_acceptance_criteria(change_id, intake_mode)
@@ -1245,6 +1302,7 @@ def step_intake(
             intake_source=intake_source,
             repo=repo,
             change_id=change_id,
+            feature_branch=feature_branch,
         )
         logger.info("step_intake: manual artifacts written change_id=%s", change_id)
         _confirm_acceptance_criteria(change_id, intake_mode)
@@ -1262,6 +1320,7 @@ def step_intake(
             else None
         ),
         extra_context=extra_context,
+        feature_branch=feature_branch,
     )
     logger.debug("step_intake: prompt length=%d for change_id=%s", len(prompt), change_id)
     extra_skills = None
@@ -1292,6 +1351,11 @@ def step_intake(
             f"transcript={transcript_path} "
             f"response_snippet={snippet!r}"
         )
+    _normalize_intake_feature_branch_config(
+        change_id=change_id,
+        repo=repo,
+        feature_branch=feature_branch,
+    )
     _confirm_acceptance_criteria(change_id, intake_mode)
     logger.info("step_intake: completed change_id=%s output_len=%d", change_id, len(result or ""))
     return result

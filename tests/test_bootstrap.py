@@ -12,6 +12,31 @@ RUNNER_ROOT = Path(__file__).resolve().parent.parent
 
 
 class BootstrapHelpersTests(unittest.TestCase):
+    def test_medium__check_rtk_registers_all_supported_global_hooks(self):
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **kwargs):  # noqa: ARG001
+            calls.append(list(cmd))
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with (
+            patch.object(bootstrap, "_find_command", return_value="/tmp/rtk"),
+            patch.object(bootstrap.subprocess, "run", side_effect=fake_run),
+            patch.object(bootstrap, "_register_rtk_global_permission") as permission_mock,
+        ):
+            bootstrap._check_rtk()
+
+        self.assertEqual(
+            calls,
+            [
+                ["rtk", "init", "-g"],
+                ["rtk", "init", "-g", "--gemini"],
+                ["rtk", "init", "-g", "--copilot"],
+                ["rtk", "init", "-g", "--codex"],
+            ],
+        )
+        permission_mock.assert_called_once_with()
+
     def test_medium__ensure_virtualenv_reexecs_when_venv_python_resolves_to_base_interpreter(self):
         with tempfile.TemporaryDirectory(prefix="agentrunner-bootstrap-") as tmpdir:
             tmp_path = Path(tmpdir)

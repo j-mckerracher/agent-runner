@@ -328,6 +328,37 @@ class OpenaiCompatToolRuntimeTests(unittest.TestCase):
             self.assertEqual(result["entry_limit"], run_cmds._OPENAI_COMPAT_LIST_DIR_ENTRY_LIMIT)
             self.assertEqual(len(result["entries"]), run_cmds._OPENAI_COMPAT_LIST_DIR_ENTRY_LIMIT)
 
+    def test_medium__run_shell_delegates_through_rtk_terminal(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir).resolve()
+            runtime = run_cmds._OpenaiCompatToolRuntime(repo=str(repo), change_id=None)
+
+            with patch("core.run_cmds.run_terminal") as run_terminal_mock:
+                run_terminal_mock.return_value.stdout = "compact status\n"
+                run_terminal_mock.return_value.stderr = ""
+                run_terminal_mock.return_value.returncode = 0
+
+                result = json.loads(
+                    runtime.execute(
+                        "run_shell",
+                        {
+                            "command": "git status --short",
+                            "cwd": str(repo),
+                            "timeout_seconds": 12,
+                        },
+                    )
+                )
+
+            self.assertEqual(result["cwd"], str(repo))
+            self.assertEqual(result["returncode"], 0)
+            self.assertEqual(result["output"], "compact status")
+            run_terminal_mock.assert_called_once_with(
+                "git status --short",
+                mode="auto",
+                cwd=str(repo),
+                timeout=12,
+            )
+
     def test_medium__write_task_plan_serializes_parseable_yaml_and_injects_story_id(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             runtime, context_root = self._runtime(tmpdir)

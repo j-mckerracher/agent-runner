@@ -21,6 +21,7 @@ from .runtime_paths import agent_context_root, logs_root
 from .agent_catalog import is_disabled_agent
 from .agent_prompts import has_agent_prompt_override, load_agent_system_prompt
 from .materialized_paths import normalize_runner, runner_skill_dir
+from .rtk_terminal import run_terminal
 from .runner_models import (
     DEFAULT_CODEX_MODEL,
     DEFAULT_GEMINI_MODEL,
@@ -1079,12 +1080,10 @@ class _OpenaiCompatToolRuntime:
         if not cwd.is_dir():
             raise ValueError(f"cwd is not a directory: {cwd}")
         timeout_seconds = max(1, min(int(args.get("timeout_seconds") or 90), 300))
-        result = subprocess.run(
+        result = run_terminal(
             command,
-            shell=True,
+            mode="auto",
             cwd=str(cwd),
-            text=True,
-            capture_output=True,
             timeout=timeout_seconds,
         )
         combined_output = _truncate_output(f"{result.stdout or ''}{result.stderr or ''}".strip())

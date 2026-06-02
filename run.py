@@ -1132,6 +1132,7 @@ def main(
                     change_id=resolved_change_id,
                     intake_mode=intake_mode,
                     extra_context=extra_context,
+                    feature_branch=feature_branch,
                     **_agent_llm_kwargs(agent_llms, "intake"),
                 )
                 last_completed_stage = "intake"

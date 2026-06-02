@@ -259,6 +259,7 @@ class RunMainStagePlumbingTests(unittest.TestCase):
         )
         intake_mock.assert_called_once()
         self.assertEqual(call_order[:2], ["branch", "intake"])
+        self.assertEqual(intake_mock.call_args.kwargs["feature_branch"], "feature/test-branch")
 
     def test_easy__configure_logging_uses_local_timezone_formatter(self) -> None:
         httpx_logger = logging.getLogger("httpx")
@@ -361,6 +362,7 @@ class RunMainStagePlumbingTests(unittest.TestCase):
         kwargs = intake_mock.call_args.kwargs
         self.assertEqual(kwargs["runner"], "copilot")
         self.assertEqual(kwargs["runner_model"], "gpt-5.4")
+        self.assertEqual(kwargs["feature_branch"], "feature/test-branch")
 
     def test_medium__agent_overrides_flow_to_stage_and_loop_calls(self) -> None:
         workflow_input = SimpleNamespace(

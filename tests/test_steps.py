@@ -17,6 +17,7 @@ from unittest.mock import Mock, patch
 import yaml
 
 from core.steps import (
+    build_intake_prompt,
     _create_ado_pull_request,
     _write_synthetic_intake_artifacts,
     step_pr_review,
@@ -90,6 +91,19 @@ class SyntheticIntakeArtifactWriterTests(unittest.TestCase):
 
 
 class StepIntakeSyntheticModeTests(unittest.TestCase):
+    def test_easy__ado_prompt_includes_prepared_feature_branch(self):
+        prompt = build_intake_prompt(
+            intake_source="https://dev.azure.com/example/project/_workitems/edit/123456",
+            repo="/tmp/target-repo",
+            change_id="WI-123456",
+            intake_mode="ado",
+            runner="copilot",
+            feature_branch="feature/test-branch",
+        )
+
+        self.assertIn("Prepared feature branch: feature/test-branch", prompt)
+        self.assertIn("Set run_metadata.feature_branch in config.yaml exactly", prompt)
+
     def test_easy__synthetic_mode_bypasses_llm_runner(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -121,12 +135,43 @@ class StepIntakeSyntheticModeTests(unittest.TestCase):
             self.assertIn("Created synthetic intake artifacts", result)
             self.assertTrue((root / "agent-context" / "TEST-AC-123" / "intake" / "story.yaml").is_file())
 
+    def test_easy__synthetic_mode_uses_supplied_feature_branch(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            fixture_path = root / "story.json"
+            _write_fixture(
+                fixture_path,
+                {
+                    "change_id": "TEST-AC-123",
+                    "title": "Synthetic intake writer",
+                    "description": "Verify supplied branch is preserved.",
+                    "acceptance_criteria": ["Create the intake artifacts."],
+                },
+            )
+
+            with patch("core.steps.AGENT_CONTEXT_ROOT", root / "agent-context"):
+                step_intake(
+                    intake_source=str(fixture_path),
+                    repo="/tmp/target-repo",
+                    change_id="TEST-AC-123",
+                    intake_mode="synthetic",
+                    runner="copilot",
+                    runner_model="gpt-5-mini",
+                    feature_branch="feature/test-branch",
+                )
+
+            config_path = root / "agent-context" / "TEST-AC-123" / "intake" / "config.yaml"
+            with config_path.open("r", encoding="utf-8") as handle:
+                config = yaml.safe_load(handle)
+            self.assertEqual(config["run_metadata"]["feature_branch"], "feature/test-branch")
+
     def test_easy__ado_mode_still_uses_llm_runner(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
 
             def _fake_runner(**kwargs):
                 story_path = root / "agent-context" / "WI-123456" / "intake" / "story.yaml"
+                config_path = root / "agent-context" / "WI-123456" / "intake" / "config.yaml"
                 story_path.parent.mkdir(parents=True, exist_ok=True)
                 story_path.write_text(
                     yaml.safe_dump(
@@ -136,6 +181,17 @@ class StepIntakeSyntheticModeTests(unittest.TestCase):
                             "description": "stub",
                             "acceptance_criteria": {"AC1": "stub criterion"},
                         }
+                    ),
+                    encoding="utf-8",
+                )
+                config_path.write_text(
+                    yaml.safe_dump(
+                        {
+                            "change_id": "WI-123456",
+                            "code_repo": "/tmp/target-repo",
+                            "custom": {"preserved": True},
+                        },
+                        sort_keys=False,
                     ),
                     encoding="utf-8",
                 )
@@ -153,10 +209,16 @@ class StepIntakeSyntheticModeTests(unittest.TestCase):
                     intake_mode="ado",
                     runner="copilot",
                     runner_model="gpt-5-mini",
+                    feature_branch="feature/test-branch",
                 )
 
             run_agent_cmd.assert_called_once()
             self.assertEqual(result, "intake complete")
+            config_path = root / "agent-context" / "WI-123456" / "intake" / "config.yaml"
+            with config_path.open("r", encoding="utf-8") as handle:
+                config = yaml.safe_load(handle)
+            self.assertEqual(config["run_metadata"]["feature_branch"], "feature/test-branch")
+            self.assertEqual(config["custom"], {"preserved": True})
 
     def test_medium__ado_mode_surfaces_refusal_when_no_artifacts_are_written(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -259,6 +321,35 @@ class StepIntakeManualModeTests(unittest.TestCase):
             self.assertEqual(story["raw_input"]["source_type"], "manual_paste")
             self.assertIsNone(story["ado_provenance"])
             self.assertEqual(story["acceptance_criteria"]["AC1"], "Create the intake artifacts.")
+
+    def test_easy__manual_mode_uses_supplied_feature_branch(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            story_path = root / "manual_story.json"
+            _write_fixture(
+                story_path,
+                {
+                    "title": "Manual intake writer",
+                    "description": "Verify supplied branch is preserved.",
+                    "acceptance_criteria": "- Create the intake artifacts.",
+                },
+            )
+
+            with patch("core.steps.AGENT_CONTEXT_ROOT", root / "agent-context"):
+                step_intake(
+                    intake_source=str(story_path),
+                    repo="/tmp/target-repo",
+                    change_id="WI-123456",
+                    intake_mode="manual",
+                    runner="copilot",
+                    runner_model="gpt-5-mini",
+                    feature_branch="feature/test-branch",
+                )
+
+            config_path = root / "agent-context" / "WI-123456" / "intake" / "config.yaml"
+            with config_path.open("r", encoding="utf-8") as handle:
+                config = yaml.safe_load(handle)
+            self.assertEqual(config["run_metadata"]["feature_branch"], "feature/test-branch")
 
     def test_easy__manual_mode_skips_acceptance_criteria_confirmation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
