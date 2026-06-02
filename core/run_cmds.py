@@ -16,6 +16,7 @@ from pathlib import Path
 
 import yaml
 from .opik_compat import opik_context
+from .runtime_paths import agent_context_root, logs_root
 
 from .agent_catalog import is_disabled_agent
 from .agent_prompts import has_agent_prompt_override, load_agent_system_prompt
@@ -42,6 +43,23 @@ from .ui_trace_bridge import track_with_ui
 
 logger = logging.getLogger(__name__)
 _RUNNER_FAILOVER_POLICY: RunnerFailoverPolicy | None = None
+
+# Shared escalation protocol text injected into every runner's agent instructions.
+_ESCALATION_PROTOCOL = (
+    "## User escalation protocol\n"
+    "You have a `request_user_input` tool available in every runtime "
+    "(as an MCP tool for CLI runners, as a native function-tool for OpenAI-compat runners). "
+    "Call it whenever a blocking ambiguity, approval decision, or human-only product decision "
+    "prevents safe progress — the tool blocks your turn until the user replies through the "
+    "workbench GUI or TTY, then returns their response. After receiving the answer, continue the task.\n"
+    "Do NOT print clarification questions into the chat — chat output cannot be answered "
+    "in single-turn runners. Always route questions through `request_user_input`.\n"
+    "Valid escalation triggers: acceptance criteria conflict, missing product behavior that cannot "
+    "be inferred, breaking change or external contract change requiring approval, "
+    "security-sensitive behaviour, evaluator explicitly requiring human escalation.\n"
+    "Invalid triggers: routine implementation uncertainty, missing convenience details, "
+    "preference questions, asking permission to read/inspect/edit/test files.\n"
+)
 
 _TRANSIENT_COPILOT_ERROR_MARKERS = (
     "http2: server sent goaway",
@@ -75,8 +93,8 @@ _OPENAI_COMPAT_MAX_TOOL_STEPS = 40
 _OPENAI_COMPAT_TOOL_RESULT_LIMIT = 12000
 _OPENAI_COMPAT_LIST_DIR_ENTRY_LIMIT = 500
 _OPENAI_COMPAT_RUNNER_ROOT = Path(__file__).resolve().parent.parent
-_OPENAI_COMPAT_AGENT_CONTEXT_ROOT = _OPENAI_COMPAT_RUNNER_ROOT / "agent-context"
-_RUNNER_LOGS_ROOT = _OPENAI_COMPAT_RUNNER_ROOT / "logs"
+_OPENAI_COMPAT_AGENT_CONTEXT_ROOT = agent_context_root()
+_RUNNER_LOGS_ROOT = logs_root()
 _FORBIDDEN_WRITE_PATH_PARTS = frozenset({".git", "node_modules", "dist", "build"})
 _PROTECTED_AGENT_SOURCE_DIRS = frozenset({
     "agent-definition-source",
@@ -1161,16 +1179,7 @@ def _openai_compat_agent_instructions(*, agent: str, runner: str, extra_skills: 
         "- Do not make network requests or access secrets.\n"
         "- Before your final answer, ensure required files are actually written to disk.\n"
         "\n"
-        "## User escalation protocol\n"
-        "Act autonomously when the available artifacts and repository evidence are sufficient. "
-        "If a blocking ambiguity, approval decision, or human-only product decision prevents safe progress, "
-        "call the `request_user_input` tool (preferred) or run "
-        "`python \"$AGENT_RUNNER_ROOT/agent-script-source/request-user-input.py\"` and continue after the response.\n"
-        "Valid escalation triggers: acceptance criteria conflict, missing product behavior that cannot be inferred, "
-        "breaking change or external contract change requiring approval, security-sensitive behaviour, "
-        "evaluator explicitly requiring human escalation.\n"
-        "Invalid triggers: routine implementation uncertainty, missing convenience details, preference questions, "
-        "asking permission to read/inspect/edit/test files.\n"
+        f"{_ESCALATION_PROTOCOL}"
     )
     logger.info("_openai_compat_agent_instructions: total instructions length=%d chars", len(result))
     return result
@@ -1450,6 +1459,7 @@ def _build_gemini_prompt(prompt: str, agent: str, extra_skills: list[str] | None
         runner="gemini",
         extra_skills=extra_skills,
     )
+    combined = f"{combined}\n\n{_ESCALATION_PROTOCOL}"
     logger.debug("_build_gemini_prompt: combined prompt length=%d chars for agent=%s", len(combined), agent)
     return combined
 
@@ -1462,6 +1472,7 @@ def _build_codex_prompt(prompt: str, agent: str, extra_skills: list[str] | None 
         runner="codex",
         extra_skills=extra_skills,
     )
+    combined = f"{combined}\n\n{_ESCALATION_PROTOCOL}"
     logger.debug("_build_codex_prompt: combined prompt length=%d chars for agent=%s", len(combined), agent)
     return combined
 
@@ -1546,6 +1557,15 @@ def run_claude_cmd(
     cmd.extend(["--model", model, "--output-format", "json"])
     if skip_permissions:
         cmd.append("--dangerously-skip-permissions")
+    # Inject the escalation MCP server so the agent has request_user_input as a tool.
+    _change_id = os.environ.get("AGENT_RUNNER_CHANGE_ID", "")
+    if _change_id:
+        try:
+            from .mcp_configs import write_claude_mcp_config
+            _mcp_cfg = write_claude_mcp_config(_change_id)
+            cmd.extend(["--mcp-config", str(_mcp_cfg)])
+        except Exception as _exc:  # noqa: BLE001
+            logger.warning("run_claude_cmd: could not write MCP config for escalation: %s", _exc)
     if extra_flags:
         cmd.extend(extra_flags)
     result = _run_cli(cmd, runner="claude", agent=agent,
@@ -1870,6 +1890,13 @@ def run_gemini_cmd(
     cmd = ["gemini", "-p", combined_prompt, "--model", model, "--output-format", output_format]
     if skip_permissions:
         cmd.append("--yolo")
+    # Register escalation MCP server (idempotent) and allow it for this run.
+    try:
+        from .mcp_configs import ensure_gemini_mcp_registered, MCP_SERVER_NAME
+        ensure_gemini_mcp_registered()
+        cmd.extend(["--allowed-mcp-server-names", MCP_SERVER_NAME])
+    except Exception as _exc:  # noqa: BLE001
+        logger.warning("run_gemini_cmd: could not register escalation MCP server: %s", _exc)
     if extra_flags:
         cmd.extend(extra_flags)
     for _attempt in range(5):
@@ -1993,6 +2020,12 @@ def run_codex_cmd(
     print(f"Starting Codex CLI via {agent}...")
     print(f"Prompt: {prompt}")
     print(f"Model: {model}")
+    # Register escalation MCP server (idempotent) — available to all codex exec runs.
+    try:
+        from .mcp_configs import ensure_codex_mcp_registered
+        ensure_codex_mcp_registered()
+    except Exception as _exc:  # noqa: BLE001
+        logger.warning("run_codex_cmd: could not register escalation MCP server: %s", _exc)
     workdir = str(Path(repo).expanduser().resolve()) if repo else os.getcwd()
     output_path = Path(tempfile.gettempdir()) / f"agent-workbench-codex-{os.getpid()}-{time.time_ns()}.txt"
     cmd = [

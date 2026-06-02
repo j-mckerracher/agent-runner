@@ -28,9 +28,33 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
+ACTIVE_RUN_STATUSES = {"queued", "running", "awaiting_input"}
+
 
 def _clean_opik_value(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
+
+
+def _event_seq(event: dict[str, Any]) -> int:
+    try:
+        return int(event.get("seq") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _read_events_from_path(path: str | None, limit: int | None = None) -> list[dict[str, Any]]:
+    if not path:
+        return []
+    events = read_recent(path, limit) if limit else read_all(path)
+    return sorted(events, key=_event_seq)
+
+
+def _read_events_after(path: str | None, last_sent_seq: int) -> list[dict[str, Any]]:
+    return [
+        event
+        for event in _read_events_from_path(path)
+        if _event_seq(event) > last_sent_seq
+    ]
 
 
 def _build_opik_dashboard_url(change_id: str, opik_cfg: dict[str, Any]) -> str | None:
@@ -213,15 +237,16 @@ async def get_run_events(
     if not row:
         logger.warning("get_run_events: job_id=%s not found", job_id)
         raise HTTPException(404, "job not found")
-    events = db.list_telemetry_events([job_id], limit=limit)
+    if row.get("status") in ACTIVE_RUN_STATUSES and row.get("events_path"):
+        db.backfill_telemetry_events_for_job(row)
+        events = _read_events_from_path(row.get("events_path"), limit)
+    else:
+        events = db.list_telemetry_events([job_id], limit=limit)
     if not events:
         db.backfill_telemetry_events_for_job(row)
         events = db.list_telemetry_events([job_id], limit=limit)
     if not events:
-        if row.get("events_path"):
-            events = read_recent(row["events_path"], limit) if limit else read_all(row["events_path"])
-        else:
-            events = []
+        events = _read_events_from_path(row.get("events_path"), limit)
     logger.debug("get_run_events: job_id=%s returning %d event(s)", job_id, len(events))
     return events
 
@@ -345,28 +370,56 @@ async def stream_run(
 
     async def gen():
         events_sent = 0
-        try:
-            for evt in read_all(row["events_path"]):
-                seq = int(evt.get("seq", 0))
-                if seq <= after_seq:
-                    continue
+        last_sent_seq = after_seq
+
+        def file_catchup_chunks() -> tuple[list[str], bool]:
+            nonlocal events_sent, last_sent_seq
+            chunks: list[str] = []
+            for evt in _read_events_after(row.get("events_path"), last_sent_seq):
+                seq = _event_seq(evt)
+                last_sent_seq = seq
                 events_sent += 1
-                yield _sse(evt)
+                chunks.append(_sse(evt))
                 if evt.get("type") == "job.end":
-                    logger.debug("stream_run gen: job_id=%s job.end found in history; closing", job_id)
-                    yield _sse({"type": "stream.end"})
-                    return
+                    logger.debug("stream_run gen: job_id=%s job.end found in file; closing", job_id)
+                    chunks.append(_sse({"type": "stream.end"}))
+                    return chunks, True
+            return chunks, False
+
+        try:
+            chunks, ended = file_catchup_chunks()
+            for chunk in chunks:
+                yield chunk
+            if ended:
+                return
             logger.debug("stream_run gen: job_id=%s history replayed (%d event(s)); switching to live", job_id, events_sent)
+            last_ping = asyncio.get_running_loop().time()
             while True:
                 if await request.is_disconnected():
                     logger.info("stream_run gen: job_id=%s client disconnected after %d event(s)", job_id, events_sent)
                     return
+                evt = None
                 try:
-                    evt = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    evt = await asyncio.wait_for(queue.get(), timeout=1.0)
                 except asyncio.TimeoutError:
-                    logger.debug("stream_run gen: job_id=%s timeout — sending keepalive ping", job_id)
-                    yield ": ping\n\n"
+                    pass
+                chunks, ended = file_catchup_chunks()
+                for chunk in chunks:
+                    yield chunk
+                if ended:
+                    return
+                if evt is None:
+                    now = asyncio.get_running_loop().time()
+                    if now - last_ping >= 15.0:
+                        last_ping = now
+                        logger.debug("stream_run gen: job_id=%s timeout — sending keepalive ping", job_id)
+                        yield ": ping\n\n"
                     continue
+                seq = _event_seq(evt)
+                if seq and seq <= last_sent_seq:
+                    continue
+                if seq:
+                    last_sent_seq = seq
                 events_sent += 1
                 yield _sse(evt)
                 if evt.get("type") in ("job.end", "stream.end"):

@@ -24,9 +24,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from core.runtime_paths import eval_benchmarks_root, load_data_dir_override_from_env_file
+
+load_data_dir_override_from_env_file(ROOT / ".env")
 from core.runner_models import RUNNER_MODEL_CHOICES, is_copilot_runner
 
-BENCHMARKS_DIR = ROOT / "eval" / "benchmarks"
+BENCHMARKS_DIR = eval_benchmarks_root()
 DIFFICULTIES = ("easy", "medium", "hard")
 BLOCK_NAMES = ("story.json", "hidden_tests.py")
 

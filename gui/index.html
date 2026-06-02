@@ -376,6 +376,21 @@
                                 </div>
                                 <details class="agent-overrides-panel">
                                     <summary>Per-agent overrides</summary>
+                                    <div class="agent-overrides-toolbar">
+                                        <span>Override runner/model by workflow stage</span>
+                                        <label class="agent-overrides-toggle-label" for="f-agent-overrides-enabled">
+                                            <input type="checkbox" id="f-agent-overrides-enabled" class="agent-overrides-toggle-input">
+                                            <span class="agent-overrides-toggle-pill"></span>
+                                            <span class="agent-overrides-toggle-text">Disabled</span>
+                                        </label>
+                                        <button
+                                            class="btn agent-overrides-reset"
+                                            id="f-agent-overrides-reset"
+                                            type="button"
+                                        >
+                                            Reset
+                                        </button>
+                                    </div>
                                     <div
                                         class="agent-overrides-grid"
                                         id="f-agent-overrides"
@@ -431,9 +446,11 @@
                             >
                                 <div class="history-header">
                                     <div class="history-title-group">
-                                        <span class="history-title-text"
-                                            >Past Runs</span
-                                        >
+                                        <span class="history-title-icon" aria-hidden="true">⧖</span>
+                                        <div class="history-title-stack">
+                                            <span class="history-title-text">Run History</span>
+                                            <span class="history-title-sub">Click a row to inspect</span>
+                                        </div>
                                         <span
                                             class="history-count"
                                             id="history-count"
@@ -576,11 +593,13 @@
                                             id="history-filter-summary"
                                         ></div>
                                     </div>
-                                    <select
-                                        class="history-select"
+                                    <div
+                                        class="history-list"
                                         id="history"
-                                        size="15"
-                                    ></select>
+                                        role="listbox"
+                                        aria-label="Past runs"
+                                        tabindex="0"
+                                    ></div>
                                 </div>
                             </div>
                             <div class="runs-detail-panel">
@@ -2182,7 +2201,7 @@
                         </div>
 
                         <!-- Agent Model Defaults -->
-                        <div class="set-section">
+                        <div class="set-section set-section-wide">
                             <div class="set-section-header">
                                 <span class="set-section-label"
                                     >Agent Model Defaults</span
@@ -2193,7 +2212,7 @@
                                 Per-agent model overrides. Empty = use runner
                                 default.
                             </p>
-                            <div class="set-card">
+                            <div class="set-card set-agent-defaults-card">
                                 <div id="agent-defaults-container"></div>
                             </div>
                         </div>

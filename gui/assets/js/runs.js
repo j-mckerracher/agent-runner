@@ -145,42 +145,102 @@ function renderHistory() {
     updateHistoryFilterControls();
     const items = filteredHistoryItems();
     wrap.innerHTML = "";
+
     if (!allItems.length) {
-        const opt = document.createElement("option");
-        opt.textContent = "No runs yet.";
-        opt.disabled = true;
-        wrap.appendChild(opt);
+        const empty = document.createElement("div");
+        empty.className = "history-empty";
+        empty.textContent = "No runs yet.";
+        wrap.appendChild(empty);
     } else if (!items.length) {
-        const opt = document.createElement("option");
-        opt.textContent = "No runs match the current filters.";
-        opt.disabled = true;
-        wrap.appendChild(opt);
+        const empty = document.createElement("div");
+        empty.className = "history-empty";
+        empty.textContent = "No runs match the current filters.";
+        wrap.appendChild(empty);
     }
+
+    // Real sticky column header (pseudo-elements on flex containers block clicks)
+    if (items.length > 0) {
+        const colHeader = document.createElement("div");
+        colHeader.className = "history-col-header";
+        colHeader.textContent = "ID · Change · Runner/Model · Submitted";
+        colHeader.setAttribute("aria-hidden", "true");
+        wrap.appendChild(colHeader);
+    }
+
     items.forEach((j) => {
-        const opt = document.createElement("option");
-        opt.value = j.id;
+        const row = document.createElement("div");
+        row.className = "history-row";
+        row.setAttribute("role", "option");
+        row.tabIndex = 0;
+        row.dataset.jobId = j.id;
+        if (j.id === activeJobId) {
+            row.classList.add("is-active");
+            row.setAttribute("aria-selected", "true");
+        } else {
+            row.setAttribute("aria-selected", "false");
+        }
+
         const status = j.status || "unknown";
-        const icon = STATUS_ICON[status] || "";
-        const changeId = j.change_id || "no change id";
-        const runnerModel =
-            [j.runner, j.model].filter(Boolean).join("/") ||
-            "runner?";
+        const changeId = j.change_id || "";
+        const runnerModel = [j.runner, j.model].filter(Boolean).join("/") || "—";
         const time = fmtLocalTime(j.submitted_at);
-        opt.textContent = `${icon} ${(j.id || "").slice(0, 16)}...  ${changeId}  ${runnerModel}  ${time}`;
-        if (j.id === activeJobId) opt.selected = true;
-        wrap.appendChild(opt);
+        const shortId = (j.id || "").slice(0, 14);
+
+        const dot = document.createElement("span");
+        dot.className = `history-row-dot status-${status}`;
+        dot.setAttribute("title", status);
+
+        const body = document.createElement("div");
+        body.className = "history-row-body";
+
+        const topLine = document.createElement("div");
+        topLine.className = "history-row-top";
+
+        const idSpan = document.createElement("span");
+        idSpan.className = "history-row-id";
+        idSpan.textContent = shortId + "…";
+
+        const changeSpan = document.createElement("span");
+        changeSpan.className = "history-row-change";
+        changeSpan.textContent = changeId ? `#${changeId}` : "";
+
+        topLine.appendChild(idSpan);
+        if (changeId) topLine.appendChild(changeSpan);
+
+        const bottomLine = document.createElement("div");
+        bottomLine.className = "history-row-bottom";
+
+        const modelSpan = document.createElement("span");
+        modelSpan.className = "history-row-model";
+        modelSpan.textContent = runnerModel;
+
+        const timeSpan = document.createElement("span");
+        timeSpan.className = "history-row-time";
+        timeSpan.textContent = time;
+
+        bottomLine.appendChild(modelSpan);
+        bottomLine.appendChild(timeSpan);
+
+        body.appendChild(topLine);
+        body.appendChild(bottomLine);
+
+        const statusLabel = document.createElement("span");
+        statusLabel.className = `history-row-status status-${status}`;
+        statusLabel.textContent = status;
+
+        row.appendChild(dot);
+        row.appendChild(body);
+        row.appendChild(statusLabel);
+
+        wrap.appendChild(row);
     });
-    if (activeJobId && items.some((job) => job.id === activeJobId)) {
-        wrap.value = activeJobId;
-    } else {
-        wrap.selectedIndex = -1;
-    }
+
     const total = allItems.length;
     const count = items.length;
-    const countText =
-        count === total ? `${total}` : `${count}/${total}`;
+    const countText = count === total ? `${total}` : `${count}/${total}`;
     const countEl = $("#history-count");
     if (countEl) countEl.textContent = countText;
+
     const summary = $("#history-filter-summary");
     if (summary) {
         const parts = [];
@@ -194,8 +254,7 @@ function renderHistory() {
             ? `Showing ${count} of ${total} loaded runs (${parts.join(" · ")})`
             : `Showing ${total} most recent runs`;
     }
-    $("#runs-meta").textContent =
-        `${countText} run${count === 1 ? "" : "s"}`;
+    $("#runs-meta").textContent = `${countText} run${count === 1 ? "" : "s"}`;
 }
 async function loadHistory() {
     try {
@@ -252,24 +311,36 @@ $("#history-runner-filter")?.addEventListener("change", (event) => {
     RUN_HISTORY_STATE.runner = event.target.value || "all";
     renderHistory();
 });
-let lastHistorySelection = { id: "", at: 0 };
-function handleHistorySelection(event) {
-    const id = event.currentTarget?.value || "";
-    if (!id) return;
-    const now = Date.now();
-    if (
-        id === lastHistorySelection.id &&
-        now - lastHistorySelection.at < 250
-    ) {
-        return;
-    }
-    lastHistorySelection = { id, at: now };
-    selectJob(id);
-}
+// History row selection is delegated so refreshed rows remain interactive.
 const historyList = $("#history");
-historyList?.addEventListener("input", handleHistorySelection);
-historyList?.addEventListener("change", handleHistorySelection);
-historyList?.addEventListener("click", handleHistorySelection);
+if (historyList) {
+    historyList.addEventListener("click", (e) => {
+        const row = e.target.closest(".history-row");
+        if (!row || !historyList.contains(row)) return;
+        if (row.dataset.jobId) selectJob(row.dataset.jobId);
+    });
+    historyList.addEventListener("keydown", (e) => {
+        const row = e.target.closest(".history-row");
+        if (row && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            if (row.dataset.jobId) selectJob(row.dataset.jobId);
+            return;
+        }
+        const rows = [...historyList.querySelectorAll(".history-row")];
+        if (!rows.length) return;
+        const active = historyList.querySelector(".history-row.is-active");
+        const idx = active ? rows.indexOf(active) : -1;
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            const next = rows[Math.min(idx + 1, rows.length - 1)];
+            if (next?.dataset.jobId) selectJob(next.dataset.jobId);
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            const prev = rows[Math.max(idx - 1, 0)];
+            if (prev?.dataset.jobId) selectJob(prev.dataset.jobId);
+        }
+    });
+}
 $("#history-toggle")?.addEventListener("click", () => {
     RUN_HISTORY_STATE.collapsed = !RUN_HISTORY_STATE.collapsed;
     syncHistoryDisclosure();
@@ -492,7 +563,6 @@ function clearTerm(surface = "runs") {
     RUN_TERMINAL_TRIMMED_LOGS[surface] = 0;
     hideRunAlert(surface);
     activeStageGroup = null;
-    setActiveSurfaceJob(surface, null);
     if (surface === "runs") {
         clearWorkflowTicker();
         activeRunEvents = [];
@@ -993,10 +1063,18 @@ async function selectJob(id, surface = "runs") {
     }
     const ui = runSurface(surface);
     activeJobId = id;
+    setActiveSurfaceJob(surface, null);
     clearTerm(surface);
-    const historySelect = $("#history");
-    if (historySelect && historySelect.value !== id)
-        historySelect.value = id;
+    setTermEmpty("Loading run log...", false, surface);
+    // Update active highlight on list rows
+    const historyList = $("#history");
+    if (historyList) {
+        historyList.querySelectorAll(".history-row").forEach((row) => {
+            const isActive = row.dataset.jobId === id;
+            row.classList.toggle("is-active", isActive);
+            row.setAttribute("aria-selected", isActive ? "true" : "false");
+        });
+    }
     try {
         const job = await api(`/runs/${id}`);
         setActiveSurfaceJob(surface, job);

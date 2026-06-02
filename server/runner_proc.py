@@ -15,7 +15,14 @@ from typing import Any
 from core.workspace_cleanup import clean_change_workspace
 from . import db
 from .events import EventBus, FileTailer, aggregate, read_all
-from .paths import AGENT_CONTEXT_ROOT, LOGS_ROOT, RUNNER_ROOT, cassettes_dir, events_path_for, events_path_for_job
+from .paths import (
+    RUNNER_ROOT,
+    agent_context_root,
+    cassettes_dir,
+    events_path_for,
+    events_path_for_job,
+    logs_root,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -150,11 +157,12 @@ class JobProcess:
         env = os.environ.copy()
         env["AGENT_RUNNER_EVENT_LOG"] = self.job["events_path"]
         env["AGENT_RUNNER_JOB_ID"] = self.id
-        env["AGENT_CONTEXT_ROOT"] = str(AGENT_CONTEXT_ROOT)
+        context_root = agent_context_root()
+        env["AGENT_CONTEXT_ROOT"] = str(context_root)
         env["CHANGE_ID"] = self.job["change_id"]
         env["PYTHONUNBUFFERED"] = "1"
         env["AGENT_RUNNER_USER_ESCALATION"] = "gui"
-        env["AGENT_RUNNER_ESCALATION_ROOT"] = str(AGENT_CONTEXT_ROOT / self.job["change_id"] / "escalations")
+        env["AGENT_RUNNER_ESCALATION_ROOT"] = str(context_root / self.job["change_id"] / "escalations")
         if self.job.get("cassette_path"):
             env["AGENT_RUNNER_CASSETTE"] = self.job["cassette_path"]
         logger.debug("JobProcess._build_env: job_id=%s event_log=%s cassette=%s", self.id, self.job["events_path"], self.job.get("cassette_path"))
@@ -166,8 +174,8 @@ class JobProcess:
         logger.info("JobProcess.start: job_id=%s runner=%s change_id=%s", self.id, self.job.get("runner"), self.job.get("change_id"))
         clean_change_workspace(
             self.job["change_id"],
-            agent_context_root=AGENT_CONTEXT_ROOT,
-            logs_root=LOGS_ROOT,
+            agent_context_root=agent_context_root(),
+            logs_root=logs_root(),
         )
         logger.debug("JobProcess.start: pre-cleaned artifacts for change_id=%s", self.job["change_id"])
         # Truncate any pre-existing event log so seq starts fresh.

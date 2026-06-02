@@ -8,7 +8,8 @@ from copy import deepcopy
 from typing import Any
 from urllib.parse import urlparse
 
-from .paths import RUNNER_ROOT, config_path, data_dir
+from .paths import RUNNER_ROOT, agent_context_root, config_path, data_dir
+from core.runtime_paths import data_dir as runtime_data_dir
 from core.runner_models import KNOWN_RUNNERS, RUNNER_ALIAS_LLM_OPTION_KEYS, RUNNER_MODEL_CHOICES
 
 logger = logging.getLogger(__name__)
@@ -63,28 +64,32 @@ def _default_azure_devops_config() -> dict[str, Any]:
     }
 
 
-DEFAULTS: dict[str, Any] = {
-    "api": {"host": "127.0.0.1", "port": 8742},
-    "defaults": {
-        "runner": "claude",
-        "model": None,
-        "mode": "live",
-    },
-    "agent_model_defaults": {},
-    "runner_aliases": {},
-    "paths": {
-        "runner_root": str(RUNNER_ROOT),
-        "agent_context": str(RUNNER_ROOT / "agent-context"),
-        "data_dir": str(data_dir()),
-    },
-    "concurrency": {"max_running_jobs": 2},
-    "opik": _default_opik_config(),
-    "azure_devops": _default_azure_devops_config(),
-    "repo_paths": {
-        "base_dir": "",
-        "custom_values": [],
-    },
-}
+def _defaults(*, create_data_dir: bool = True) -> dict[str, Any]:
+    return {
+        "api": {"host": "127.0.0.1", "port": 8742},
+        "defaults": {
+            "runner": "claude",
+            "model": None,
+            "mode": "live",
+        },
+        "agent_model_defaults": {},
+        "runner_aliases": {},
+        "paths": {
+            "runner_root": str(RUNNER_ROOT),
+            "agent_context": str(agent_context_root()),
+            "data_dir": str(data_dir() if create_data_dir else runtime_data_dir(create=False)),
+        },
+        "concurrency": {"max_running_jobs": 2},
+        "opik": _default_opik_config(),
+        "azure_devops": _default_azure_devops_config(),
+        "repo_paths": {
+            "base_dir": "",
+            "custom_values": [],
+        },
+    }
+
+
+DEFAULTS: dict[str, Any] = _defaults(create_data_dir=False)
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -106,7 +111,7 @@ def _load_config(*, apply_runtime_overrides: bool) -> dict:
     logger.debug("load_config: reading from %s", path)
     if not path.exists():
         logger.info("load_config: config file absent; writing defaults to %s", path)
-        cfg = deepcopy(DEFAULTS)
+        cfg = deepcopy(_defaults())
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(cfg, indent=2, sort_keys=True), encoding="utf-8")
         return _apply_runtime_overrides(cfg) if apply_runtime_overrides else cfg
@@ -116,7 +121,7 @@ def _load_config(*, apply_runtime_overrides: bool) -> dict:
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning("load_config: could not read/parse %s (%s); using defaults", path, exc)
         on_disk = {}
-    merged = _deep_merge(DEFAULTS, on_disk if isinstance(on_disk, dict) else {})
+    merged = _deep_merge(_defaults(), on_disk if isinstance(on_disk, dict) else {})
     logger.debug("load_config: merged config api.port=%s", merged.get("api", {}).get("port"))
     return _apply_runtime_overrides(merged) if apply_runtime_overrides else merged
 

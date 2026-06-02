@@ -109,12 +109,12 @@ function buildAgentDefaultsUI(agentDefaults) {
 
     const table = document.createElement("table");
     table.className = "set-agent-table";
+    table.style.setProperty("--runner-count", String(runners.length));
 
     const thead = document.createElement("thead");
     const headRow = document.createElement("tr");
     const agentTh = document.createElement("th");
     agentTh.textContent = "Agent";
-    agentTh.style.width = "44%";
     headRow.appendChild(agentTh);
     runners.forEach((runner) => {
         const th = document.createElement("th");
@@ -251,6 +251,7 @@ function runOverrideSafeId(agentName) {
 }
 
 const RUN_AGENT_OVERRIDES_STORAGE_KEY = "agent-runner.runAgentOverrides";
+const RUN_AGENT_OVERRIDES_ENABLED_KEY = "agent-runner.overridesEnabled";
 
 function loadRunAgentOverrideSelections() {
     try {
@@ -284,6 +285,46 @@ function persistRunAgentOverrideSelections() {
     } catch {
         // Ignore storage failures; the form remains usable without persistence.
     }
+}
+
+function clearPersistedRunAgentOverrideSelections() {
+    try {
+        window.localStorage?.removeItem(RUN_AGENT_OVERRIDES_STORAGE_KEY);
+    } catch {
+        // Ignore storage failures; reset still clears the active form.
+    }
+}
+
+function loadOverridesEnabled(savedSelections) {
+    try {
+        const raw = window.localStorage?.getItem(RUN_AGENT_OVERRIDES_ENABLED_KEY);
+        if (raw !== null) return JSON.parse(raw) === true;
+    } catch { /* ignore */ }
+    return (
+        savedSelections != null &&
+        Object.values(savedSelections).some((v) => v.runner || v.model)
+    );
+}
+
+function saveOverridesEnabled(enabled) {
+    try {
+        window.localStorage?.setItem(
+            RUN_AGENT_OVERRIDES_ENABLED_KEY,
+            JSON.stringify(enabled),
+        );
+    } catch { /* ignore */ }
+}
+
+function applyAgentOverridesEnabled(enabled) {
+    const grid = $("#f-agent-overrides");
+    const toggleText = $(".agent-overrides-toggle-text");
+    if (grid) {
+        grid.classList.toggle("agent-overrides-disabled", !enabled);
+        grid.querySelectorAll("select, input").forEach((el) => {
+            el.disabled = !enabled;
+        });
+    }
+    if (toggleText) toggleText.textContent = enabled ? "Enabled" : "Disabled";
 }
 
 function syncRunAgentOverrideModel(agentName) {
@@ -331,6 +372,18 @@ function syncRunAgentOverrideModel(agentName) {
     if ([...select.options].some((option) => option.value === currentValue)) {
         select.value = currentValue;
     }
+}
+
+function resetRunAgentOverrideSelections() {
+    WORKFLOW_STAGE_AGENTS.forEach((agentName) => {
+        const safe = runOverrideSafeId(agentName);
+        const runnerEl = $(`#f-agent-runner-${safe}`);
+        if (runnerEl) runnerEl.value = "";
+        syncRunAgentOverrideModel(agentName);
+        const modelEl = $(`#f-agent-model-${safe}`);
+        if (modelEl) modelEl.value = "";
+    });
+    clearPersistedRunAgentOverrideSelections();
 }
 
 function buildRunAgentOverridesUI() {
@@ -407,6 +460,22 @@ function buildRunAgentOverridesUI() {
         });
         container.dataset.persistenceBound = "true";
     }
+    const resetButton = $("#f-agent-overrides-reset");
+    if (resetButton && !resetButton.dataset.resetBound) {
+        resetButton.addEventListener("click", resetRunAgentOverrideSelections);
+        resetButton.dataset.resetBound = "true";
+    }
+    const toggleCheckbox = $("#f-agent-overrides-enabled");
+    if (toggleCheckbox && !toggleCheckbox.dataset.toggleBound) {
+        const initialEnabled = loadOverridesEnabled(savedSelections);
+        toggleCheckbox.checked = initialEnabled;
+        applyAgentOverridesEnabled(initialEnabled);
+        toggleCheckbox.addEventListener("change", () => {
+            saveOverridesEnabled(toggleCheckbox.checked);
+            applyAgentOverridesEnabled(toggleCheckbox.checked);
+        });
+        toggleCheckbox.dataset.toggleBound = "true";
+    }
 }
 
 function refreshRunAgentOverrideModelsUsingDefaultRunner() {
@@ -420,6 +489,8 @@ function refreshRunAgentOverrideModelsUsingDefaultRunner() {
 }
 
 function collectRunAgentOverrides() {
+    const toggleEl = $("#f-agent-overrides-enabled");
+    if (toggleEl && !toggleEl.checked) return {};
     const overrides = {};
     WORKFLOW_STAGE_AGENTS.forEach((agentName) => {
         const safe = runOverrideSafeId(agentName);
@@ -435,7 +506,6 @@ function collectRunAgentOverrides() {
 
 function runnerUsesFreeFormModel(runner) {
     return (
-        runner === "codex" ||
         runner === "openai-compat" ||
         RUNNER_ALIASES?.[runner]?.provider === "openai-compat"
     );

@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -139,6 +140,34 @@ def test_dry_run_cli_writes_report(tmp_path: Path):
     report = json.loads((reports / "task-generator" / "latest.json").read_text(encoding="utf-8"))
     assert report["summary"]["pass_rate"] == 1.0
     assert report["results"][0]["status"] == "PASS"
+
+
+def test_dry_run_cli_defaults_to_data_dir_runtime_roots(tmp_path: Path):
+    dataset = tmp_path / "dataset.jsonl"
+    dataset.write_text(json.dumps(CASE) + "\n", encoding="utf-8")
+    data_dir = tmp_path / "data"
+    env = {**os.environ, "AGENT_RUNNER_DATA_DIR": str(data_dir)}
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "eval/agent_runner.py",
+            "--dataset",
+            str(dataset),
+            "--dry-run",
+            "--require-pass-rate",
+            "1.0",
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+    assert (data_dir / "eval" / "agent_reports" / "task-generator" / "latest.json").is_file()
+    assert (data_dir / "agent-context").is_dir()
 
 
 def test_aggregate_scores_reports_gate_pass_rates():

@@ -15,7 +15,7 @@ The `materialize` stage is a preflight stage. It verifies runner assets by defau
 |---|---|
 | ![Agent Workbench Runs page showing run submission, run history, and a selected workflow trace timeline](docs/assets/agent-runner-runs.png) | ![Opik project insights dashboard for agent-workbench traces](docs/assets/opik-insights.png) |
 
-> The repo is named `agent-workbench`, while some runtime paths and UI labels still use the older `agent-runner` name, such as `~/.agent-runner/` and the browser title.
+> The repo is named `agent-workbench`, while some runtime labels still use the older `agent-runner` name, such as the browser title.
 
 ## What this repository gives you
 
@@ -23,7 +23,7 @@ The `materialize` stage is a preflight stage. It verifies runner assets by defau
 |---|---|
 | **Browser UI for workflow runs** | Submit runs, choose a runner/model, watch live events, cancel jobs, respond to clarification prompts, and inspect history at `http://127.0.0.1:8742`. |
 | **Manual-first story intake** | Paste a story manually by default, use local JSON fixtures for offline testing, or optionally point the same workflow at a live Azure DevOps work item. |
-| **Traceable artifacts** | Every run writes canonical artifacts under `agent-context/<change-id>/`. |
+| **Traceable artifacts** | Every run writes canonical artifacts under the per-user data directory, in `agent-context/<change-id>/`. |
 | **Opik integration** | Bootstrap can start a local Opik stack and the UI can deep-link runs and evaluation views into Opik. |
 | **Evaluation framework** | `eval/runner.py` runs the official hidden-test benchmarks with AC-level scoring, repeated trials, baseline comparison, and structured reports. |
 | **Hermetic recordings** | Server-launched runs can record subprocess I/O into local cassettes. |
@@ -91,7 +91,7 @@ That flow:
 - leaves generated runner assets untouched by default; use `--materialize` or `python3 core/materialize.py` when you explicitly choose to refresh agents, skills, and helper scripts
 - keeps manual story entry available by default; Azure DevOps integration can be enabled later in Settings if you install/configure it
 - prompts you (y/N) whether to enable the bundled local [Opik](https://github.com/comet-ml/opik/blob/main/README.md) observability stack — answer "n" (default) to skip Docker entirely
-- if enabled: clones / updates `~/.agent-runner/opik`, starts the stack, persists Opik metadata into `~/.agent-runner/config.json`
+- if enabled: clones / updates the local Opik checkout, starts the stack, persists Opik metadata into the per-user config file
 - starts the local API + GUI on `http://127.0.0.1:8742`
 
 Skip the prompt non-interactively with `--with-opik` or `--no-opik`. Enabling Opik requires Docker Desktop to be running.
@@ -109,7 +109,7 @@ If Opik is skipped, not configured, or temporarily unreachable, workflow runs co
 | `--eval-target-repo` | — | Target repo path or Git URL used for generated workflow eval benchmarks. |
 | `--materialize` | off | Explicitly refresh generated runner assets during bootstrap. Off by default so prompt-file changes remain manual. |
 | `--eval-target-sha` | — | Gold-master commit SHA for generated workflow eval benchmarks. |
-| `--generate-eval-benchmarks` | off | Use an LLM to generate `eval/benchmarks/{easy,medium,hard}` during bootstrap. |
+| `--generate-eval-benchmarks` | off | Use an LLM to generate `<data-dir>/eval/benchmarks/{easy,medium,hard}` during bootstrap. |
 | `--skip-eval-benchmarks` | off | Do not prompt for or generate eval benchmarks during bootstrap. |
 | `--eval-runner` | configured runner | LLM CLI for benchmark generation: `claude`, `codex`, `copilot`, `copilot-*` alias, `gemini`, or `openai-compat`. Can also be set via `EVAL_RUNNER` env var. |
 | `--eval-model` | runner default | Optional model override for benchmark generation. Can also be set via `EVAL_MODEL` env var. Valid values depend on the runner — see `core/runner_models.py`. |
@@ -224,7 +224,7 @@ python3 run.py \
 | `--ado-url URL` | none | Azure DevOps work item URL (`https://dev.azure.com/<org>/<project>/_workitems/edit/<id>`). Triggers live ADO intake mode. Mutually exclusive with `--story-file` and `--manual-story-file`. |
 | `--story-file PATH` | `workflow-fixtures/synthetic_story.json` | Path to a local synthetic story fixture JSON file. Used for offline / test runs. Falls back to the bundled `TEST-AC-001` fixture when no explicit story source is provided. |
 | `--manual-story-file PATH` | none | Path to a JSON file containing manually pasted story fields (`title`, `description`, `acceptance_criteria`, optional work item reference fields, optional extra context). Treats work item IDs and URLs as reference-only metadata unless explicit write-back is enabled later. |
-| `--runner NAME` | `claude` | LLM backend to use: `claude` (Anthropic), `codex` (OpenAI Codex CLI), `copilot` (OpenAI/GitHub), `gemini` (Google), `openai-compat` (any OpenAI-compatible endpoint), or a custom alias defined in `~/.agent-runner/config.json` under `runner_aliases`. |
+| `--runner NAME` | `claude` | LLM backend to use: `claude` (Anthropic), `codex` (OpenAI Codex CLI), `copilot` (OpenAI/GitHub), `gemini` (Google), `openai-compat` (any OpenAI-compatible endpoint), or a custom alias defined in the per-user config file under `runner_aliases`. |
 | `--model NAME` | runner default | Model name to pass to the selected runner. Defaults to the runner's built-in default when omitted. For `codex` and `openai-compat`, any model name is accepted; `claude`/`copilot`/`gemini` require a known model from their allowlists. |
 | `--extra-context TEXT` | none | Free-form text appended verbatim to the intake agent's prompt. Useful for passing a reference PR URL, design notes, or other supplemental context. |
 | `--skip-lessons-optimizer` | always on | Deprecated compatibility flag. The lessons optimizer is disabled and is never invoked. |
@@ -239,8 +239,8 @@ python3 run.py \
 The evaluation framework lives under [`eval/`](eval/) and is centered on the
 official hidden-test benchmark harness:
 
-- `eval/benchmarks/<difficulty>/story.json` defines each benchmark work item
-- `eval/benchmarks/<difficulty>/hidden_tests.py` defines AC-mapped pytest checks
+- `<data-dir>/eval/benchmarks/<difficulty>/story.json` defines each generated benchmark work item
+- `<data-dir>/eval/benchmarks/<difficulty>/hidden_tests.py` defines AC-mapped pytest checks
 - `eval/runner.py` runs benchmarks against a target repo, parses hidden-test JUnit
   output, reports AC-level quality, supports repeated trials, and compares to an
   optional baseline report
@@ -254,7 +254,7 @@ python3 eval/runner.py \
   --sha <gold-master-commit-sha> \
   --difficulty easy medium hard \
   --runs 3 \
-  --compare-to eval/reports/baseline.json
+  --compare-to "$AGENT_RUNNER_DATA_DIR/eval/reports/baseline.json"
 ```
 
 For the full evaluation workflow, artifacts, source types, calibration, plugins, baselines, and troubleshooting, see [`eval/README.md`](eval/README.md).
@@ -277,7 +277,7 @@ The current UI includes six views:
 ### Local state
 
 ```text
-~/.agent-runner/
+<data-dir>/
 ├── config.json
 ├── jobs.db
 ├── cassettes/<change-id>.jsonl
@@ -285,15 +285,23 @@ The current UI includes six views:
 └── opik/        # only present when Opik is enabled at bootstrap (--with-opik)
 ```
 
-Server event logs are written in the repo under:
+Runtime state is written under a native per-user data directory by default:
 
 ```text
-logs/<change-id>/events.jsonl
+macOS:   ~/Library/Application Support/Agent Workbench
+Windows: %LOCALAPPDATA%\Agent Workbench
+Linux:   ~/.local/share/agent-workbench
+```
+
+Set `AGENT_RUNNER_DATA_DIR` to redirect all generated local state. Server event logs are written under:
+
+```text
+<data-dir>/logs/<change-id>/events.jsonl
 ```
 
 ### Hermetic mode
 
-Submitting a run in **Hermetic** mode records subprocess invocations into `~/.agent-runner/cassettes/{change_id}.jsonl`. The workflow still talks to the real backend CLI; this mode captures I/O, it does not replay it.
+Submitting a run in **Hermetic** mode records subprocess invocations into `<data-dir>/cassettes/{change_id}.jsonl`. The workflow still talks to the real backend CLI; this mode captures I/O, it does not replay it.
 
 ### API endpoints
 
@@ -312,7 +320,7 @@ Submitting a run in **Hermetic** mode records subprocess invocations into `~/.ag
 | `GET` | `/agents/{name}` | Read the latest prompt + metadata for one agent |
 | `GET` | `/corpus` | List generated story corpus entries |
 | `GET` | `/corpus/{change_id}` | Read one generated story corpus entry |
-| `GET` | `/evaluate/summary` | Read the latest benchmark-report summary from `eval/reports` |
+| `GET` | `/evaluate/summary` | Read the latest benchmark-report summary from `<data-dir>/eval/reports` |
 | `GET` | `/evaluate/stories` | List evaluation stories available to the Run Evaluations view |
 | `GET` | `/evaluate/reports` | List benchmark reports available for comparison |
 | `POST` | `/evaluate/benchmark-runs` | Start a hidden-test benchmark run through `eval/runner.py` |
@@ -320,7 +328,7 @@ Submitting a run in **Hermetic** mode records subprocess invocations into `~/.ag
 | `GET` | `/telemetry/runs` | List run telemetry rows for charts and trend tables |
 | `POST` | `/telemetry/query` | Query telemetry aggregates and chart payloads |
 | `GET` | `/telemetry/runs/{job_id}/profile` | Read one run's stage, token, cost, and event profile |
-| `GET` / `PUT` | `/settings` | Read/update `~/.agent-runner/config.json` |
+| `GET` / `PUT` | `/settings` | Read/update `<data-dir>/config.json` |
 | `POST` | `/settings/opik/connect` | Resolve and save Opik workspace/project metadata |
 
 Example run submission:
@@ -391,7 +399,7 @@ Manual story files are JSON objects with these required fields:
 ## Artifact layout
 
 ```text
-agent-context/<change-id>/
+<data-dir>/agent-context/<change-id>/
 ├── intake/
 │   ├── story.yaml
 │   ├── config.yaml
@@ -420,9 +428,9 @@ agent-context/<change-id>/
 └── summary/
     ├── workflow_status.yaml
     ├── run_metrics.yaml
-    └── events.jsonl              # copy of logs/<change-id>/events.jsonl when present
+    └── events.jsonl              # copy of <data-dir>/logs/<change-id>/events.jsonl when present
 
-logs/<change-id>/
+<data-dir>/logs/<change-id>/
 ├── events.jsonl
 └── <agent>/
     └── *_session.json            # server-driven CLI invocation summaries
@@ -439,7 +447,7 @@ logs/<change-id>/
 
 The lessons optimizer stage is disabled. Workflow runs do not write `summary/lessons_optimizer_report.yaml` and do not make optimizer-driven prompt edits.
 
-When runs are launched through the local API, the server also records structured events in `logs/<change-id>/events.jsonl`, streams them over SSE, writes per-agent CLI session summaries under `logs/<change-id>/<agent>/`, and copies event-derived metrics into `summary/run_metrics.yaml`.
+When runs are launched through the local API, the server also records structured events in `<data-dir>/logs/<change-id>/events.jsonl`, streams them over SSE, writes per-agent CLI session summaries under `<data-dir>/logs/<change-id>/<agent>/`, and copies event-derived metrics into `summary/run_metrics.yaml`.
 
 ### Optimization telemetry
 

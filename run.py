@@ -40,8 +40,13 @@ INPUT_VALIDATION_ERRORS = (FileNotFoundError, ValueError)
 # ====================== HELPERS ====================== #
 
 RUNNER_ROOT = Path(__file__).resolve().parent
-AGENT_CONTEXT_ROOT = RUNNER_ROOT / "agent-context"
-LOGS_ROOT = RUNNER_ROOT / "logs"
+
+from core.runtime_paths import agent_context_root, load_data_dir_override_from_env_file, logs_root  # noqa: E402
+
+load_data_dir_override_from_env_file(RUNNER_ROOT / ".env")
+
+AGENT_CONTEXT_ROOT = agent_context_root()
+LOGS_ROOT = logs_root()
 WORKFLOW_STATUS_FILENAME = "workflow_status.yaml"
 
 
@@ -906,6 +911,7 @@ def main(
     headless: bool = False,
     log_level: str = "warning",
 ):
+    load_dotenv(RUNNER_ROOT / ".env", override=False)
     configure_logging(log_level)
     from core.run_cmds import set_runner_failover_policy
     set_runner_failover_policy(None)
@@ -1419,7 +1425,6 @@ main.fn = main
 
 
 if __name__ == "__main__":
-    load_dotenv()
     args = parse_args()
     try:
         main(

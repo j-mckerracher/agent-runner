@@ -44,14 +44,14 @@ Do **not** use this skill for:
 
 ## Operating Rules
 
-1. Ask **exactly one question at a time**.
-2. Ask only **decision-forcing** questions.
+1. Ask **exactly one decision-forcing question at a time**.
+2. Deliver each question via the `request_user_input` MCP tool — do **not** print the question into the chat. Chat output cannot be answered in single-turn runners; only the escalation channel reaches the user.
 3. If the answer can be obtained from host-allowed evidence, inspect that evidence before asking the user.
 4. If evidence answers part of the question, summarize only the unresolved decision.
 5. Keep each clarification compact, concrete, and easy to follow.
 6. Treat recommended answers as the safest minimal default, not as permission to invent scope.
 7. If the host prompt restricts repo exploration, delegation, or interaction, obey that restriction.
-8. If the run is synthetic or otherwise non-interactive, record the open question, recommended default, and impact instead of blocking.
+8. If the run is synthetic or otherwise non-interactive, record the open question, recommended default, and impact in `constraints.md` instead of blocking.
 9. Continue only until planning-blocking ambiguity is resolved or explicitly documented as an accepted assumption/risk.
 
 ## Ollama / Local-Model Optimization
@@ -70,14 +70,18 @@ This keeps the clarification flow precise, stable, and low-noise.
 
 ## First Response Format
 
-When clarification is needed, respond in this format:
+When clarification is needed, compose the `request_user_input` call with these fields:
+
+- **title**: Short label for the escalation card (e.g. “Missing rollout constraint for AC3”).
+- **message**: The body below, used as the escalation payload delivered to the user.
+- **questions**: Exactly one decision-forcing question string.
+
+Message body format:
 
 ```markdown
 What I understand so far:
 - ...
 - ...
-
-Question 1: <one concrete decision>
 
 Recommended default: <one conservative default>
 
@@ -85,6 +89,10 @@ Why this matters: <brief planning / QA consequence>
 
 Artifact impact: <how this changes ACs, constraints, or open questions>
 ```
+
+When the host is the **intake agent**, the user's answer is folded into `story.yaml` by
+**appending** new acceptance criteria (`AC{n+1}`, `AC{n+2}`, …). The original `AC1..ACn`
+from the source story are **immutable** — never edit, reorder, renumber, or delete them.
 
 Do not ask “anything else?” unless you have first identified the exact missing decision.
 
@@ -142,7 +150,7 @@ When the host agent is the intake agent:
 - keep the existing canonical schema
 - preserve `change_id`, `title`, `description`, `raw_input`, and existing provenance fields
 - keep `acceptance_criteria` as `AC1`, `AC2`, ...
-- fold clarified decisions into the existing fields instead of inventing a new top-level structure
+- acceptance criteria from source story are **immutable** — fold clarified decisions into the existing fields or **append** new `AC{n+1}` entries; never edit or reorder existing ACs
 - use `metacognitive_context` only for meaningful rationale, open gaps, or clarification notes
 
 ### `constraints.md`

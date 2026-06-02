@@ -13,12 +13,13 @@ from .repo_prep import build_feature_branch_name
 from .run_cmds import run_claude_cmd, run_agent_cmd
 from .opik_integration import call_evaluator_sdk
 from .runner_models import DEFAULT_GEMINI_MODEL, resolve_agent_model
+from .runtime_paths import agent_context_root, logs_root
 from .story_inputs import load_manual_story, normalize_acceptance_criteria
 from .ui_trace_bridge import track_with_ui
 
 logger = logging.getLogger(__name__)
 
-AGENT_CONTEXT_ROOT = Path(__file__).resolve().parent.parent / "agent-context"
+AGENT_CONTEXT_ROOT = agent_context_root()
 _TASK_FIELD_ALIASES = {
     "task_id": "id",
     "acceptance_criteria_mapped": "ac_mapping",
@@ -595,6 +596,23 @@ def _confirm_acceptance_criteria(change_id: str, intake_mode: str) -> None:
             _write_yaml_artifact(story_path, story)
 
 
+def _persist_intake_failure_transcript(change_id: str, result: str | None) -> Path:
+    """Write the raw intake agent response to logs/intake/ for post-mortem.
+
+    Returns the path written. Failures here are non-fatal.
+    """
+    try:
+        target_dir = logs_root(create=True) / "intake"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        target = target_dir / f"{change_id}_{ts}_response.txt"
+        target.write_text(result or "", encoding="utf-8")
+        return target
+    except OSError as exc:
+        logger.warning("_persist_intake_failure_transcript: failed change_id=%s err=%s", change_id, exc)
+        return Path("/dev/null")
+
+
 def _looks_like_runner_refusal(result: str | None) -> bool:
     normalized = (result or "").lower()
     refusal_markers = (
@@ -1093,6 +1111,43 @@ def _fetch_ado_work_item(ado_url: str) -> str | None:
         return None
 
 
+_INTAKE_PROMPT_TRAILER = """\
+
+Run order — follow exactly:
+
+Phase 1 — Normalize and persist.
+  1. Read the supplied context and extract acceptance criteria as AC1..ACn.
+  2. Write all three canonical artifacts FIRST — before any clarification:
+       - {agent_context_root}/{change_id}/intake/story.yaml
+       - {agent_context_root}/{change_id}/intake/config.yaml
+       - {agent_context_root}/{change_id}/intake/constraints.md
+     Use a conservative recommended default for any ambiguity encountered; do
+     not block on it.
+
+Phase 2 — Clarify via the escalation tool.
+  3. Use the interrogate-eng skill to identify planning-blocking ambiguities
+     against its coverage checklist.
+  4. For each ambiguity, call the `request_user_input` MCP tool (available in
+     every runner). The tool blocks your turn until the user replies and then
+     returns the response payload. Do NOT print the question into the chat —
+     chat output cannot be answered in single-turn runners.
+  5. Fold each answer into story.yaml by APPENDING a new acceptance criterion
+     (AC{{n+1}}, AC{{n+2}}, ...). NEVER edit, reorder, renumber, or delete
+     the original AC1..ACn — they are immutable. New ACs must be testable and
+     reference the originating question in metacognitive_context.
+  6. If a question times out, is declined, or the channel is unavailable,
+     record it in constraints.md as an open question with the recommended
+     default and downstream impact. Do not block the workflow.
+
+Termination contract.
+  Before ending your turn you MUST have written intake/story.yaml,
+  intake/config.yaml, and intake/constraints.md. Do not exit with these
+  missing. Do not end your turn with a question still pending in the chat —
+  questions go through `request_user_input` only.
+
+The interrogate-eng skill must NEVER be used for evaluations."""
+
+
 def build_intake_prompt(
     intake_source: str,
     repo: str,
@@ -1122,10 +1177,9 @@ def build_intake_prompt(
         prompt += (
             f"Normalize the result into canonical intake artifacts under {AGENT_CONTEXT_ROOT}/{change_id}/intake/."
         )
-        prompt += (
-            "\nAfter gathering and normalizing the intake items, use the interrogate-eng skill to "
-            "interrogate the story into planner-ready, implementation- and QA-grade requirements. "
-            "The interrogate-eng skill must NEVER be used for evaluations."
+        prompt += _INTAKE_PROMPT_TRAILER.format(
+            agent_context_root=AGENT_CONTEXT_ROOT,
+            change_id=change_id,
         )
         if extra_context:
             prompt += f"\n\nAdditional context from the user:\n{extra_context}\n"
@@ -1141,10 +1195,9 @@ def build_intake_prompt(
     prompt += (
         f"Normalize the result into canonical intake artifacts under {AGENT_CONTEXT_ROOT}/{change_id}/intake/."
     )
-    prompt += (
-        "\nAfter gathering and normalizing the intake items, use the interrogate-eng skill to "
-        "interrogate the story into planner-ready, implementation- and QA-grade requirements. "
-        "The interrogate-eng skill must NEVER be used for evaluations."
+    prompt += _INTAKE_PROMPT_TRAILER.format(
+        agent_context_root=AGENT_CONTEXT_ROOT,
+        change_id=change_id,
     )
     if extra_context:
         prompt += f"\n\nAdditional context from the user:\n{extra_context}\n"
@@ -1222,10 +1275,22 @@ def step_intake(
         extra_skills=extra_skills,
         **_agent_runner_kwargs(resolved_model),
     )
-    if not _intake_story_path(change_id).is_file() and _looks_like_runner_refusal(result):
+    story_path = _intake_story_path(change_id)
+    if not story_path.is_file():
+        transcript_path = _persist_intake_failure_transcript(change_id, result)
+        intake_dir = _intake_dir(change_id)
+        try:
+            present = sorted(p.name for p in intake_dir.iterdir()) if intake_dir.is_dir() else []
+        except OSError:
+            present = []
+        refusal_suspected = _looks_like_runner_refusal(result)
+        snippet = (result or "").strip()[:500]
         raise RuntimeError(
-            "Intake runner returned a refusal without creating intake artifacts: "
-            f"{result.strip()[:500]}"
+            "Intake runner exited without writing required artifact "
+            f"{story_path}. files_present_in_intake_dir={present} "
+            f"refusal_suspected={refusal_suspected} "
+            f"transcript={transcript_path} "
+            f"response_snippet={snippet!r}"
         )
     _confirm_acceptance_criteria(change_id, intake_mode)
     logger.info("step_intake: completed change_id=%s output_len=%d", change_id, len(result or ""))

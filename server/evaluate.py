@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from eval.runner import DEFAULT_BENCHMARKS, DEFAULT_REPORTS
+from eval.runner import DEFAULT_BENCHMARKS, DEFAULT_REPORTS, LEGACY_BENCHMARKS, LEGACY_REPORTS
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,8 @@ def _score_to_percent(value: Any) -> int | None:
 
 def list_eval_reports(root: Path | None = None) -> list[dict[str, Any]]:
     root = root or DEFAULT_REPORTS
+    if root == DEFAULT_REPORTS and (not root.is_dir() or not any(root.glob("*.json"))) and LEGACY_REPORTS.is_dir():
+        root = LEGACY_REPORTS
     reports: list[dict[str, Any]] = []
     if not root.is_dir():
         return reports
@@ -54,6 +56,9 @@ def list_eval_reports(root: Path | None = None) -> list[dict[str, Any]]:
 
 def list_benchmark_stories(root: Path | None = None) -> list[dict[str, Any]]:
     root = root or DEFAULT_BENCHMARKS
+    if root == DEFAULT_BENCHMARKS and not any((root / difficulty / "story.json").is_file() for difficulty in ("easy", "medium", "hard")):
+        if any((LEGACY_BENCHMARKS / difficulty / "story.json").is_file() for difficulty in ("easy", "medium", "hard")):
+            root = LEGACY_BENCHMARKS
     stories: list[dict[str, Any]] = []
     for difficulty in ("easy", "medium", "hard"):
         story_path = root / difficulty / "story.json"

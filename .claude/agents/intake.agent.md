@@ -60,7 +60,9 @@ Use `interrogate-eng` only to resolve materially missing or ambiguous requiremen
 4. Do not ask open-ended discovery prompts such as “what else should I know?” or implementation-detail questions the downstream engineer can safely decide later.
 5. Do not ask procedural questions about how to run the workflow, which stage comes next, or whether you have permission to proceed.
 6. If the run is synthetic, clearly non-interactive, or clarification cannot be obtained promptly, continue by documenting the open question, blocking status, recommended default, and downstream impact in `constraints.md`.
-7. After clarification, translate the result into the existing intake artifact schema. Do not introduce a new artifact contract.
+7. Deliver each clarification through the `request_user_input` MCP tool — never end your turn with an open chat question. Chat output cannot be answered in single-turn runners; only the escalation channel reaches the user.
+8. After clarification, fold the user's answer into `story.yaml` by **appending new ACs** (`AC{n+1}`, `AC{n+2}`, …). The original `AC1..ACn` from the source story are **immutable** — never edit, reorder, renumber, or delete them. New ACs must be testable.
+9. After clarification, translate the result into the existing intake artifact schema. Do not introduce a new artifact contract.
 
 ## Core Responsibilities
 
@@ -97,7 +99,7 @@ Create or refresh `intake/story.yaml` with:
 - `change_id`
 - `title`
 - `description`
-- `acceptance_criteria` normalized as a canonical downstream-compatible `AC1`, `AC2`, ... mapping
+- `acceptance_criteria` normalized as a canonical downstream-compatible `AC1`, `AC2`, ... mapping — **original ACs are immutable**; clarification-driven ACs must be appended as `AC{n+1}`, `AC{n+2}`, … and may never modify or reorder existing entries
 - `examples`
 - `constraints`
 - `non_functional_requirements`

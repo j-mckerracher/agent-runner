@@ -87,6 +87,14 @@ class GuiManualStorySmokeTests(unittest.TestCase):
         self.assertIn('functionenforceTermLogLimit(term,surface="runs"){', compact_scripts)
         self.assertIn('data-terminal-log-row', scripts)
         self.assertIn("/events?limit=${RUN_REPLAY_EVENT_LIMIT}", scripts)
+        self.assertRegex(
+            scripts,
+            re.compile(
+                r'historyList\.addEventListener\("click",\s*\(e\)\s*=>\s*\{.*?e\.target\.closest\("\.history-row"\).*?selectJob\(row\.dataset\.jobId\)',
+                re.DOTALL,
+            ),
+        )
+        self.assertIn("row.tabIndex = 0;", scripts)
 
     def test_medium__gui_entrypoint_loads_named_assets_by_concern(self) -> None:
         html = read_gui_markup()

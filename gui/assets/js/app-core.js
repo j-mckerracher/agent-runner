@@ -181,11 +181,11 @@ const SETTINGS_HELP_COPY = {
     "s-conc":
         "How many workflow runs can execute simultaneously. Each run spawns a subprocess, so set this based on your machine's resources and API rate limits. Default is 2.",
     "s-data":
-        "Where the server stores jobs.db, cassettes, and memory files. Defaults to ~/.agent-runner/. Change this if you want project-specific isolation or a different disk location.",
+        "Where the server stores jobs.db, cassettes, logs, workflow artifacts, and eval reports. Defaults to the native per-user Agent Workbench data directory.",
     "s-server-restart-note":
         "Changing Host or Port updates the saved config file immediately, but the running server process continues listening on the old address. Restart the server to apply.",
     "settings-save":
-        "Writes all values on this page to ~/.agent-runner/config.json. The server picks up most changes immediately; host/port require a restart.",
+        "Writes all values on this page to the per-user Agent Workbench config file. The server picks up most changes immediately; host/port require a restart.",
     "s-alias-add-btn":
         "Create a custom runner alias that wraps any LiteLLM-compatible provider. Aliases appear in all runner dropdowns alongside built-in options.",
     "s-alias-name":

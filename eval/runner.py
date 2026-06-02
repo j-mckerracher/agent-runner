@@ -31,6 +31,14 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from core.runtime_paths import (
+    eval_benchmarks_root,
+    eval_reports_root,
+    load_data_dir_override_from_env_file,
+    logs_root as runtime_logs_root,
+)
+
+load_data_dir_override_from_env_file(ROOT / ".env")
 from core.runner_models import RUNNER_MODEL_CHOICES, is_copilot_runner
 from eval.result_schema import BenchmarkResult, EvalMetrics, TestSummary
 from eval.seed_benchmarks import (
@@ -40,8 +48,10 @@ from eval.seed_benchmarks import (
     validate_hidden_tests,
 )
 
-DEFAULT_BENCHMARKS = ROOT / "eval" / "benchmarks"
-DEFAULT_REPORTS = ROOT / "eval" / "reports"
+DEFAULT_BENCHMARKS = eval_benchmarks_root()
+DEFAULT_REPORTS = eval_reports_root()
+LEGACY_BENCHMARKS = ROOT / "eval" / "benchmarks"
+LEGACY_REPORTS = ROOT / "eval" / "reports"
 RUN_PY = ROOT / "run.py"
 WORKFLOW_POLL_SECONDS = 0.25
 WORKFLOW_HEARTBEAT_SECONDS = 30.0
@@ -304,6 +314,10 @@ def validate_benchmark(path: Path) -> None:
 
 
 def discover_benchmarks(root: Path, names: list[str]) -> list[Path]:
+    root = root.expanduser()
+    default_root_empty = not root.exists() or not any(path.is_dir() for path in root.iterdir())
+    if root == DEFAULT_BENCHMARKS and default_root_empty and LEGACY_BENCHMARKS.exists():
+        root = LEGACY_BENCHMARKS
     if names:
         paths = [root / name for name in names]
     else:
@@ -568,7 +582,11 @@ def run_hidden_tests(path: Path, workspace: Path, timeout: int) -> tuple[subproc
 
 
 def collect_session_metrics(run_id: str) -> dict[str, Any]:
-    roots = [ROOT / "logs" / run_id, ROOT / "eval" / "reports" / "analyze" / run_id]
+    roots = [
+        runtime_logs_root() / run_id,
+        LEGACY_REPORTS / "analyze" / run_id,
+        LEGACY_REPORTS.parent.parent / "logs" / run_id,
+    ]
     sessions: list[Path] = []
     for root in roots:
         if root.is_dir():
@@ -901,7 +919,8 @@ def load_baseline(path: Path | None) -> dict[str, Any] | None:
 def write_report(results: list[dict[str, Any]], args: argparse.Namespace) -> None:
     if not args.write_report:
         return
-    DEFAULT_REPORTS.mkdir(parents=True, exist_ok=True)
+    reports_dir = Path(getattr(args, "reports_dir", DEFAULT_REPORTS)).expanduser().resolve()
+    reports_dir.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc)
     summary = aggregate_results(results)
     baseline_payload = load_baseline(args.compare_to)
@@ -940,12 +959,12 @@ def write_report(results: list[dict[str, Any]], args: argparse.Namespace) -> Non
     # Filename: YYYY-MM-DD-HHMMss-<difficulty>.json  e.g. 2026-05-20-143022-easy.json
     stamp = now.strftime("%Y-%m-%d-%H%M%S")
     difficulty = _difficulty_label(results)
-    report_path = DEFAULT_REPORTS / f"{stamp}-{difficulty}.json"
-    latest_path = DEFAULT_REPORTS / "latest.json"
+    report_path = reports_dir / f"{stamp}-{difficulty}.json"
+    latest_path = reports_dir / "latest.json"
     report_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     latest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     if args.update_baseline:
-        baseline_path = args.compare_to or (DEFAULT_REPORTS / "baseline.json")
+        baseline_path = args.compare_to or (reports_dir / "baseline.json")
         baseline_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     print(f"Report written to {report_path}")
 
@@ -956,6 +975,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repo", default=default("EVAL_TARGET_REPO", env_file), help="Target Git repo path or URL. Defaults to EVAL_TARGET_REPO.")
     parser.add_argument("--sha", default=default("EVAL_TARGET_SHA", env_file), help="Gold-master commit SHA. Defaults to EVAL_TARGET_SHA.")
     parser.add_argument("--benchmarks-dir", type=Path, default=DEFAULT_BENCHMARKS)
+    parser.add_argument("--reports-dir", type=Path, default=DEFAULT_REPORTS)
     parser.add_argument("--benchmark", action="append", default=[], help="Benchmark name to run; repeat for multiple. Defaults to all.")
     parser.add_argument("--difficulty", nargs="+", choices=["easy", "medium", "hard"], default=None, help="Difficulty level(s) to run (e.g. --difficulty easy medium). Defaults to all.")
     parser.add_argument("--runner", default=default("EVAL_RUNNER", env_file, "claude"))

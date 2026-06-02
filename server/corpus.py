@@ -199,11 +199,16 @@ def _job_summary(change_id: str) -> dict[str, Any]:
 
 def _list_stories_from_reports() -> list[dict[str, Any]]:
     """Aggregate benchmark story definitions with eval report results."""
-    from eval.runner import DEFAULT_BENCHMARKS, DEFAULT_REPORTS
+    from eval.runner import DEFAULT_BENCHMARKS, DEFAULT_REPORTS, LEGACY_BENCHMARKS, LEGACY_REPORTS
+
+    benchmarks_root = DEFAULT_BENCHMARKS
+    if not any((benchmarks_root / difficulty / "story.json").is_file() for difficulty in ("easy", "medium", "hard")):
+        if any((LEGACY_BENCHMARKS / difficulty / "story.json").is_file() for difficulty in ("easy", "medium", "hard")):
+            benchmarks_root = LEGACY_BENCHMARKS
 
     stories_map: dict[str, dict[str, Any]] = {}
     for difficulty in ("easy", "medium", "hard"):
-        story_path = DEFAULT_BENCHMARKS / difficulty / "story.json"
+        story_path = benchmarks_root / difficulty / "story.json"
         if not story_path.is_file():
             continue
         try:
@@ -226,6 +231,8 @@ def _list_stories_from_reports() -> list[dict[str, Any]]:
         }
 
     reports_dir = DEFAULT_REPORTS
+    if (not reports_dir.is_dir() or not any(reports_dir.glob("*.json"))) and LEGACY_REPORTS.is_dir():
+        reports_dir = LEGACY_REPORTS
     if reports_dir.is_dir():
         for path in sorted(reports_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
             if path.name == "latest.json":
@@ -261,12 +268,16 @@ def _list_stories_from_reports() -> list[dict[str, Any]]:
 
 def _get_story_from_reports(change_id: str) -> dict[str, Any] | None:
     """Look up a single story from benchmarks + eval reports."""
-    from eval.runner import DEFAULT_BENCHMARKS, DEFAULT_REPORTS
+    from eval.runner import DEFAULT_BENCHMARKS, DEFAULT_REPORTS, LEGACY_BENCHMARKS, LEGACY_REPORTS
 
     story_def = None
     difficulty = None
+    benchmarks_root = DEFAULT_BENCHMARKS
+    if not any((benchmarks_root / d / "story.json").is_file() for d in ("easy", "medium", "hard")):
+        if any((LEGACY_BENCHMARKS / d / "story.json").is_file() for d in ("easy", "medium", "hard")):
+            benchmarks_root = LEGACY_BENCHMARKS
     for d in ("easy", "medium", "hard"):
-        story_path = DEFAULT_BENCHMARKS / d / "story.json"
+        story_path = benchmarks_root / d / "story.json"
         if not story_path.is_file():
             continue
         try:
@@ -284,6 +295,8 @@ def _get_story_from_reports(change_id: str) -> dict[str, Any] | None:
     passed = 0
     total = 0
     reports_dir = DEFAULT_REPORTS
+    if (not reports_dir.is_dir() or not any(reports_dir.glob("*.json"))) and LEGACY_REPORTS.is_dir():
+        reports_dir = LEGACY_REPORTS
     if reports_dir.is_dir():
         for path in sorted(reports_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
             if path.name == "latest.json":

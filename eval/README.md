@@ -4,7 +4,7 @@ This eval harness answers one question:
 
 > After a workflow change, can Agent Workbench still complete representative work items?
 
-Each benchmark is a pair of files in `eval/benchmarks/<difficulty>/`:
+Each generated benchmark is a pair of files in `<data-dir>/eval/benchmarks/<difficulty>/`:
 
 | File | Visibility |
 |---|---|
@@ -114,11 +114,11 @@ For each benchmark:
 7. The sandbox is cleaned up (regardless of outcome).
 
 Results are printed to the terminal and (by default) written to
-`eval/reports/latest.json` with AC-level quality, reliability, efficiency, and
+`<data-dir>/eval/reports/latest.json` with AC-level quality, reliability, efficiency, and
 optional baseline trend fields.
 
 The local Evaluate UI is benchmark-report first: it launches `/evaluate/benchmark-runs`
-through this runner, reads reports from `eval/reports`, and shows warnings when a
+through this runner, reads reports from `<data-dir>/eval/reports`, and shows warnings when a
 baseline is missing, only one trial was run, hidden tests skipped, AC mapping is
 incomplete, or the selected baseline differs by runner/model, target SHA, or
 benchmark set.
@@ -195,13 +195,14 @@ separately by the hidden tests in step 3.
 | `--model NAME` | runner default | Override the model for the selected runner. Falls back to `EVAL_MODEL` in `.env` when compatible with the runner's model choices (for `codex` and `openai-compat`, any model name is accepted); otherwise uses the runner default. |
 | `--difficulty LEVEL [LEVEL …]` | all benchmarks | One or more difficulty levels to run: `easy`, `medium`, `hard`. When omitted, all benchmarks in `--benchmarks-dir` are run. |
 | `--benchmark NAME` | all benchmarks | Exact benchmark folder name(s) to run (e.g. `easy`). Repeat the flag for multiple names. Takes precedence over `--difficulty` when both are given. |
-| `--benchmarks-dir PATH` | `eval/benchmarks` | Root directory that contains benchmark sub-folders. Override to point at a custom benchmark tree. |
+| `--benchmarks-dir PATH` | `<data-dir>/eval/benchmarks` | Root directory that contains benchmark sub-folders. Override to point at a custom benchmark tree. |
 | `--project-test-command CMD` | none | Shell command executed inside the sandbox after the workflow finishes, used to detect regressions (e.g. `python3 -m pytest -q`). Falls back to `EVAL_PROJECT_TEST_COMMAND` in `.env`. |
 | `--workflow-timeout SECS` | `10800` (3 h) | Maximum wall-clock seconds allowed for the workflow stage (`run.py`) per benchmark before it is killed. |
 | `--test-timeout SECS` | `300` (5 min) | Maximum seconds allowed for each test stage (project tests and hidden tests) per benchmark. |
 | `--include-lessons` | off | Deprecated no-op. The lessons optimizer is disabled and is never included in workflow eval runs. |
 | `--keep-sandbox` | off | Preserve the temporary sandbox directory after the run completes. Useful for post-mortem debugging. |
-| `--write-report / --no-write-report` | on | Write a JSON report to `eval/reports/`. Pass `--no-write-report` to skip writing. |
+| `--reports-dir PATH` | `<data-dir>/eval/reports` | Directory for benchmark reports. Override to keep reports elsewhere. |
+| `--write-report / --no-write-report` | on | Write a JSON report to `<data-dir>/eval/reports/`. Pass `--no-write-report` to skip writing. |
 | `--log-level LEVEL` | `warning` | Logging verbosity passed through to `run.py`: `debug`, `info`, `warning`, `error`, or `critical`. |
 | `--runs N` | `1` | Number of trials to run per benchmark. |
 | `--allow-hidden-skips` | off | Allow skipped hidden tests. By default, hidden-test skips fail the benchmark. |
@@ -273,7 +274,7 @@ hard                     trial 01 FAIL (timeout after 10800s)
 
 ### Report JSON structure
 
-Each run writes two files to `eval/reports/`:
+Each run writes two files to `<data-dir>/eval/reports/`:
 
 - `<YYYY-MM-DD-HHMMss>-<difficulty>.json` — timestamped copy, e.g. `2026-05-20-143022-easy.json`
 - `latest.json` — always overwritten with the most recent run
@@ -414,7 +415,7 @@ This is the direct trace from acceptance criterion to test outcome. `missing_cas
 
 ### Interpreting trends
 
-Pass `--compare-to eval/reports/baseline.json` to classify the current run against a known-good baseline:
+Pass `--compare-to <data-dir>/eval/reports/baseline.json` to classify the current run against a known-good baseline:
 
 | Trend | Meaning |
 |---|---|
@@ -429,10 +430,10 @@ Create a baseline after a known-good run:
 python3 eval/runner.py --difficulty easy medium hard --runs 3 --update-baseline
 ```
 
-This writes `eval/reports/baseline.json`. Subsequent runs can compare against it:
+This writes `<data-dir>/eval/reports/baseline.json`. Subsequent runs can compare against it:
 
 ```bash
-python3 eval/runner.py --compare-to eval/reports/baseline.json
+python3 eval/runner.py --compare-to "$AGENT_RUNNER_DATA_DIR/eval/reports/baseline.json"
 ```
 
 ### Common failure modes
@@ -442,7 +443,7 @@ python3 eval/runner.py --compare-to eval/reports/baseline.json
 | `hidden tests unexpectedly passed on gold master` | Tests don't fail against the unmodified repo. The benchmark is misaligned with the gold-master SHA. | Regenerate the benchmark against the correct SHA, or verify the repo was checked out correctly. |
 | `hidden tests errored on gold master` | Tests crashed during gold-master verification (pytest exit code 2–5). Runtime or dependency missing. | Check the target repo's dependencies are installed. Tests must not require a runtime that isn't available locally. |
 | `hidden tests skipped on gold master` | Tests contained a skip condition that fired. | Regenerate or repair the benchmark. Hidden tests must not skip. |
-| `workflow failed` | `run.py` exited non-zero. | Check the workflow logs in `logs/<run_id>/`. Look for agent errors, timeouts, or model refusals. |
+| `workflow failed` | `run.py` exited non-zero. | Check the workflow logs in `<data-dir>/logs/<run_id>/`. Look for agent errors, timeouts, or model refusals. |
 | `project tests failed` | The `--project-test-command` exited non-zero after the workflow modified the sandbox. | Check the stdout/stderr printed above the error. Common causes: pytest found no tests (`no tests ran`, exit code 5), the command is wrong for the target repo type, or the workflow introduced a regression. See [Project test command](#project-test-command). |
 | `hidden tests failed` | One or more hidden tests did not pass after the workflow. | Look at `hidden_tests.ac_results` to see which ACs failed. Check individual test case messages. |
 | `hidden tests skipped` | A hidden test skipped at runtime. | Regenerate the benchmark. Skips are banned unless `--allow-hidden-skips` is set. |
@@ -465,7 +466,7 @@ The Evaluate panel in the local UI (http://127.0.0.1:8742) is benchmark-report f
 
 1. Select a benchmark difficulty and runner/model.
 2. Click **Run Benchmarks** to launch `eval/runner.py` as a server job.
-3. The results panel loads the latest `eval/reports/latest.json` and displays:
+3. The results panel loads the latest `<data-dir>/eval/reports/latest.json` and displays:
    - Per-benchmark pass/fail status with error messages
    - Quality scores (weighted and AC-level)
    - Efficiency metrics (wall time, tokens)
@@ -478,7 +479,7 @@ Warnings are shown prominently when: no baseline is selected, only one trial was
 
 ## Reports
 
-Each run writes two files to `eval/reports/`:
+Each run writes two files to `<data-dir>/eval/reports/`:
 
 - `<YYYY-MM-DD-HHMMss>-<difficulty>.json` — timestamped copy, e.g. `2026-05-20-143022-easy.json`
 - `latest.json` — always overwritten with the most recent run
@@ -500,7 +501,7 @@ The first supported agent is `task-generator`. It writes and scores
 ```bash
 python3 eval/agent_runner.py \
   --agent task-generator \
-  --dataset eval/agent_datasets/task-generator/smoke.jsonl \
+  --dataset "$AGENT_RUNNER_DATA_DIR/eval/agent_datasets/task-generator/smoke.jsonl" \
   --dry-run
 ```
 
@@ -512,27 +513,27 @@ harness, datasets, reports, and CI gates without calling an LLM runner.
 ```bash
 python3 eval/agent_runner.py \
   --agent task-generator \
-  --dataset eval/agent_datasets/task-generator/smoke.jsonl \
+  --dataset "$AGENT_RUNNER_DATA_DIR/eval/agent_datasets/task-generator/smoke.jsonl" \
   --runner openai-compat \
   --model minimax-m2.7:cloud \
   --context-pack schema-examples-v1 \
   --runs 3
 ```
 
-Reports are written to `eval/agent_reports/task-generator/` and mirrored to
-`eval/agent_reports/task-generator/latest.json`.
+Reports are written to `<data-dir>/eval/agent_reports/task-generator/` and mirrored to
+`<data-dir>/eval/agent_reports/task-generator/latest.json`.
 
 ### Compare prompt and context variants
 
 ```bash
 python3 eval/agent_runner.py \
   --agent task-generator \
-  --dataset eval/agent_datasets/task-generator/regression.jsonl \
+  --dataset "$AGENT_RUNNER_DATA_DIR/eval/agent_datasets/task-generator/regression.jsonl" \
   --runner openai-compat \
   --model minimax-m2.7:cloud \
   --context-pack ac-checklist-v1 \
   --prompt-path agent-definition-source/task-generator/v3-candidate/prompt.md \
-  --compare-to eval/agent_reports/task-generator/baseline.json \
+  --compare-to "$AGENT_RUNNER_DATA_DIR/eval/agent_reports/task-generator/baseline.json" \
   --runs 3
 ```
 
@@ -549,7 +550,7 @@ configured.
 ```bash
 python3 eval/agent_runner.py \
   --agent task-generator \
-  --dataset eval/agent_datasets/task-generator/smoke.jsonl \
+  --dataset "$AGENT_RUNNER_DATA_DIR/eval/agent_datasets/task-generator/smoke.jsonl" \
   --runner openai-compat \
   --model minimax-m2.7:cloud \
   --context-pack baseline \

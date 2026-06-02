@@ -7,10 +7,39 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from core import runtime_paths
 from server.config import load_config, save_config, validate_config
 
 
 class ConfigRuntimeOverrideTests(unittest.TestCase):
+    def test_default_data_dir_uses_native_platform_locations(self) -> None:
+        with patch.object(runtime_paths.sys, "platform", "darwin"), patch.object(runtime_paths.Path, "home", return_value=Path("/Users/alice")):
+            self.assertEqual(
+                runtime_paths.default_data_dir(),
+                Path("/Users/alice/Library/Application Support/Agent Workbench"),
+            )
+
+        with patch.object(runtime_paths.sys, "platform", "win32"), patch.dict(os.environ, {"LOCALAPPDATA": "/Users/alice/AppData/Local"}, clear=False):
+            self.assertEqual(
+                runtime_paths.default_data_dir(),
+                Path("/Users/alice/AppData/Local/Agent Workbench"),
+            )
+
+        with patch.object(runtime_paths.sys, "platform", "linux"), patch.object(runtime_paths.Path, "home", return_value=Path("/home/alice")):
+            self.assertEqual(
+                runtime_paths.default_data_dir(),
+                Path("/home/alice/.local/share/agent-workbench"),
+            )
+
+    def test_data_dir_override_redirects_config_and_runtime_roots(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="awb-config-") as tmpdir:
+            with patch.dict(os.environ, {"AGENT_RUNNER_DATA_DIR": tmpdir}, clear=False):
+                cfg = load_config()
+
+            self.assertEqual(cfg["paths"]["data_dir"], tmpdir)
+            self.assertEqual(cfg["paths"]["agent_context"], str(Path(tmpdir) / "agent-context"))
+            self.assertTrue((Path(tmpdir) / "config.json").is_file())
+
     def test_codex_agent_default_accepts_arbitrary_model(self) -> None:
         errors = validate_config(
             {

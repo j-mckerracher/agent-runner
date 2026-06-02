@@ -22,7 +22,7 @@ artifacts and writes `planning/tasks.yaml`.
 ```bash
 python3 eval/agent_runner.py \
   --agent task-generator \
-  --dataset eval/agent_datasets/task-generator/smoke.jsonl \
+  --dataset "$AGENT_RUNNER_DATA_DIR/eval/agent_datasets/task-generator/smoke.jsonl" \
   --dry-run
 ```
 
@@ -31,7 +31,7 @@ Live model run:
 ```bash
 python3 eval/agent_runner.py \
   --agent task-generator \
-  --dataset eval/agent_datasets/task-generator/regression.jsonl \
+  --dataset "$AGENT_RUNNER_DATA_DIR/eval/agent_datasets/task-generator/regression.jsonl" \
   --runner openai-compat \
   --model minimax-m2.7:cloud \
   --context-pack schema-examples-v1 \
@@ -76,7 +76,7 @@ Fast harness validation:
 ```bash
 python3 eval/agent_runner.py \
   --agent task-generator \
-  --dataset eval/agent_datasets/task-generator/smoke.jsonl \
+  --dataset "$AGENT_RUNNER_DATA_DIR/eval/agent_datasets/task-generator/smoke.jsonl" \
   --dry-run \
   --fail-under 0.99 \
   --require-pass-rate 1.0
@@ -87,10 +87,10 @@ Candidate validation:
 ```bash
 python3 eval/agent_runner.py \
   --agent task-generator \
-  --dataset eval/agent_datasets/task-generator/regression.jsonl \
+  --dataset "$AGENT_RUNNER_DATA_DIR/eval/agent_datasets/task-generator/regression.jsonl" \
   --runner openai-compat \
   --model minimax-m2.7:cloud \
   --context-pack ac-checklist-v1 \
-  --compare-to eval/agent_reports/task-generator/baseline.json \
+  --compare-to "$AGENT_RUNNER_DATA_DIR/eval/agent_reports/task-generator/baseline.json" \
   --fail-under 0.80
 ```

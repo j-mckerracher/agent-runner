@@ -124,9 +124,26 @@ class StepIntakeSyntheticModeTests(unittest.TestCase):
     def test_easy__ado_mode_still_uses_llm_runner(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
+
+            def _fake_runner(**kwargs):
+                story_path = root / "agent-context" / "WI-123456" / "intake" / "story.yaml"
+                story_path.parent.mkdir(parents=True, exist_ok=True)
+                story_path.write_text(
+                    yaml.safe_dump(
+                        {
+                            "change_id": "WI-123456",
+                            "title": "stub",
+                            "description": "stub",
+                            "acceptance_criteria": {"AC1": "stub criterion"},
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                return "intake complete"
+
             with (
                 patch("core.steps.AGENT_CONTEXT_ROOT", root / "agent-context"),
-                patch("core.steps.run_agent_cmd", return_value="intake complete") as run_agent_cmd,
+                patch("core.steps.run_agent_cmd", side_effect=_fake_runner) as run_agent_cmd,
             ):
                 result = step_intake(
                     intake_source="https://dev.azure.com/example/project/_workitems/edit/123456",
@@ -143,14 +160,19 @@ class StepIntakeSyntheticModeTests(unittest.TestCase):
     def test_medium__ado_mode_surfaces_refusal_when_no_artifacts_are_written(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
+            logs_dir = root / "logs"
             with (
                 patch("core.steps.AGENT_CONTEXT_ROOT", root / "agent-context"),
+                patch("core.steps.logs_root", return_value=logs_dir),
                 patch(
                     "core.steps.run_agent_cmd",
                     return_value="I'm sorry, but I cannot assist with that request.",
                 ),
             ):
-                with self.assertRaisesRegex(RuntimeError, "returned a refusal"):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    r"exited without writing required artifact.*refusal_suspected=True",
+                ):
                     step_intake(
                         intake_source="https://dev.azure.com/example/project/_workitems/edit/123456",
                         repo="/tmp/target-repo",
@@ -159,6 +181,44 @@ class StepIntakeSyntheticModeTests(unittest.TestCase):
                         runner="copilot",
                         runner_model="gpt-5-mini",
                     )
+
+    def test_medium__ado_mode_raises_with_listing_when_agent_writes_wrong_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            logs_dir = root / "logs"
+            intake_dir = root / "agent-context" / "WI-123456" / "intake"
+            response_text = "Here is a story summary\nnothing structured."
+
+            def _fake_runner(**kwargs):
+                intake_dir.mkdir(parents=True, exist_ok=True)
+                (intake_dir / "story.md").write_text("# story\n", encoding="utf-8")
+                (intake_dir / "tasks.md").write_text("- task 1\n", encoding="utf-8")
+                return response_text
+
+            with (
+                patch("core.steps.AGENT_CONTEXT_ROOT", root / "agent-context"),
+                patch("core.steps.logs_root", return_value=logs_dir),
+                patch("core.steps.run_agent_cmd", side_effect=_fake_runner),
+            ):
+                with self.assertRaises(RuntimeError) as ctx:
+                    step_intake(
+                        intake_source="https://dev.azure.com/example/project/_workitems/edit/123456",
+                        repo="/tmp/target-repo",
+                        change_id="WI-123456",
+                        intake_mode="ado",
+                        runner="copilot",
+                        runner_model="gpt-5-mini",
+                    )
+
+            message = str(ctx.exception)
+            self.assertIn("story.yaml", message)
+            self.assertIn("story.md", message)
+            self.assertIn("tasks.md", message)
+            self.assertIn("refusal_suspected=False", message)
+
+            transcripts = list((logs_dir / "intake").glob("WI-123456_*_response.txt"))
+            self.assertEqual(len(transcripts), 1)
+            self.assertEqual(transcripts[0].read_text(encoding="utf-8"), response_text)
 
 
 class StepIntakeManualModeTests(unittest.TestCase):

@@ -359,12 +359,13 @@ class EvalRunnerStructuredResultTests(unittest.TestCase):
         self.assertTrue(ac_results["AC3"]["skipped"])
 
     def test_validate_official_benchmarks_enforces_ac_maps(self):
+        benchmarks = {path.name: path for path in eval_runner.discover_benchmarks(eval_runner.DEFAULT_BENCHMARKS, [])}
         for name in ("easy", "medium", "hard"):
             with self.subTest(name=name):
-                eval_runner.validate_benchmark(eval_runner.DEFAULT_BENCHMARKS / name)
+                eval_runner.validate_benchmark(benchmarks[name])
 
     def test_medium_benchmark_contract_is_runtime_oriented(self):
-        medium = eval_runner.DEFAULT_BENCHMARKS / "medium"
+        medium = {path.name: path for path in eval_runner.discover_benchmarks(eval_runner.DEFAULT_BENCHMARKS, [])}["medium"]
         hidden_tests = (medium / "hidden_tests.py").read_text(encoding="utf-8")
         ac_map = eval_runner.benchmark_ac_test_map(medium)
 
@@ -428,6 +429,7 @@ class EvalRunnerStructuredResultTests(unittest.TestCase):
             )
             args = Namespace(
                 write_report=True,
+                reports_dir=report_root,
                 compare_to=baseline,
                 update_baseline=False,
                 regression_quality_pp=5.0,
@@ -447,9 +449,8 @@ class EvalRunnerStructuredResultTests(unittest.TestCase):
                 }
             ]
 
-            with patch.object(eval_runner, "DEFAULT_REPORTS", report_root):
-                eval_runner.write_report(results, args)
-                payload = json.loads((report_root / "latest.json").read_text(encoding="utf-8"))
+            eval_runner.write_report(results, args)
+            payload = json.loads((report_root / "latest.json").read_text(encoding="utf-8"))
 
         self.assertIn("Current runner/model differs from baseline.", payload["summary"]["warnings"])
         self.assertIn("Current target SHA differs from baseline.", payload["summary"]["warnings"])

@@ -28,6 +28,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core.agent_prompts import PROMPT_OVERRIDES_ENV, prompt_override_env_name
+from core.runtime_paths import (
+    agent_context_root,
+    eval_agent_reports_root,
+    eval_data_root,
+    load_data_dir_override_from_env_file,
+)
+
+load_data_dir_override_from_env_file(ROOT / ".env")
 from eval.agent_metrics import (
     AgentEvalCase,
     acceptance_criteria_map,
@@ -50,9 +58,10 @@ logger = logging.getLogger(__name__)
 SUPPORTED_AGENTS = ("task-generator",)
 DEFAULT_AGENT = "task-generator"
 DEFAULT_CONTEXT_PACK = "baseline"
-DEFAULT_DATASET = ROOT / "eval" / "agent_datasets" / DEFAULT_AGENT / "smoke.jsonl"
-DEFAULT_REPORTS = ROOT / "eval" / "agent_reports"
-DEFAULT_AGENT_CONTEXT = ROOT / "agent-context"
+DEFAULT_DATASET = eval_data_root() / DEFAULT_AGENT / "smoke.jsonl"
+DEFAULT_REPORTS = eval_agent_reports_root()
+DEFAULT_AGENT_CONTEXT = agent_context_root()
+LEGACY_DATASET = ROOT / "eval" / "agent_datasets" / DEFAULT_AGENT / "smoke.jsonl"
 
 
 def utc_now() -> str:
@@ -643,7 +652,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.runs < 1:
         raise SystemExit("--runs must be >= 1")
     maybe_materialize(args)
-    dataset_path = Path(args.dataset).expanduser().resolve()
+    dataset_path = Path(args.dataset).expanduser()
+    if dataset_path == DEFAULT_DATASET and not dataset_path.exists() and LEGACY_DATASET.exists():
+        dataset_path = LEGACY_DATASET
+    dataset_path = dataset_path.resolve()
     rows = read_jsonl(dataset_path)
     if not rows:
         raise SystemExit(f"dataset contains no cases: {dataset_path}")

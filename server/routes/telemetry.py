@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .. import db
-from ..paths import AGENT_CONTEXT_ROOT, LOGS_ROOT, data_dir
+from ..paths import agent_context_root, data_dir, logs_root
 from ..telemetry_analysis import build_chart_payload, build_run_profile
 
 router = APIRouter(prefix="/telemetry", tags=["telemetry"])
@@ -256,7 +256,7 @@ def _filter_options() -> dict[str, list[str]]:
 
 
 def _safe_event_cleanup_roots() -> list[Path]:
-    return [data_dir().resolve(), LOGS_ROOT.resolve(), AGENT_CONTEXT_ROOT.resolve()]
+    return [data_dir().resolve(), logs_root().resolve(), agent_context_root().resolve()]
 
 
 def _is_safe_event_path(path: Path, roots: list[Path]) -> bool:

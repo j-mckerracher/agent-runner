@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -25,12 +26,18 @@ class LogLayoutTests(unittest.TestCase):
         return module
 
     def test_easy__events_path_for_routes_to_top_level_logs_directory(self):
-        path = events_path_for("TEST-LOG-001")
-        self.assertEqual(path, RUNNER_ROOT / "logs" / "TEST-LOG-001" / "events.jsonl")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.dict(os.environ, {"AGENT_RUNNER_DATA_DIR": tmpdir}, clear=False):
+                path = events_path_for("TEST-LOG-001")
+
+        self.assertEqual(path, Path(tmpdir) / "logs" / "TEST-LOG-001" / "events.jsonl")
 
     def test_easy__prepare_job_paths_returns_top_level_event_log_path(self):
-        events_path, cassette_path = prepare_job_paths("TEST-LOG-002", "live")
-        self.assertEqual(events_path, str(RUNNER_ROOT / "logs" / "TEST-LOG-002" / "events.jsonl"))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.dict(os.environ, {"AGENT_RUNNER_DATA_DIR": tmpdir}, clear=False):
+                events_path, cassette_path = prepare_job_paths("TEST-LOG-002", "live")
+
+        self.assertEqual(events_path, str(Path(tmpdir) / "logs" / "TEST-LOG-002" / "events.jsonl"))
         self.assertIsNone(cassette_path)
 
     def test_medium__clean_workspace_removes_artifacts_and_logs_for_change_id_and_run_variants(self):

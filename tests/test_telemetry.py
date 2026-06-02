@@ -5,6 +5,8 @@ import os
 import shutil
 import sqlite3
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -235,6 +237,29 @@ class TelemetryRouteTests(unittest.TestCase):
             db.update_job(job_id, **update_fields)
         return record
 
+    def _write_events(self, path: Path, *events: dict) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = "".join(json.dumps(event) + "\n" for event in events)
+        path.write_text(payload, encoding="utf-8")
+
+    def _append_event(self, path: Path, event: dict) -> None:
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event) + "\n")
+            handle.flush()
+
+    def _read_stream_events(self, path: str, expected_types: set[str]) -> list[dict]:
+        events: list[dict] = []
+        with self.client.stream("GET", path) as response:
+            self.assertEqual(response.status_code, 200)
+            for line in response.iter_lines():
+                if not line.startswith("data: "):
+                    continue
+                event = json.loads(line.removeprefix("data: "))
+                events.append(event)
+                if event.get("type") in expected_types:
+                    break
+        return events
+
     def test_medium__runs_events_prefers_sqlite_and_jsonl_backfill_fallback(self):
         from server import db
 
@@ -250,6 +275,78 @@ class TelemetryRouteTests(unittest.TestCase):
         r2 = self.client.get("/runs/job_jsonl_events/events")
         self.assertEqual(r2.status_code, 200)
         self.assertEqual(r2.json()[0]["msg"], "from jsonl")
+
+    def test_medium__runs_events_active_job_reads_current_jsonl_when_sqlite_is_stale(self):
+        from server import db
+
+        events_path = Path(self.tmpdir) / "active-job-events.jsonl"
+        self._write_events(
+            events_path,
+            {"seq": 1, "ts": "2026-05-23T00:00:00Z", "type": "log", "msg": "from db"},
+            {"seq": 2, "ts": "2026-05-23T00:00:01Z", "type": "log", "msg": "from jsonl 2"},
+            {"seq": 3, "ts": "2026-05-23T00:00:02Z", "type": "log", "msg": "from jsonl 3"},
+        )
+        self._insert_job("job_active_jsonl_events", status="running", events_path=str(events_path))
+        db.insert_telemetry_event(
+            "job_active_jsonl_events",
+            {"seq": 1, "ts": "2026-05-23T00:00:00Z", "type": "log", "msg": "from db"},
+        )
+
+        r = self.client.get("/runs/job_active_jsonl_events/events?limit=2")
+
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual([event["seq"] for event in r.json()], [2, 3])
+        self.assertEqual([event["msg"] for event in r.json()], ["from jsonl 2", "from jsonl 3"])
+        db.update_job("job_active_jsonl_events", status="succeeded")
+
+    def test_medium__runs_stream_polls_jsonl_for_new_events_without_bus_publish(self):
+        events_path = Path(self.tmpdir) / "stream-poll-events.jsonl"
+        self._write_events(
+            events_path,
+            {"seq": 1, "ts": "2026-05-23T00:00:00Z", "type": "log", "msg": "initial"},
+        )
+        self._insert_job("job_stream_poll", status="running", events_path=str(events_path))
+
+        def append_later() -> None:
+            time.sleep(0.2)
+            self._append_event(events_path, {"seq": 2, "ts": "2026-05-23T00:00:01Z", "type": "log", "msg": "from jsonl"})
+            self._append_event(events_path, {"seq": 3, "ts": "2026-05-23T00:00:02Z", "type": "job.end", "status": "succeeded"})
+
+        thread = threading.Thread(target=append_later, daemon=True)
+        thread.start()
+        events = self._read_stream_events("/runs/job_stream_poll/stream?after=1", {"stream.end"})
+        thread.join(timeout=2)
+
+        self.assertEqual([event.get("seq") for event in events if event.get("seq")], [2, 3])
+        self.assertEqual(events[-1]["type"], "stream.end")
+        from server import db
+        db.update_job("job_stream_poll", status="succeeded")
+
+    def test_medium__runs_stream_deduplicates_bus_and_jsonl_events_by_seq(self):
+        events_path = Path(self.tmpdir) / "stream-dedupe-events.jsonl"
+        self._write_events(
+            events_path,
+            {"seq": 1, "ts": "2026-05-23T00:00:00Z", "type": "log", "msg": "initial"},
+        )
+        self._insert_job("job_stream_dedupe", status="running", events_path=str(events_path))
+
+        duplicate = {"seq": 2, "ts": "2026-05-23T00:00:01Z", "type": "log", "msg": "duplicate"}
+
+        def publish_and_append_later() -> None:
+            time.sleep(0.2)
+            self._append_event(events_path, duplicate)
+            self.client.app.state.bus.publish("job_stream_dedupe", duplicate)
+            self._append_event(events_path, {"seq": 3, "ts": "2026-05-23T00:00:02Z", "type": "job.end", "status": "succeeded"})
+
+        thread = threading.Thread(target=publish_and_append_later, daemon=True)
+        thread.start()
+        events = self._read_stream_events("/runs/job_stream_dedupe/stream?after=1", {"stream.end"})
+        thread.join(timeout=2)
+
+        self.assertEqual([event.get("seq") for event in events if event.get("seq")], [2, 3])
+        self.assertEqual([event.get("msg") for event in events if event.get("seq") == 2], ["duplicate"])
+        from server import db
+        db.update_job("job_stream_dedupe", status="succeeded")
 
     def test_medium__runs_events_limit_returns_recent_events_in_sequence_order(self):
         from server import db
