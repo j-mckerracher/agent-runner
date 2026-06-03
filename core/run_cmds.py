@@ -2000,6 +2000,15 @@ def run_gemini_cmd(
     return ""  # unreachable
 
 
+def _codex_writable_artifact_dir(change_id: str | None) -> Path | None:
+    """Return the per-change artifact directory Codex may write alongside the repo."""
+    if not change_id:
+        return None
+    path = (_OPENAI_COMPAT_AGENT_CONTEXT_ROOT / change_id).resolve()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def run_codex_cmd(
     prompt: str,
     agent: str,
@@ -2042,6 +2051,10 @@ def run_codex_cmd(
         "--output-last-message",
         str(output_path),
     ]
+    artifact_dir = _codex_writable_artifact_dir(change_id)
+    if artifact_dir is not None:
+        cmd.extend(["--add-dir", str(artifact_dir)])
+        logger.debug("run_codex_cmd: added writable artifact dir=%s", artifact_dir)
     if extra_flags:
         cmd.extend(extra_flags)
     cmd.append(combined_prompt)

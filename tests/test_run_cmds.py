@@ -986,6 +986,33 @@ class RunnerCommandPayloadMatrixTests(unittest.TestCase):
                 self.assertIn("--output-last-message", cmd)
                 self.assertEqual(cmd[-1], "SYSTEM\n\nSay OK")
 
+    def test_medium__codex_adds_writable_artifact_dir_when_change_id_provided(self):
+        fake_result = subprocess.CompletedProcess(
+            args=["codex"],
+            returncode=0,
+            stdout="OK",
+            stderr="",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            context_root = Path(tmpdir) / "agent-context"
+            with (
+                patch("core.run_cmds._OPENAI_COMPAT_AGENT_CONTEXT_ROOT", context_root),
+                patch("core.run_cmds._build_codex_prompt", return_value="SYSTEM\n\nSay OK"),
+                patch("core.run_cmds._run_cli", return_value=fake_result) as run_cli,
+            ):
+                run_cmds.run_codex_cmd(
+                    prompt="Say OK",
+                    agent="intake",
+                    model=self._choices["codex"][0],
+                    repo=tmpdir,
+                    change_id="5034224",
+                )
+            cmd = run_cli.call_args.args[0]
+            self.assertIn("--add-dir", cmd)
+            artifact_dir = Path(cmd[cmd.index("--add-dir") + 1])
+            self.assertEqual(artifact_dir, (context_root / "5034224").resolve())
+            self.assertTrue(artifact_dir.is_dir())
+
     # -- openai-compat ---------------------------------------------------------
 
     def test_medium__openai_compat_passes_model_to_chat_api(self):
