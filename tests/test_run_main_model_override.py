@@ -11,6 +11,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import core
 from core.cli_logging import DEFAULT_LOG_FORMAT, DemoteHttpxHealthcheckFilter, LocalTimezoneFormatter
 import run
 
@@ -235,6 +236,8 @@ class RunMainStagePlumbingTests(unittest.TestCase):
                 },
             )
         )
+        stack.enter_context(patch.object(core, "steps", steps_module, create=True))
+        stack.enter_context(patch.object(core, "evaluator_optimizer_loops", loops_module, create=True))
         return steps_module, loops_module
 
     def test_easy__main_configures_requested_log_level(self) -> None:

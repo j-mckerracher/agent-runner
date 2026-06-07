@@ -143,12 +143,16 @@ class WriteUserResponseTests(unittest.TestCase):
 
     def setUp(self):
         self.td = tempfile.mkdtemp()
-        # Patch AGENT_CONTEXT_ROOT to use temp dir
+        self._env_patcher = patch.dict(os.environ, {"AGENT_RUNNER_DATA_DIR": self.td}, clear=False)
+        self._env_patcher.start()
+        # Patch AGENT_CONTEXT_ROOT for legacy helpers; current path helpers
+        # resolve through AGENT_RUNNER_DATA_DIR.
         self._patcher = patch("server.paths.AGENT_CONTEXT_ROOT", Path(self.td))
         self._patcher.start()
 
     def tearDown(self):
         self._patcher.stop()
+        self._env_patcher.stop()
         import shutil
         shutil.rmtree(self.td, ignore_errors=True)
 
@@ -209,11 +213,14 @@ class ListPendingEscalationsTests(unittest.TestCase):
 
     def setUp(self):
         self.td = tempfile.mkdtemp()
+        self._env_patcher = patch.dict(os.environ, {"AGENT_RUNNER_DATA_DIR": self.td}, clear=False)
+        self._env_patcher.start()
         self._patcher = patch("server.paths.AGENT_CONTEXT_ROOT", Path(self.td))
         self._patcher.start()
 
     def tearDown(self):
         self._patcher.stop()
+        self._env_patcher.stop()
         import shutil
         shutil.rmtree(self.td, ignore_errors=True)
 
@@ -262,11 +269,14 @@ class RequestUserInputIntegrationTests(unittest.TestCase):
 
     def setUp(self):
         self.td = tempfile.mkdtemp()
+        self._env_patcher = patch.dict(os.environ, {"AGENT_RUNNER_DATA_DIR": self.td}, clear=False)
+        self._env_patcher.start()
         self._patcher = patch("server.paths.AGENT_CONTEXT_ROOT", Path(self.td))
         self._patcher.start()
 
     def tearDown(self):
         self._patcher.stop()
+        self._env_patcher.stop()
         import shutil
         shutil.rmtree(self.td, ignore_errors=True)
 
