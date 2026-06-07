@@ -295,7 +295,7 @@ class _Stage:
             _emit(
                 "log",
                 level="error",
-                kind="stage_failed",
+                kind="stage_failed", # todo: this needs to be a dict with constants where stage names are stored.
                 stage=self.name,
                 msg=f"{exc_type.__name__}: {str(exc)}"[:500],
             )
@@ -353,7 +353,7 @@ def _event_log_path(change_id: str) -> Path:
     configured = os.environ.get("AGENT_RUNNER_EVENT_LOG")
     if configured:
         return Path(configured)
-    return LOGS_ROOT / change_id / "events.jsonl"
+    return LOGS_ROOT / change_id / "events.jsonl" # todo: don't hardcode
 
 
 def _read_event_rows(change_id: str) -> list[dict]:
@@ -379,10 +379,10 @@ def _copy_event_log_to_summary(change_id: str) -> str | None:
     source = _event_log_path(change_id)
     if not source.is_file():
         return None
-    destination = AGENT_CONTEXT_ROOT / change_id / "summary" / "events.jsonl"
+    destination = AGENT_CONTEXT_ROOT / change_id / "summary" / "events.jsonl" # todo don't hardcode
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
-    return "summary/events.jsonl"
+    return "summary/events.jsonl" # todo don't hardcode
 
 
 def _percentile(values: list[float], percentile: float) -> float | None:
@@ -528,6 +528,8 @@ def _summarize_event_rows(rows: list[dict]) -> dict:
         "llm_calls": 0,
         "metrics_events": 0,
     }
+
+    # todo dict keys need to be save as constants somewhere it makes sense. they should have comments indicating where they're primarily used
 
     for row in rows:
         event_type = row.get("type")
@@ -960,19 +962,18 @@ def main(
             clean_workspace(resolved_change_id)
 
         # Force flush to confirm we survived clean_workspace
-        print("[DEBUG] clean_workspace completed, entering config load", flush=True)
+        logger.debug("clean_workspace completed, entering config load", flush=True)
         sys.stdout.flush()
         sys.stderr.flush()
 
         # Load config and resolve models
         logger.info("main: loading runner config")
-        print("[DEBUG] main: loading runner config", flush=True)
+        logger.debug("main: loading runner config", flush=True)
         try:
             config = _load_runner_config()
             logger.info("main: config loaded, keys=%s", list(config.keys()) if config else "EMPTY")
         except Exception as exc:
             logger.error("main: _load_runner_config FAILED: %s: %s", type(exc).__name__, exc)
-            print(f"[ERROR] Failed to load runner config: {type(exc).__name__}: {exc}")
             raise
 
         logger.info("main: resolving runner LLM config runner=%s model=%s", runner, model)
@@ -989,7 +990,6 @@ def main(
         except Exception as exc:
             logger.error("main: resolve_runner_llm_config FAILED runner=%s model=%s: %s: %s",
                          runner, model, type(exc).__name__, exc)
-            print(f"[ERROR] Failed to resolve runner model config: {type(exc).__name__}: {exc}")
             raise
 
         set_runner_failover_policy(
@@ -1034,7 +1034,6 @@ def main(
             description_source=workflow_input.branch_description_source,
         )
         logger.info("main: prepared working branch %s", feature_branch)
-        print(f"Feature branch: {feature_branch}")
 
         _emit(
             "job.start",
@@ -1113,19 +1112,22 @@ def main(
                     print("Skipping materialization by default. Pass --materialize to update generated runner assets.")
                 last_completed_stage = "materialize"
 
+            # todo: FOR ALL TODO ITEMS: apply the fix to all possible areas where it's applicable
+
             # ── Stage 1: Intake ──────────────────────────────────────────────
             with _Stage("intake"):
                 failed_stage = "intake"
                 logger.info("main: intake source=%s mode=%s runner=%s", intake_source, intake_mode, runner)
-                # Always purge stale intake artifacts so agents never see data from a
-                # previous run of the same change_id, regardless of how the workflow
-                # was triggered.
                 _intake_artifact_dir = AGENT_CONTEXT_ROOT / resolved_change_id / "intake"
                 if _intake_artifact_dir.is_dir():
-                    shutil.rmtree(_intake_artifact_dir)
-                    logger.info("main: purged stale intake artifacts for change_id=%s", resolved_change_id)
+
+                    shutil.rmtree(_intake_artifact_dir)# Always purge stale intake artifacts so agents never see data from a
+                    # previous run of the same change_id, regardless of how the workflow
+                    # was triggered.
+
+                logger.info("main: purged stale intake artifacts for change_id=%s", resolved_change_id)
                 intake_llm = agent_llms["intake"]
-                print(f"[intake] Starting intake stage: runner={intake_llm['runner']} model={intake_llm['model']}")
+                logger.info(f"Starting intake stage: runner={intake_llm['runner']} model={intake_llm['model']}")
                 steps.step_intake(
                     intake_source=intake_source,
                     repo=resolved_repo,
@@ -1133,14 +1135,14 @@ def main(
                     intake_mode=intake_mode,
                     extra_context=extra_context,
                     feature_branch=feature_branch,
-                    **_agent_llm_kwargs(agent_llms, "intake"),
+                    **_agent_llm_kwargs(agent_llms, "intake")
                 )
-                last_completed_stage = "intake"
+                last_completed_stage = "intake" # todo: previous stages may be added. don't hardcode. apply this reasoning to all stages.
                 failed_stage = None
-                story_artifact_path = _require_file(resolved_change_id, "intake", "intake", "story.yaml")
+                story_artifact_path = _require_file(resolved_change_id, "intake", "intake", "story.yaml") # todo: use config.
                 normalized_story = _story_payload_from_path(story_artifact_path)
                 normalized_ac_count = (
-                    _acceptance_criteria_count(normalized_story.get("acceptance_criteria"))
+                    _acceptance_criteria_count(normalized_story.get("acceptance_criteria")) # todo: all dictionary keys must be set as constants at the top of this file.
                     if normalized_story else None
                 )
                 _emit(
@@ -1156,24 +1158,29 @@ def main(
                 logger.info("main: intake stage complete, story.yaml verified")
 
             # ── Stage 2: Task Generation (eval-optimizer loop) ───────────────
-            with _Stage("task-generation"):
-                failed_stage = "task-generation"
+            task_gen_stage_name = "task-generation"
+            with _Stage(task_gen_stage_name):
+                failed_stage = task_gen_stage_name
                 # Always purge stale planning artifacts so the task-generator
                 # never picks up a task plan or assignments from a previous run.
                 _planning_artifact_dir = AGENT_CONTEXT_ROOT / resolved_change_id / "planning"
                 if _planning_artifact_dir.is_dir():
                     shutil.rmtree(_planning_artifact_dir)
                     logger.info("main: purged stale planning artifacts for change_id=%s", resolved_change_id)
+
+                # todo: improve
                 task_gen_input = (
                     f"Generate a task plan for change {resolved_change_id} in {resolved_repo}.\n"
-                    f"Read the intake artifacts from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/intake/.\n"
+                    f"Read the intake artifacts from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/intake/.\n" # todo: avoid hard coding filenames. save somewhere centralized.
                     f"Act autonomously where the available artifacts and repository evidence are sufficient. "
                     f"If a blocking ambiguity, approval decision, or human-only product decision prevents safe progress, "
-                    f"use the user escalation protocol and continue after the response."
+                    f"you MUST use the user escalation protocol and continue after the response."
                 )
+
+                # todo: improve
                 task_gen_evaluator_prompt = (
                     f"Evaluate the task plan for {resolved_change_id} in {resolved_repo}. "
-                    f"Read {AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/tasks.yaml."
+                    f"Read {AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/tasks.yaml." # todo: avoid hard coding filenames. save somewhere centralized.
                 )
                 run_eval_optimizer_loop(
                     producer_func=steps.step_task_gen_producer,
@@ -1185,13 +1192,16 @@ def main(
                     evaluator_runner=agent_llms["task-plan-evaluator"]["runner"],
                     evaluator_runner_model=agent_llms["task-plan-evaluator"]["model"],
                 )
-                last_completed_stage = "task-generation"
+                last_completed_stage = task_gen_stage_name
                 failed_stage = None
-                _require_file(resolved_change_id, "task-generation", "planning", "tasks.yaml")
+                _require_file(resolved_change_id, task_gen_stage_name, "planning", "tasks.yaml")
 
             # ── Stage 3: Task Assignment (eval-optimizer loop) ───────────────
-            with _Stage("task-assignment"):
-                failed_stage = "task-assignment"
+            task_assign_stage_name = "task-assignment"
+            with _Stage(task_assign_stage_name):
+                failed_stage = task_assign_stage_name
+
+                # todo: optimize/add specificity, fix filename hardcoding, move repetitive sections to a single place.
                 assigner_input = (
                     f"Create an execution schedule for change {resolved_change_id}.\n"
                     f"Read tasks from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/tasks.yaml.\n"
@@ -1202,6 +1212,8 @@ def main(
                     f"If a blocking ambiguity, approval decision, or human-only product decision prevents safe progress, "
                     f"use the user escalation protocol and continue after the response."
                 )
+
+                # todo: is this all we need for effective evaluations? what classes of issue should get special attention?
                 assignment_evaluator_prompt = (
                     f"Evaluate the execution schedule for {resolved_change_id}. "
                     f"Read {AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/assignments.json and "
@@ -1217,13 +1229,14 @@ def main(
                     evaluator_runner=agent_llms["assignment-evaluator"]["runner"],
                     evaluator_runner_model=agent_llms["assignment-evaluator"]["model"],
                 )
-                last_completed_stage = "task-assignment"
+                last_completed_stage = task_assign_stage_name
                 failed_stage = None
-                _require_file(resolved_change_id, "task-assignment", "planning", "assignments.json")
+                _require_file(resolved_change_id, task_assign_stage_name, "planning", "assignments.json") # todo: don't hardcode file names
 
             # ── Stage 4: Execution — per-batch, parallel where safe ──────────
-            with _Stage("execution"):
-                failed_stage = "execution"
+            execution_stage_name = "execution"
+            with _Stage(execution_stage_name):
+                failed_stage = execution_stage_name
                 assignments = load_assignments(resolved_change_id)
                 batches = sorted(assignments.get("batches", []), key=lambda b: b["batch_id"])
                 total_uows = sum(len(batch.get("uows", [])) for batch in batches)
@@ -1238,7 +1251,7 @@ def main(
                 def _run_uow_with_events(*, uow_id: str, batch_id: int, ordinal: int) -> None:
                     _emit(
                         "uow.start",
-                        stage="execution",
+                        stage=execution_stage_name,
                         batch_id=batch_id,
                         uow_id=uow_id,
                         ordinal=ordinal,
@@ -1257,7 +1270,7 @@ def main(
                     except BaseException as exc:
                         _emit(
                             "uow.end",
-                            stage="execution",
+                            stage=execution_stage_name,
                             batch_id=batch_id,
                             uow_id=uow_id,
                             ordinal=ordinal,
@@ -1268,7 +1281,7 @@ def main(
                         raise
                     _emit(
                         "uow.end",
-                        stage="execution",
+                        stage=execution_stage_name,
                         batch_id=batch_id,
                         uow_id=uow_id,
                         ordinal=ordinal,
@@ -1305,7 +1318,7 @@ def main(
                                 batch_id=batch["batch_id"],
                                 ordinal=index,
                             )
-                last_completed_stage = "execution"
+                last_completed_stage = execution_stage_name
                 failed_stage = None
 
             # ── Stage 5: QA Validation (eval-optimizer loop) ─────────────────

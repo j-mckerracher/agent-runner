@@ -1274,13 +1274,12 @@ def step_intake(
     repo: str,
     change_id: str,
     intake_mode: str = "ado",
-    runner: str = "claude",
-    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    runner: str = "claude", # todo: should this be hardcoded?
+    runner_model: str | None = DEFAULT_GEMINI_MODEL, # todo: using default gemini seems dumb. should be runner.default_model
     extra_context: str | None = None,
     feature_branch: str | None = None,
 ):
     logger.info("step_intake: change_id=%s mode=%s runner=%s source=%s", change_id, intake_mode, runner, intake_source)
-    print(f"Received intake source ({intake_mode}): {intake_source}")
     _annotate_trace(
         stage="intake",
         runner=runner,
