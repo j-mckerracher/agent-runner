@@ -48,19 +48,185 @@ load_data_dir_override_from_env_file(RUNNER_ROOT / ".env")
 
 AGENT_CONTEXT_ROOT = agent_context_root()
 LOGS_ROOT = logs_root()
+
+# Workflow stage names: used for stage event emission, status reporting, and
+# the executable workflow plan shown to the UI.
+STAGE_MATERIALIZE = "materialize"
+STAGE_INTAKE = "intake"
+STAGE_TASK_GENERATION = "task-generation"
+STAGE_TASK_ASSIGNMENT = "task-assignment"
+STAGE_EXECUTION = "execution"
+STAGE_QA = "qa"
+STAGE_PR_REVIEW = "pr-review"
+WORKFLOW_STAGES = (
+    STAGE_MATERIALIZE,
+    STAGE_INTAKE,
+    STAGE_TASK_GENERATION,
+    STAGE_TASK_ASSIGNMENT,
+    STAGE_EXECUTION,
+    STAGE_QA,
+    STAGE_PR_REVIEW,
+)
+
+# Agent artifact directories and filenames: used to build canonical workflow
+# artifact paths passed between stages.
+ARTIFACT_DIR_INTAKE = "intake"
+ARTIFACT_DIR_PLANNING = "planning"
+ARTIFACT_DIR_SUMMARY = "summary"
+ARTIFACT_DIR_EXECUTION = "execution"
+ARTIFACT_DIR_QA = "qa"
+ARTIFACT_DIR_QA_EVIDENCE = "evidence"
+ARTIFACT_DIR_QA_TEST_OUTPUT = "test_output"
+ARTIFACT_DIR_QA_LOGS = "logs"
+ARTIFACT_DIR_QA_SCREENSHOTS = "screenshots"
+ARTIFACT_FILE_STORY = "story.yaml"
+ARTIFACT_FILE_INTAKE_CONFIG = "config.yaml"
+ARTIFACT_FILE_CONSTRAINTS = "constraints.md"
+ARTIFACT_FILE_TASKS = "tasks.yaml"
+ARTIFACT_FILE_ASSIGNMENTS = "assignments.json"
+ARTIFACT_FILE_IMPL_REPORT = "impl_report.yaml"
+ARTIFACT_FILE_QA_REPORT = "qa_report.yaml"
+ARTIFACT_FILE_EVENTS = "events.jsonl"
+ARTIFACT_FILE_RUN_METRICS = "run_metrics.yaml"
 WORKFLOW_STATUS_FILENAME = "workflow_status.yaml"
+
+# Event names, kinds, and fields: used by local observability summarization and
+# server-side event streaming.
+EVENT_TYPE_STAGE_START = "stage.start"
+EVENT_TYPE_STAGE_END = "stage.end"
+EVENT_TYPE_UOW_START = "uow.start"
+EVENT_TYPE_UOW_END = "uow.end"
+EVENT_TYPE_OPIK_START = "opik.start"
+EVENT_TYPE_CLI_EXIT = "cli.exit"
+EVENT_TYPE_METRICS = "metrics"
+EVENT_TYPE_LLM_CALL = "llm.call"
+EVENT_TYPE_JOB_START = "job.start"
+EVENT_TYPE_JOB_END = "job.end"
+EVENT_TYPE_LOG = "log"
+EVENT_TYPE_STORY_SOURCE = "story.source"
+EVENT_TYPE_STORY_NORMALIZED = "story.normalized"
+EVENT_TYPE_WORKFLOW_PLAN = "workflow.plan"
+
+EVENT_KIND_STAGE_FAILED = "stage_failed"
+EVENT_KIND_WORKFLOW_FAILED = "workflow_failed"
+
+EVENT_FIELD_TYPE = "type"
+EVENT_FIELD_TS = "ts"
+EVENT_FIELD_STAGE = "stage"
+EVENT_FIELD_STATUS = "status"
+EVENT_FIELD_UOW_ID = "uow_id"
+EVENT_FIELD_METADATA = "metadata"
+EVENT_FIELD_NAME = "name"
+EVENT_FIELD_AGENT = "agent"
+EVENT_FIELD_MODEL = "model"
+EVENT_FIELD_DURATION_MS = "duration_ms"
+EVENT_FIELD_TOKENS_IN = "tokens_in"
+EVENT_FIELD_TOKENS_OUT = "tokens_out"
+EVENT_FIELD_COST_USD = "cost_usd"
+EVENT_FIELD_PROMPT_EST_TOKENS = "prompt_est_tokens"
+EVENT_FIELD_RESPONSE_EST_TOKENS = "response_est_tokens"
+EVENT_FIELD_ATTEMPT = "attempt"
+EVENT_FIELD_RETRYABLE = "retryable"
+EVENT_FIELD_ERROR_CATEGORY = "error_category"
+EVENT_FIELD_PROMPT_SHA256 = "prompt_sha256"
+EVENT_FIELD_BATCH_ID = "batch_id"
+EVENT_FIELD_ORDINAL = "ordinal"
+EVENT_FIELD_TOTAL_UOWS = "total_uows"
+EVENT_FIELD_ERROR = "error"
+EVENT_FIELD_SOURCE = "source"
+EVENT_FIELD_STORY_FILE = "story_file"
+EVENT_FIELD_MANUAL_STORY_FILE = "manual_story_file"
+EVENT_FIELD_ORIGINAL_AC_COUNT = "original_ac_count"
+EVENT_FIELD_NORMALIZED_AC_COUNT = "normalized_ac_count"
+EVENT_FIELD_TOTAL_STAGES = "total_stages"
+EVENT_FIELD_STAGES = "stages"
+EVENT_FIELD_EXIT_CODE = "exit_code"
+EVENT_FIELD_LEVEL = "level"
+EVENT_FIELD_KIND = "kind"
+EVENT_FIELD_MSG = "msg"
+EVENT_FIELD_CHANGE_ID = "change_id"
+EVENT_FIELD_REPO = "repo"
+EVENT_FIELD_RUNNER = "runner"
+EVENT_FIELD_INTAKE_MODE = "intake_mode"
+EVENT_FIELD_FEATURE_BRANCH = "feature_branch"
+EVENT_FIELD_RESPONSE_CHARS = "response_chars"
+EVENT_FIELD_PROMPT_CHARS = "prompt_chars"
+EVENT_FIELD_MAX_ATTEMPTS = "max_attempts"
+EVENT_FIELD_RESPONSE_PARSE_OK = "response_parse_ok"
+EVENT_FIELD_TOOL_CALL_COUNT = "tool_call_count"
+EVENT_FIELD_TOOL_STEP_COUNT = "tool_step_count"
+EVENT_FIELD_CACHE_STATIC_PREFIX_EST_TOKENS = "cache_static_prefix_est_tokens"
+EVENT_FIELD_CONNECTION_REUSE_OBSERVABLE = "connection_reuse_observable"
+EVENT_FIELD_MAX_TOKENS = "max_tokens"
+EVENT_FIELD_TEMPERATURE = "temperature"
+EVENT_FIELD_RESPONSE_SHA256 = "response_sha256"
+
+LLM_CALL_SUMMARY_FIELDS = (
+    EVENT_FIELD_RUNNER,
+    EVENT_FIELD_AGENT,
+    EVENT_FIELD_MODEL,
+    EVENT_FIELD_STATUS,
+    EVENT_FIELD_DURATION_MS,
+    EVENT_FIELD_ATTEMPT,
+    EVENT_FIELD_MAX_ATTEMPTS,
+    EVENT_FIELD_PROMPT_CHARS,
+    EVENT_FIELD_RESPONSE_CHARS,
+    EVENT_FIELD_PROMPT_EST_TOKENS,
+    EVENT_FIELD_RESPONSE_EST_TOKENS,
+    EVENT_FIELD_TOKENS_IN,
+    EVENT_FIELD_TOKENS_OUT,
+    EVENT_FIELD_COST_USD,
+    EVENT_FIELD_ERROR_CATEGORY,
+    EVENT_FIELD_RETRYABLE,
+    EVENT_FIELD_RESPONSE_PARSE_OK,
+    EVENT_FIELD_TOOL_CALL_COUNT,
+    EVENT_FIELD_TOOL_STEP_COUNT,
+    EVENT_FIELD_CACHE_STATIC_PREFIX_EST_TOKENS,
+    EVENT_FIELD_CONNECTION_REUSE_OBSERVABLE,
+    EVENT_FIELD_MAX_TOKENS,
+    EVENT_FIELD_TEMPERATURE,
+    EVENT_FIELD_PROMPT_SHA256,
+    EVENT_FIELD_RESPONSE_SHA256,
+)
+
+# Story and assignment schema keys: used when interpreting canonical artifacts.
+STORY_KEY_ACCEPTANCE_CRITERIA = "acceptance_criteria"
+ASSIGNMENTS_KEY_BATCHES = "batches"
+ASSIGNMENTS_KEY_BATCH_ID = "batch_id"
+ASSIGNMENTS_KEY_UOWS = "uows"
+ASSIGNMENTS_KEY_UOW_ID = "uow_id"
+ASSIGNMENTS_KEY_PARALLEL_EXECUTION = "parallel_execution"
+
+# Status strings shared between event emission and workflow status documents.
+STATUS_OK = "ok"
+STATUS_ERROR = "error"
+STATUS_CANCELLED = "cancelled"
+STATUS_SUCCEEDED = "succeeded"
+STATUS_FAILED = "failed"
+
+
+def _artifact_path(change_id: str, *relative_parts: str) -> Path:
+    return AGENT_CONTEXT_ROOT.joinpath(change_id, *relative_parts)
+
+
+def _artifact_ref(*relative_parts: str) -> str:
+    return Path(*relative_parts).as_posix()
+
+
+def _summary_artifact_ref(filename: str) -> str:
+    return _artifact_ref(ARTIFACT_DIR_SUMMARY, filename)
 
 
 def load_assignments(change_id: str) -> dict:
     """Read assignments.json produced by the task-assigner stage."""
     from core.artifact_utils import load_assignments_file
-    path = AGENT_CONTEXT_ROOT / change_id / "planning" / "assignments.json"
+    path = _artifact_path(change_id, ARTIFACT_DIR_PLANNING, ARTIFACT_FILE_ASSIGNMENTS)
     return load_assignments_file(path)
 
 
 def _require_dir(change_id: str, stage: str, *relative_parts: str) -> Path:
     """Raise FileNotFoundError with a clear message if a stage output is missing."""
-    path = AGENT_CONTEXT_ROOT.joinpath(change_id, *relative_parts)
+    path = _artifact_path(change_id, *relative_parts)
     if not path.exists():
         raise FileNotFoundError(
             f"Stage '{stage}' did not produce expected output: {path}\n"
@@ -214,7 +380,7 @@ def _story_source_metadata(*, intake_mode: str, intake_source: str) -> dict:
         "source": source,
         "story_file": intake_source if intake_mode == "synthetic" else None,
         "manual_story_file": intake_source if intake_mode == "manual" else None,
-        "original_ac_count": count_acceptance_criteria(payload.get("acceptance_criteria")) if payload else None,
+        "original_ac_count": count_acceptance_criteria(payload.get(STORY_KEY_ACCEPTANCE_CRITERIA)) if payload else None,
     }
 
 
@@ -263,15 +429,7 @@ def _workflow_stage_names(*, skip_lessons_optimizer: bool = True) -> list[str]:
     # The lessons optimizer is disabled unconditionally. Keep the historical
     # parameter so older callers do not break, but never add that stage back into
     # the executable plan.
-    return [
-        "materialize",
-        "intake",
-        "task-generation",
-        "task-assignment",
-        "execution",
-        "qa",
-        "pr-review",
-    ]
+    return list(WORKFLOW_STAGES)
 
 
 class _Stage:
@@ -285,23 +443,23 @@ class _Stage:
         self._previous_stage = os.environ.get("AGENT_RUNNER_CURRENT_STAGE")
         os.environ["AGENT_RUNNER_CURRENT_STAGE"] = self.name
         logger.info("Stage START: %s", self.name)
-        _emit("stage.start", stage=self.name)
+        _emit(EVENT_TYPE_STAGE_START, stage=self.name)
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        status = "ok" if exc_type is None else "error"
+        status = STATUS_OK if exc_type is None else STATUS_ERROR
         if exc_type is not None:
             logger.error("Stage ERROR: %s — %s: %s", self.name, exc_type.__name__, str(exc) or "")
             _emit(
-                "log",
-                level="error",
-                kind="stage_failed", # todo: this needs to be a dict with constants where stage names are stored.
+                EVENT_TYPE_LOG,
+                level=STATUS_ERROR,
+                kind=EVENT_KIND_STAGE_FAILED,
                 stage=self.name,
                 msg=f"{exc_type.__name__}: {str(exc)}"[:500],
             )
         else:
             logger.info("Stage END: %s (ok)", self.name)
-        _emit("stage.end", stage=self.name, status=status)
+        _emit(EVENT_TYPE_STAGE_END, stage=self.name, status=status)
         if self._previous_stage is None:
             os.environ.pop("AGENT_RUNNER_CURRENT_STAGE", None)
         else:
@@ -337,7 +495,7 @@ def _truncate_text(text: str | None, limit: int = 2000) -> str | None:
 
 
 def _workflow_status_path(change_id: str) -> Path:
-    return AGENT_CONTEXT_ROOT / change_id / "summary" / WORKFLOW_STATUS_FILENAME
+    return _artifact_path(change_id, ARTIFACT_DIR_SUMMARY, WORKFLOW_STATUS_FILENAME)
 
 
 def _parse_event_timestamp(value: str | None) -> datetime | None:
@@ -353,7 +511,7 @@ def _event_log_path(change_id: str) -> Path:
     configured = os.environ.get("AGENT_RUNNER_EVENT_LOG")
     if configured:
         return Path(configured)
-    return LOGS_ROOT / change_id / "events.jsonl" # todo: don't hardcode
+    return LOGS_ROOT / change_id / ARTIFACT_FILE_EVENTS
 
 
 def _read_event_rows(change_id: str) -> list[dict]:
@@ -379,10 +537,10 @@ def _copy_event_log_to_summary(change_id: str) -> str | None:
     source = _event_log_path(change_id)
     if not source.is_file():
         return None
-    destination = AGENT_CONTEXT_ROOT / change_id / "summary" / "events.jsonl" # todo don't hardcode
+    destination = _artifact_path(change_id, ARTIFACT_DIR_SUMMARY, ARTIFACT_FILE_EVENTS)
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
-    return "summary/events.jsonl" # todo don't hardcode
+    return _summary_artifact_ref(ARTIFACT_FILE_EVENTS)
 
 
 def _percentile(values: list[float], percentile: float) -> float | None:
@@ -529,45 +687,43 @@ def _summarize_event_rows(rows: list[dict]) -> dict:
         "metrics_events": 0,
     }
 
-    # todo dict keys need to be save as constants somewhere it makes sense. they should have comments indicating where they're primarily used
-
     for row in rows:
-        event_type = row.get("type")
-        event_ts = _parse_event_timestamp(row.get("ts"))
-        if event_type == "stage.start" and event_ts and row.get("stage"):
-            stage_starts[str(row["stage"])] = event_ts
-        elif event_type == "stage.end" and event_ts and row.get("stage") in stage_starts:
-            stage = str(row["stage"])
+        event_type = row.get(EVENT_FIELD_TYPE)
+        event_ts = _parse_event_timestamp(row.get(EVENT_FIELD_TS))
+        if event_type == EVENT_TYPE_STAGE_START and event_ts and row.get(EVENT_FIELD_STAGE):
+            stage_starts[str(row[EVENT_FIELD_STAGE])] = event_ts
+        elif event_type == EVENT_TYPE_STAGE_END and event_ts and row.get(EVENT_FIELD_STAGE) in stage_starts:
+            stage = str(row[EVENT_FIELD_STAGE])
             stage_durations[stage] = round((event_ts - stage_starts[stage]).total_seconds(), 3)
-        elif event_type == "uow.start" and event_ts and row.get("uow_id"):
-            uow_starts[str(row["uow_id"])] = event_ts
-        elif event_type == "uow.end" and event_ts and row.get("uow_id") in uow_starts:
-            uow_id = str(row["uow_id"])
+        elif event_type == EVENT_TYPE_UOW_START and event_ts and row.get(EVENT_FIELD_UOW_ID):
+            uow_starts[str(row[EVENT_FIELD_UOW_ID])] = event_ts
+        elif event_type == EVENT_TYPE_UOW_END and event_ts and row.get(EVENT_FIELD_UOW_ID) in uow_starts:
+            uow_id = str(row[EVENT_FIELD_UOW_ID])
             uow_durations[uow_id] = round((event_ts - uow_starts[uow_id]).total_seconds(), 3)
-        elif event_type == "opik.start" and str(row.get("name", "")).startswith("uow-iteration-"):
-            metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
-            uow_id = metadata.get("uow_id")
+        elif event_type == EVENT_TYPE_OPIK_START and str(row.get(EVENT_FIELD_NAME, "")).startswith("uow-iteration-"):
+            metadata = row.get(EVENT_FIELD_METADATA) if isinstance(row.get(EVENT_FIELD_METADATA), dict) else {}
+            uow_id = metadata.get(EVENT_FIELD_UOW_ID)
             if uow_id:
                 uow_iterations[str(uow_id)] = uow_iterations.get(str(uow_id), 0) + 1
-        elif event_type == "cli.exit":
+        elif event_type == EVENT_TYPE_CLI_EXIT:
             totals["cli_calls"] += 1
-            agent = str(row.get("agent") or "unknown")
+            agent = str(row.get(EVENT_FIELD_AGENT) or "unknown")
             summary = cli_calls_by_agent.setdefault(agent, {"count": 0, "duration_ms": 0})
             summary["count"] = int(summary["count"]) + 1
-            summary["duration_ms"] = int(summary["duration_ms"]) + int(row.get("duration_ms") or 0)
-        elif event_type == "metrics":
+            summary["duration_ms"] = int(summary["duration_ms"]) + int(row.get(EVENT_FIELD_DURATION_MS) or 0)
+        elif event_type == EVENT_TYPE_METRICS:
             totals["metrics_events"] += 1
-            legacy_metric_totals["tokens_in"] += int(row.get("tokens_in") or 0)
-            legacy_metric_totals["tokens_out"] += int(row.get("tokens_out") or 0)
+            legacy_metric_totals["tokens_in"] += int(row.get(EVENT_FIELD_TOKENS_IN) or 0)
+            legacy_metric_totals["tokens_out"] += int(row.get(EVENT_FIELD_TOKENS_OUT) or 0)
             legacy_metric_totals["cost_usd"] = round(
-                float(legacy_metric_totals["cost_usd"]) + float(row.get("cost_usd") or 0.0),
+                float(legacy_metric_totals["cost_usd"]) + float(row.get(EVENT_FIELD_COST_USD) or 0.0),
                 6,
             )
-        elif event_type == "llm.call":
+        elif event_type == EVENT_TYPE_LLM_CALL:
             totals["llm_calls"] += 1
-            agent = str(row.get("agent") or "unknown")
-            model = str(row.get("model") or "unknown")
-            duration_ms = row.get("duration_ms")
+            agent = str(row.get(EVENT_FIELD_AGENT) or "unknown")
+            model = str(row.get(EVENT_FIELD_MODEL) or "unknown")
+            duration_ms = row.get(EVENT_FIELD_DURATION_MS)
             if isinstance(duration_ms, (int, float)):
                 llm_latencies_by_agent.setdefault(agent, []).append(float(duration_ms))
             for key, bucket_name in ((agent, "agent"), (model, "model")):
@@ -577,62 +733,36 @@ def _summarize_event_rows(rows: list[dict]) -> dict:
                     {"count": 0, "tokens_in": 0, "tokens_out": 0, "cost_usd": 0.0, "errors": 0, "retries": 0},
                 )
                 summary["count"] = int(summary["count"]) + 1
-                summary["tokens_in"] = int(summary["tokens_in"]) + int(row.get("tokens_in") or row.get("prompt_est_tokens") or 0)
-                summary["tokens_out"] = int(summary["tokens_out"]) + int(row.get("tokens_out") or row.get("response_est_tokens") or 0)
-                summary["cost_usd"] = round(float(summary["cost_usd"]) + float(row.get("cost_usd") or 0.0), 6)
-                if row.get("status") not in (None, "ok", "tool_call"):
+                summary["tokens_in"] = int(summary["tokens_in"]) + int(row.get(EVENT_FIELD_TOKENS_IN) or row.get(EVENT_FIELD_PROMPT_EST_TOKENS) or 0)
+                summary["tokens_out"] = int(summary["tokens_out"]) + int(row.get(EVENT_FIELD_TOKENS_OUT) or row.get(EVENT_FIELD_RESPONSE_EST_TOKENS) or 0)
+                summary["cost_usd"] = round(float(summary["cost_usd"]) + float(row.get(EVENT_FIELD_COST_USD) or 0.0), 6)
+                if row.get(EVENT_FIELD_STATUS) not in (None, STATUS_OK, "tool_call"):
                     summary["errors"] = int(summary["errors"]) + 1
-                if int(row.get("attempt") or 1) > 1 or row.get("retryable"):
+                if int(row.get(EVENT_FIELD_ATTEMPT) or 1) > 1 or row.get(EVENT_FIELD_RETRYABLE):
                     summary["retries"] = int(summary["retries"]) + 1
-            category = row.get("error_category")
+            category = row.get(EVENT_FIELD_ERROR_CATEGORY)
             if category:
                 error_categories[str(category)] = error_categories.get(str(category), 0) + 1
-            prompt_hash = row.get("prompt_sha256")
+            prompt_hash = row.get(EVENT_FIELD_PROMPT_SHA256)
             if isinstance(prompt_hash, str) and prompt_hash:
                 prompt_hash_counts[prompt_hash] = prompt_hash_counts.get(prompt_hash, 0) + 1
             llm_calls.append(
                 {
                     key: row.get(key)
-                    for key in (
-                        "runner",
-                        "agent",
-                        "model",
-                        "status",
-                        "duration_ms",
-                        "attempt",
-                        "max_attempts",
-                        "prompt_chars",
-                        "response_chars",
-                        "prompt_est_tokens",
-                        "response_est_tokens",
-                        "tokens_in",
-                        "tokens_out",
-                        "cost_usd",
-                        "error_category",
-                        "retryable",
-                        "response_parse_ok",
-                        "tool_call_count",
-                        "tool_step_count",
-                        "cache_static_prefix_est_tokens",
-                        "connection_reuse_observable",
-                        "max_tokens",
-                        "temperature",
-                        "prompt_sha256",
-                        "response_sha256",
-                    )
+                    for key in LLM_CALL_SUMMARY_FIELDS
                     if key in row
                 }
             )
 
     latency_by_agent = {agent: _latency_summary(values) for agent, values in llm_latencies_by_agent.items()}
-    cost_values = [float(call.get("cost_usd") or 0.0) for call in llm_calls]
+    cost_values = [float(call.get(EVENT_FIELD_COST_USD) or 0.0) for call in llm_calls]
     cost_threshold = (sum(cost_values) / len(cost_values) * 3) if cost_values else 0.0
     repeated_prompts = {key: count for key, count in prompt_hash_counts.items() if count > 1}
     if llm_calls:
-        totals["tokens_in"] = sum(int(call.get("tokens_in") or call.get("prompt_est_tokens") or 0) for call in llm_calls)
-        totals["tokens_out"] = sum(int(call.get("tokens_out") or call.get("response_est_tokens") or 0) for call in llm_calls)
-        totals["cost_usd"] = round(sum(float(call.get("cost_usd") or 0.0) for call in llm_calls), 6)
-        totals["source"] = "llm.call"
+        totals["tokens_in"] = sum(int(call.get(EVENT_FIELD_TOKENS_IN) or call.get(EVENT_FIELD_PROMPT_EST_TOKENS) or 0) for call in llm_calls)
+        totals["tokens_out"] = sum(int(call.get(EVENT_FIELD_TOKENS_OUT) or call.get(EVENT_FIELD_RESPONSE_EST_TOKENS) or 0) for call in llm_calls)
+        totals["cost_usd"] = round(sum(float(call.get(EVENT_FIELD_COST_USD) or 0.0) for call in llm_calls), 6)
+        totals["source"] = EVENT_TYPE_LLM_CALL
     else:
         totals["tokens_in"] = legacy_metric_totals["tokens_in"]
         totals["tokens_out"] = legacy_metric_totals["tokens_out"]
@@ -645,7 +775,7 @@ def _summarize_event_rows(rows: list[dict]) -> dict:
         "cli_calls_by_agent": cli_calls_by_agent,
         "llm_calls": llm_calls,
         "llm_latency": {
-            "overall": _latency_summary([float(call["duration_ms"]) for call in llm_calls if isinstance(call.get("duration_ms"), (int, float))]),
+            "overall": _latency_summary([float(call[EVENT_FIELD_DURATION_MS]) for call in llm_calls if isinstance(call.get(EVENT_FIELD_DURATION_MS), (int, float))]),
             "by_agent": latency_by_agent,
         },
         "llm_calls_by_agent": llm_calls_by_agent,
@@ -659,7 +789,7 @@ def _summarize_event_rows(rows: list[dict]) -> dict:
         "cost_anomalies": [
             call
             for call in llm_calls
-            if cost_threshold > 0 and float(call.get("cost_usd") or 0.0) > cost_threshold
+            if cost_threshold > 0 and float(call.get(EVENT_FIELD_COST_USD) or 0.0) > cost_threshold
         ],
         "totals": totals,
         "answerability_matrix": _answerability_matrix(),
@@ -667,7 +797,7 @@ def _summarize_event_rows(rows: list[dict]) -> dict:
 
 
 def _write_run_metrics(change_id: str) -> dict | None:
-    run_dir = AGENT_CONTEXT_ROOT / change_id
+    run_dir = _artifact_path(change_id)
     if not run_dir.is_dir():
         return None
     event_log_artifact = _copy_event_log_to_summary(change_id)
@@ -680,11 +810,11 @@ def _write_run_metrics(change_id: str) -> dict | None:
         "events_observed": len(rows),
         "metrics": _summarize_event_rows(rows),
     }
-    path = run_dir / "summary" / "run_metrics.yaml"
+    path = _artifact_path(change_id, ARTIFACT_DIR_SUMMARY, ARTIFACT_FILE_RUN_METRICS)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return {
-        "path": "summary/run_metrics.yaml",
+        "path": _summary_artifact_ref(ARTIFACT_FILE_RUN_METRICS),
         "event_log_artifact": event_log_artifact,
         "events_observed": len(rows),
         "totals": payload["metrics"]["totals"],
@@ -703,7 +833,7 @@ def _write_workflow_status(
     last_completed_stage: str | None = None,
     exc: BaseException | None = None,
 ) -> Path | None:
-    run_dir = AGENT_CONTEXT_ROOT / change_id
+    run_dir = _artifact_path(change_id)
     if not run_dir.is_dir():
         logger.warning("_write_workflow_status: run directory missing for change_id=%s", change_id)
         return None
@@ -755,6 +885,113 @@ def _load_runner_config() -> dict:
         return load_config()
     except Exception:
         return {}
+
+
+def _artifact_display_path(change_id: str, *relative_parts: str) -> str:
+    return str(_artifact_path(change_id, *relative_parts))
+
+
+def _stage_artifact_dir(change_id: str, directory: str) -> Path:
+    return _artifact_path(change_id, directory)
+
+
+def _qa_evidence_root(change_id: str) -> Path:
+    return _artifact_path(change_id, ARTIFACT_DIR_QA, ARTIFACT_DIR_QA_EVIDENCE)
+
+
+def _autonomy_instruction(*, require_must: bool = False) -> str:
+    escalation_verb = "you MUST use" if require_must else "use"
+    return (
+        "Act autonomously where the available artifacts and repository evidence are sufficient. "
+        "If a blocking ambiguity, approval decision, or human-only product decision prevents safe progress, "
+        f"{escalation_verb} the user escalation protocol and continue after the response."
+    )
+
+
+def _task_generation_input(*, change_id: str, repo: str) -> str:
+    intake_dir = _artifact_display_path(change_id, ARTIFACT_DIR_INTAKE)
+    story_path = _artifact_display_path(change_id, ARTIFACT_DIR_INTAKE, ARTIFACT_FILE_STORY)
+    config_path = _artifact_display_path(change_id, ARTIFACT_DIR_INTAKE, ARTIFACT_FILE_INTAKE_CONFIG)
+    constraints_path = _artifact_display_path(change_id, ARTIFACT_DIR_INTAKE, ARTIFACT_FILE_CONSTRAINTS)
+    return (
+        f"Generate a task plan for change {change_id} in {repo}.\n"
+        f"Read the intake artifacts from {intake_dir}/.\n"
+        f"Use {story_path} for story scope, {config_path} for intake/runtime metadata, "
+        f"and {constraints_path} for implementation constraints.\n"
+        "Produce a plan whose tasks map back to acceptance criteria, call out dependencies, "
+        "and avoid work outside the requested change.\n"
+        f"{_autonomy_instruction(require_must=True)}"
+    )
+
+
+def _task_generation_evaluator_prompt(*, change_id: str, repo: str) -> str:
+    tasks_path = _artifact_display_path(change_id, ARTIFACT_DIR_PLANNING, ARTIFACT_FILE_TASKS)
+    return (
+        f"Evaluate the task plan for {change_id} in {repo}. "
+        f"Read {tasks_path}. Check acceptance-criteria coverage, missing dependencies, "
+        "oversized or underspecified tasks, unsafe scope expansion, testability, and whether "
+        "the plan gives downstream assignment enough information to schedule execution."
+    )
+
+
+def _assignment_input(*, change_id: str, repo: str) -> str:
+    tasks_path = _artifact_display_path(change_id, ARTIFACT_DIR_PLANNING, ARTIFACT_FILE_TASKS)
+    story_path = _artifact_display_path(change_id, ARTIFACT_DIR_INTAKE, ARTIFACT_FILE_STORY)
+    constraints_path = _artifact_display_path(change_id, ARTIFACT_DIR_INTAKE, ARTIFACT_FILE_CONSTRAINTS)
+    return (
+        f"Create an execution schedule for change {change_id}.\n"
+        f"Read tasks from {tasks_path}.\n"
+        f"Read story context from {story_path}.\n"
+        f"Read constraints from {constraints_path}.\n"
+        f"Target repo: {repo}\n"
+        f"{_autonomy_instruction()}"
+    )
+
+
+def _assignment_evaluator_prompt(*, change_id: str) -> str:
+    assignments_path = _artifact_display_path(change_id, ARTIFACT_DIR_PLANNING, ARTIFACT_FILE_ASSIGNMENTS)
+    tasks_path = _artifact_display_path(change_id, ARTIFACT_DIR_PLANNING, ARTIFACT_FILE_TASKS)
+    return (
+        f"Evaluate the execution schedule for {change_id}. "
+        f"Read {assignments_path} and {tasks_path}. Check that every task is assigned exactly "
+        "once, dependencies are respected, parallel batches are safe, UoW boundaries are coherent, "
+        "and each UoW has enough context for implementation and evaluation."
+    )
+
+
+def _qa_producer_input(*, change_id: str, repo: str, evidence_root: Path) -> str:
+    story_path = _artifact_display_path(change_id, ARTIFACT_DIR_INTAKE, ARTIFACT_FILE_STORY)
+    tasks_path = _artifact_display_path(change_id, ARTIFACT_DIR_PLANNING, ARTIFACT_FILE_TASKS)
+    assignments_path = _artifact_display_path(change_id, ARTIFACT_DIR_PLANNING, ARTIFACT_FILE_ASSIGNMENTS)
+    impl_reports_glob = _artifact_display_path(
+        change_id,
+        ARTIFACT_DIR_EXECUTION,
+        "*",
+        ARTIFACT_FILE_IMPL_REPORT,
+    )
+    qa_report_path = _artifact_display_path(change_id, ARTIFACT_DIR_QA, ARTIFACT_FILE_QA_REPORT)
+    return (
+        f"Perform QA validation for change {change_id}.\n"
+        f"Read story ACs from {story_path}.\n"
+        f"Read task plan from {tasks_path}.\n"
+        f"Read assignments from {assignments_path}.\n"
+        f"Read all implementation reports from {impl_reports_glob}.\n"
+        f"Target repo: {repo}\n"
+        f"Write your report to {qa_report_path}.\n"
+        f"When you run tests, lint, build, or manual verification commands, save raw command output under "
+        f"{evidence_root / ARTIFACT_DIR_QA_TEST_OUTPUT}/ or {evidence_root / ARTIFACT_DIR_QA_LOGS}/ "
+        f"and reference those files from {ARTIFACT_FILE_QA_REPORT}.\n"
+        f"{_autonomy_instruction()}"
+    )
+
+
+def _qa_evaluator_prompt(*, change_id: str) -> str:
+    qa_report_path = _artifact_display_path(change_id, ARTIFACT_DIR_QA, ARTIFACT_FILE_QA_REPORT)
+    story_path = _artifact_display_path(change_id, ARTIFACT_DIR_INTAKE, ARTIFACT_FILE_STORY)
+    return (
+        f"Evaluate the QA report for {change_id}. "
+        f"Read {qa_report_path} and {story_path}."
+    )
 
 
 # ====================== CLI ====================== #
@@ -925,7 +1162,7 @@ def main(
         "main: starting workflow repo=%s change_id=%s runner=%s model=%s",
         repo, change_id, runner, model,
     )
-    final_status = "succeeded"
+    final_status = STATUS_SUCCEEDED
     final_exit = 0
     resolved_repo = repo or ""
     resolved_change_id = change_id or ""
@@ -1036,7 +1273,7 @@ def main(
         logger.info("main: prepared working branch %s", feature_branch)
 
         _emit(
-            "job.start",
+            EVENT_TYPE_JOB_START,
             change_id=resolved_change_id,
             repo=resolved_repo,
             runner=runner,
@@ -1046,8 +1283,8 @@ def main(
         )
         story_source_metadata = _story_source_metadata(intake_mode=intake_mode, intake_source=intake_source)
         _emit(
-            "story.source",
-            stage="intake",
+            EVENT_TYPE_STORY_SOURCE,
+            stage=STAGE_INTAKE,
             source=story_source_metadata.get("source"),
             story_file=story_source_metadata.get("story_file"),
             manual_story_file=story_source_metadata.get("manual_story_file"),
@@ -1064,7 +1301,7 @@ def main(
             if resolved_change_id:
                 _write_workflow_status(
                     change_id=resolved_change_id,
-                    status="cancelled",
+                    status=STATUS_CANCELLED,
                     runner=runner,
                     model=resolved_model,
                     repo=resolved_repo,
@@ -1072,7 +1309,7 @@ def main(
                     failed_stage=failed_stage,
                     last_completed_stage=last_completed_stage,
                 )
-            _emit("job.end", status="cancelled", exit_code=143)
+            _emit(EVENT_TYPE_JOB_END, status=STATUS_CANCELLED, exit_code=143)
             sys.exit(143)
 
         try:
@@ -1101,7 +1338,7 @@ def main(
             },
         ):
             logger.info("main: inside workflow trace context, starting stages")
-            with _Stage("materialize"):
+            with _Stage(STAGE_MATERIALIZE):
                 if not skip_materialize:
                     logger.info("main: materializing enabled agents and skills from source trees by explicit operator request")
                     print("Materializing enabled agents and skills from source trees (--materialize was provided)...")
@@ -1110,23 +1347,22 @@ def main(
                 else:
                     logger.info("main: skipping materialization by default; pass --materialize to opt in")
                     print("Skipping materialization by default. Pass --materialize to update generated runner assets.")
-                last_completed_stage = "materialize"
-
-            # todo: FOR ALL TODO ITEMS: apply the fix to all possible areas where it's applicable
+                last_completed_stage = STAGE_MATERIALIZE
 
             # ── Stage 1: Intake ──────────────────────────────────────────────
-            with _Stage("intake"):
-                failed_stage = "intake"
+            with _Stage(STAGE_INTAKE):
+                failed_stage = STAGE_INTAKE
                 logger.info("main: intake source=%s mode=%s runner=%s", intake_source, intake_mode, runner)
-                _intake_artifact_dir = AGENT_CONTEXT_ROOT / resolved_change_id / "intake"
+                _intake_artifact_dir = _stage_artifact_dir(resolved_change_id, ARTIFACT_DIR_INTAKE)
                 if _intake_artifact_dir.is_dir():
 
-                    shutil.rmtree(_intake_artifact_dir)# Always purge stale intake artifacts so agents never see data from a
+                    # Always purge stale intake artifacts so agents never see data from a
                     # previous run of the same change_id, regardless of how the workflow
                     # was triggered.
+                    shutil.rmtree(_intake_artifact_dir)
 
                 logger.info("main: purged stale intake artifacts for change_id=%s", resolved_change_id)
-                intake_llm = agent_llms["intake"]
+                intake_llm = agent_llms[STAGE_INTAKE]
                 logger.info(f"Starting intake stage: runner={intake_llm['runner']} model={intake_llm['model']}")
                 steps.step_intake(
                     intake_source=intake_source,
@@ -1135,19 +1371,24 @@ def main(
                     intake_mode=intake_mode,
                     extra_context=extra_context,
                     feature_branch=feature_branch,
-                    **_agent_llm_kwargs(agent_llms, "intake")
+                    **_agent_llm_kwargs(agent_llms, STAGE_INTAKE)
                 )
-                last_completed_stage = "intake" # todo: previous stages may be added. don't hardcode. apply this reasoning to all stages.
+                last_completed_stage = STAGE_INTAKE
                 failed_stage = None
-                story_artifact_path = _require_file(resolved_change_id, "intake", "intake", "story.yaml") # todo: use config.
+                story_artifact_path = _require_file(
+                    resolved_change_id,
+                    STAGE_INTAKE,
+                    ARTIFACT_DIR_INTAKE,
+                    ARTIFACT_FILE_STORY,
+                )
                 normalized_story = _story_payload_from_path(story_artifact_path)
                 normalized_ac_count = (
-                    _acceptance_criteria_count(normalized_story.get("acceptance_criteria")) # todo: all dictionary keys must be set as constants at the top of this file.
+                    _acceptance_criteria_count(normalized_story.get(STORY_KEY_ACCEPTANCE_CRITERIA))
                     if normalized_story else None
                 )
                 _emit(
-                    "story.normalized",
-                    stage="intake",
+                    EVENT_TYPE_STORY_NORMALIZED,
+                    stage=STAGE_INTAKE,
                     original_ac_count=story_source_metadata.get("original_ac_count"),
                     normalized_ac_count=normalized_ac_count,
                 )
@@ -1158,29 +1399,20 @@ def main(
                 logger.info("main: intake stage complete, story.yaml verified")
 
             # ── Stage 2: Task Generation (eval-optimizer loop) ───────────────
-            task_gen_stage_name = "task-generation"
+            task_gen_stage_name = STAGE_TASK_GENERATION
             with _Stage(task_gen_stage_name):
                 failed_stage = task_gen_stage_name
                 # Always purge stale planning artifacts so the task-generator
                 # never picks up a task plan or assignments from a previous run.
-                _planning_artifact_dir = AGENT_CONTEXT_ROOT / resolved_change_id / "planning"
+                _planning_artifact_dir = _stage_artifact_dir(resolved_change_id, ARTIFACT_DIR_PLANNING)
                 if _planning_artifact_dir.is_dir():
                     shutil.rmtree(_planning_artifact_dir)
                     logger.info("main: purged stale planning artifacts for change_id=%s", resolved_change_id)
 
-                # todo: improve
-                task_gen_input = (
-                    f"Generate a task plan for change {resolved_change_id} in {resolved_repo}.\n"
-                    f"Read the intake artifacts from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/intake/.\n" # todo: avoid hard coding filenames. save somewhere centralized.
-                    f"Act autonomously where the available artifacts and repository evidence are sufficient. "
-                    f"If a blocking ambiguity, approval decision, or human-only product decision prevents safe progress, "
-                    f"you MUST use the user escalation protocol and continue after the response."
-                )
-
-                # todo: improve
-                task_gen_evaluator_prompt = (
-                    f"Evaluate the task plan for {resolved_change_id} in {resolved_repo}. "
-                    f"Read {AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/tasks.yaml." # todo: avoid hard coding filenames. save somewhere centralized.
+                task_gen_input = _task_generation_input(change_id=resolved_change_id, repo=resolved_repo)
+                task_gen_evaluator_prompt = _task_generation_evaluator_prompt(
+                    change_id=resolved_change_id,
+                    repo=resolved_repo,
                 )
                 run_eval_optimizer_loop(
                     producer_func=steps.step_task_gen_producer,
@@ -1194,31 +1426,15 @@ def main(
                 )
                 last_completed_stage = task_gen_stage_name
                 failed_stage = None
-                _require_file(resolved_change_id, task_gen_stage_name, "planning", "tasks.yaml")
+                _require_file(resolved_change_id, task_gen_stage_name, ARTIFACT_DIR_PLANNING, ARTIFACT_FILE_TASKS)
 
             # ── Stage 3: Task Assignment (eval-optimizer loop) ───────────────
-            task_assign_stage_name = "task-assignment"
+            task_assign_stage_name = STAGE_TASK_ASSIGNMENT
             with _Stage(task_assign_stage_name):
                 failed_stage = task_assign_stage_name
 
-                # todo: optimize/add specificity, fix filename hardcoding, move repetitive sections to a single place.
-                assigner_input = (
-                    f"Create an execution schedule for change {resolved_change_id}.\n"
-                    f"Read tasks from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/tasks.yaml.\n"
-                    f"Read story context from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/intake/story.yaml.\n"
-                    f"Read constraints from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/intake/constraints.md.\n"
-                    f"Target repo: {resolved_repo}\n"
-                    f"Act autonomously where the available artifacts and repository evidence are sufficient. "
-                    f"If a blocking ambiguity, approval decision, or human-only product decision prevents safe progress, "
-                    f"use the user escalation protocol and continue after the response."
-                )
-
-                # todo: is this all we need for effective evaluations? what classes of issue should get special attention?
-                assignment_evaluator_prompt = (
-                    f"Evaluate the execution schedule for {resolved_change_id}. "
-                    f"Read {AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/assignments.json and "
-                    f"{AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/tasks.yaml."
-                )
+                assigner_input = _assignment_input(change_id=resolved_change_id, repo=resolved_repo)
+                assignment_evaluator_prompt = _assignment_evaluator_prompt(change_id=resolved_change_id)
                 run_eval_optimizer_loop(
                     producer_func=steps.step_task_assigner,
                     producer_input=assigner_input,
@@ -1231,17 +1447,22 @@ def main(
                 )
                 last_completed_stage = task_assign_stage_name
                 failed_stage = None
-                _require_file(resolved_change_id, task_assign_stage_name, "planning", "assignments.json") # todo: don't hardcode file names
+                _require_file(
+                    resolved_change_id,
+                    task_assign_stage_name,
+                    ARTIFACT_DIR_PLANNING,
+                    ARTIFACT_FILE_ASSIGNMENTS,
+                )
 
             # ── Stage 4: Execution — per-batch, parallel where safe ──────────
-            execution_stage_name = "execution"
+            execution_stage_name = STAGE_EXECUTION
             with _Stage(execution_stage_name):
                 failed_stage = execution_stage_name
                 assignments = load_assignments(resolved_change_id)
-                batches = sorted(assignments.get("batches", []), key=lambda b: b["batch_id"])
-                total_uows = sum(len(batch.get("uows", [])) for batch in batches)
+                batches = sorted(assignments.get(ASSIGNMENTS_KEY_BATCHES, []), key=lambda b: b[ASSIGNMENTS_KEY_BATCH_ID])
+                total_uows = sum(len(batch.get(ASSIGNMENTS_KEY_UOWS, [])) for batch in batches)
                 _emit(
-                    "workflow.plan",
+                    EVENT_TYPE_WORKFLOW_PLAN,
                     stages=_workflow_stage_names(skip_lessons_optimizer=skip_lessons_optimizer),
                     total_stages=len(_workflow_stage_names(skip_lessons_optimizer=skip_lessons_optimizer)),
                     total_uows=total_uows,
@@ -1250,7 +1471,7 @@ def main(
 
                 def _run_uow_with_events(*, uow_id: str, batch_id: int, ordinal: int) -> None:
                     _emit(
-                        "uow.start",
+                        EVENT_TYPE_UOW_START,
                         stage=execution_stage_name,
                         batch_id=batch_id,
                         uow_id=uow_id,
@@ -1269,34 +1490,34 @@ def main(
                         )
                     except BaseException as exc:
                         _emit(
-                            "uow.end",
+                            EVENT_TYPE_UOW_END,
                             stage=execution_stage_name,
                             batch_id=batch_id,
                             uow_id=uow_id,
                             ordinal=ordinal,
                             total_uows=total_uows,
-                            status="error",
+                            status=STATUS_ERROR,
                             error=_summarize_exception(exc)[:500],
                         )
                         raise
                     _emit(
-                        "uow.end",
+                        EVENT_TYPE_UOW_END,
                         stage=execution_stage_name,
                         batch_id=batch_id,
                         uow_id=uow_id,
                         ordinal=ordinal,
                         total_uows=total_uows,
-                        status="ok",
+                        status=STATUS_OK,
                     )
 
                 for batch in batches:
-                    uow_ids = [uow["uow_id"] for uow in batch.get("uows", [])]
-                    is_parallel = batch.get("parallel_execution", False)
+                    uow_ids = [uow[ASSIGNMENTS_KEY_UOW_ID] for uow in batch.get(ASSIGNMENTS_KEY_UOWS, [])]
+                    is_parallel = batch.get(ASSIGNMENTS_KEY_PARALLEL_EXECUTION, False)
                     logger.info(
                         "main: batch %s — UoWs=%s parallel=%s",
-                        batch["batch_id"], uow_ids, is_parallel,
+                        batch[ASSIGNMENTS_KEY_BATCH_ID], uow_ids, is_parallel,
                     )
-                    print(f"Executing batch {batch['batch_id']} — UoWs: {uow_ids} (parallel={is_parallel})")
+                    print(f"Executing batch {batch[ASSIGNMENTS_KEY_BATCH_ID]} — UoWs: {uow_ids} (parallel={is_parallel})")
 
                     if is_parallel and len(uow_ids) > 1:
                         with ThreadPoolExecutor() as executor:
@@ -1304,7 +1525,7 @@ def main(
                                 executor.submit(
                                     _run_uow_with_events,
                                     uow_id=uid,
-                                    batch_id=batch["batch_id"],
+                                    batch_id=batch[ASSIGNMENTS_KEY_BATCH_ID],
                                     ordinal=index,
                                 )
                                 for index, uid in enumerate(uow_ids, start=1)
@@ -1315,37 +1536,28 @@ def main(
                         for index, uid in enumerate(uow_ids, start=1):
                             _run_uow_with_events(
                                 uow_id=uid,
-                                batch_id=batch["batch_id"],
+                                batch_id=batch[ASSIGNMENTS_KEY_BATCH_ID],
                                 ordinal=index,
                             )
                 last_completed_stage = execution_stage_name
                 failed_stage = None
 
             # ── Stage 5: QA Validation (eval-optimizer loop) ─────────────────
-            with _Stage("qa"):
-                failed_stage = "qa"
-                qa_evidence_root = AGENT_CONTEXT_ROOT / resolved_change_id / "qa" / "evidence"
-                for evidence_dir in ("test_output", "logs", "screenshots"):
+            with _Stage(STAGE_QA):
+                failed_stage = STAGE_QA
+                qa_evidence_root = _qa_evidence_root(resolved_change_id)
+                for evidence_dir in (
+                    ARTIFACT_DIR_QA_TEST_OUTPUT,
+                    ARTIFACT_DIR_QA_LOGS,
+                    ARTIFACT_DIR_QA_SCREENSHOTS,
+                ):
                     (qa_evidence_root / evidence_dir).mkdir(parents=True, exist_ok=True)
-                qa_producer_input = (
-                    f"Perform QA validation for change {resolved_change_id}.\n"
-                    f"Read story ACs from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/intake/story.yaml.\n"
-                    f"Read task plan from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/tasks.yaml.\n"
-                    f"Read assignments from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/planning/assignments.json.\n"
-                    f"Read all implementation reports from {AGENT_CONTEXT_ROOT}/{resolved_change_id}/execution/*/impl_report.yaml.\n"
-                    f"Target repo: {resolved_repo}\n"
-                    f"Write your report to {AGENT_CONTEXT_ROOT}/{resolved_change_id}/qa/qa_report.yaml.\n"
-                    f"When you run tests, lint, build, or manual verification commands, save raw command output under "
-                    f"{qa_evidence_root}/test_output/ or {qa_evidence_root}/logs/ and reference those files from qa_report.yaml.\n"
-                    f"Act autonomously where the available artifacts and repository evidence are sufficient. "
-                    f"If a blocking ambiguity, approval decision, or human-only product decision prevents safe progress, "
-                    f"use the user escalation protocol and continue after the response."
+                qa_producer_input = _qa_producer_input(
+                    change_id=resolved_change_id,
+                    repo=resolved_repo,
+                    evidence_root=qa_evidence_root,
                 )
-                qa_evaluator_prompt = (
-                    f"Evaluate the QA report for {resolved_change_id}. "
-                    f"Read {AGENT_CONTEXT_ROOT}/{resolved_change_id}/qa/qa_report.yaml and "
-                    f"{AGENT_CONTEXT_ROOT}/{resolved_change_id}/intake/story.yaml."
-                )
+                qa_evaluator_prompt = _qa_evaluator_prompt(change_id=resolved_change_id)
                 run_eval_optimizer_loop(
                     producer_func=steps.step_qa_engineer,
                     producer_input=qa_producer_input,
@@ -1356,24 +1568,24 @@ def main(
                     evaluator_runner=agent_llms["qa-evaluator"]["runner"],
                     evaluator_runner_model=agent_llms["qa-evaluator"]["model"],
                 )
-                last_completed_stage = "qa"
+                last_completed_stage = STAGE_QA
                 failed_stage = None
 
             # ── Stage 6: Pull Request Creation + Review ─────────────────────
             if os.environ.get("AGENT_RUNNER_EVALUATION_RUN", "").strip().lower() in {"1", "true", "yes"}:
                 print("Evaluation run detected; skipping PR creation and review.")
-                last_completed_stage = "qa"
+                last_completed_stage = STAGE_QA
                 failed_stage = None
             else:
-                with _Stage("pr-review"):
-                    failed_stage = "pr-review"
+                with _Stage(STAGE_PR_REVIEW):
+                    failed_stage = STAGE_PR_REVIEW
                     pr_review_path = steps.step_pr_review(
                         change_id=resolved_change_id,
                         repo=resolved_repo,
                         **_agent_llm_kwargs(agent_llms, "pr-reviewer"),
                     )
                     print(f"PR review saved to {pr_review_path}")
-                    last_completed_stage = "pr-review"
+                    last_completed_stage = STAGE_PR_REVIEW
                     failed_stage = None
 
             # The lessons optimizer previously ran here and could inject rules
@@ -1391,7 +1603,7 @@ def main(
     except SystemExit:
         raise
     except BaseException as exc:
-        final_status = "failed"
+        final_status = STATUS_FAILED
         final_exit = 1
         failure_summary = _summarize_exception(exc)
         if isinstance(exc, INPUT_VALIDATION_ERRORS):
@@ -1421,8 +1633,8 @@ def main(
                 last_completed_stage=last_completed_stage,
                 exc=exc,
             )
-        _emit("log", level="error", kind="workflow_failed", msg=f"{type(exc).__name__}: {failure_summary}"[:1000])
-        _emit("job.end", status=final_status, exit_code=final_exit)
+        _emit(EVENT_TYPE_LOG, level=STATUS_ERROR, kind=EVENT_KIND_WORKFLOW_FAILED, msg=f"{type(exc).__name__}: {failure_summary}"[:1000])
+        _emit(EVENT_TYPE_JOB_END, status=final_status, exit_code=final_exit)
         if tracer is not None:
             tracer.flush()
         raise
@@ -1439,7 +1651,7 @@ def main(
                 failed_stage=failed_stage,
                 last_completed_stage=last_completed_stage,
             )
-        _emit("job.end", status=final_status, exit_code=final_exit)
+        _emit(EVENT_TYPE_JOB_END, status=final_status, exit_code=final_exit)
     finally:
         set_runner_failover_policy(None)
 

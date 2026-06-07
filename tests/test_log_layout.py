@@ -30,14 +30,14 @@ class LogLayoutTests(unittest.TestCase):
             with patch.dict(os.environ, {"AGENT_RUNNER_DATA_DIR": tmpdir}, clear=False):
                 path = events_path_for("TEST-LOG-001")
 
-        self.assertEqual(path, Path(tmpdir) / "logs" / "TEST-LOG-001" / "events.jsonl")
+        self.assertEqual(path, Path(tmpdir) / "logs" / "TEST-LOG-001" / run.ARTIFACT_FILE_EVENTS)
 
     def test_easy__prepare_job_paths_returns_top_level_event_log_path(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"AGENT_RUNNER_DATA_DIR": tmpdir}, clear=False):
                 events_path, cassette_path = prepare_job_paths("TEST-LOG-002", "live")
 
-        self.assertEqual(events_path, str(Path(tmpdir) / "logs" / "TEST-LOG-002" / "events.jsonl"))
+        self.assertEqual(events_path, str(Path(tmpdir) / "logs" / "TEST-LOG-002" / run.ARTIFACT_FILE_EVENTS))
         self.assertIsNone(cassette_path)
 
     def test_medium__clean_workspace_removes_artifacts_and_logs_for_change_id_and_run_variants(self):
@@ -159,20 +159,20 @@ class LogLayoutTests(unittest.TestCase):
             tmp_root = Path(tmpdir)
             agent_context_root = tmp_root / "agent-context"
             logs_root = tmp_root / "logs"
-            (agent_context_root / "TEST-METRICS-001" / "summary").mkdir(parents=True)
-            event_log = logs_root / "TEST-METRICS-001" / "events.jsonl"
+            (agent_context_root / "TEST-METRICS-001" / run.ARTIFACT_DIR_SUMMARY).mkdir(parents=True)
+            event_log = logs_root / "TEST-METRICS-001" / run.ARTIFACT_FILE_EVENTS
             event_log.parent.mkdir(parents=True)
             event_log.write_text(
                 "\n".join(
                     [
-                        '{"ts":"2026-05-20T16:00:00.000000Z","type":"stage.start","stage":"execution"}',
+                        f'{{"ts":"2026-05-20T16:00:00.000000Z","type":"{run.EVENT_TYPE_STAGE_START}","stage":"{run.STAGE_EXECUTION}"}}',
                         '{"ts":"2026-05-20T16:00:01.000000Z","type":"uow.start","uow_id":"UOW-001"}',
                         '{"ts":"2026-05-20T16:00:02.000000Z","type":"opik.start","name":"uow-iteration-1","metadata":{"uow_id":"UOW-001"}}',
                         '{"ts":"2026-05-20T16:00:03.000000Z","type":"cli.exit","agent":"software-engineer-hyperagent","duration_ms":2500,"exit_code":0}',
                         '{"ts":"2026-05-20T16:00:03.100000Z","type":"llm.call","agent":"software-engineer-hyperagent","runner":"claude","model":"claude-sonnet","status":"ok","duration_ms":2500,"attempt":1,"max_attempts":1,"prompt_est_tokens":100,"response_est_tokens":25,"tokens_in":90,"tokens_out":20,"cost_usd":0.02,"prompt_sha256":"abc","response_sha256":"def","response_parse_ok":true}',
                         '{"ts":"2026-05-20T16:00:04.000000Z","type":"metrics","tokens_in":10,"tokens_out":5,"cost_usd":0.01}',
-                        '{"ts":"2026-05-20T16:00:05.000000Z","type":"uow.end","uow_id":"UOW-001","status":"ok"}',
-                        '{"ts":"2026-05-20T16:00:06.000000Z","type":"stage.end","stage":"execution","status":"ok"}',
+                        f'{{"ts":"2026-05-20T16:00:05.000000Z","type":"{run.EVENT_TYPE_UOW_END}","uow_id":"UOW-001","status":"{run.STATUS_OK}"}}',
+                        f'{{"ts":"2026-05-20T16:00:06.000000Z","type":"{run.EVENT_TYPE_STAGE_END}","stage":"{run.STAGE_EXECUTION}","status":"{run.STATUS_OK}"}}',
                     ]
                 )
                 + "\n",
@@ -182,30 +182,30 @@ class LogLayoutTests(unittest.TestCase):
             with patch.object(run, "AGENT_CONTEXT_ROOT", agent_context_root), patch.object(run, "LOGS_ROOT", logs_root):
                 run._write_workflow_status(
                     change_id="TEST-METRICS-001",
-                    status="succeeded",
+                    status=run.STATUS_SUCCEEDED,
                     runner="claude",
                     model="claude-sonnet",
                     repo="/tmp/repo",
                     exit_code=0,
-                    last_completed_stage="qa",
+                    last_completed_stage=run.STAGE_QA,
                 )
 
             status = yaml.safe_load(
-                (agent_context_root / "TEST-METRICS-001" / "summary" / "workflow_status.yaml").read_text(
+                (agent_context_root / "TEST-METRICS-001" / run.ARTIFACT_DIR_SUMMARY / run.WORKFLOW_STATUS_FILENAME).read_text(
                     encoding="utf-8"
                 )
             )
             metrics = yaml.safe_load(
-                (agent_context_root / "TEST-METRICS-001" / "summary" / "run_metrics.yaml").read_text(
+                (agent_context_root / "TEST-METRICS-001" / run.ARTIFACT_DIR_SUMMARY / run.ARTIFACT_FILE_RUN_METRICS).read_text(
                     encoding="utf-8"
                 )
             )
 
-            self.assertEqual(status["observability"]["event_log_artifact"], "summary/events.jsonl")
-            self.assertTrue((agent_context_root / "TEST-METRICS-001" / "summary" / "events.jsonl").is_file())
-            self.assertEqual(metrics["metrics"]["stage_durations_seconds"]["execution"], 6.0)
+            self.assertEqual(status["observability"]["event_log_artifact"], f"{run.ARTIFACT_DIR_SUMMARY}/{run.ARTIFACT_FILE_EVENTS}")
+            self.assertTrue((agent_context_root / "TEST-METRICS-001" / run.ARTIFACT_DIR_SUMMARY / run.ARTIFACT_FILE_EVENTS).is_file())
+            self.assertEqual(metrics["metrics"]["stage_durations_seconds"][run.STAGE_EXECUTION], 6.0)
             self.assertEqual(metrics["metrics"]["uow_iterations"]["UOW-001"], 1)
-            self.assertEqual(metrics["metrics"]["totals"]["source"], "llm.call")
+            self.assertEqual(metrics["metrics"]["totals"]["source"], run.EVENT_TYPE_LLM_CALL)
             self.assertEqual(metrics["metrics"]["totals"]["cost_usd"], 0.02)
             self.assertEqual(metrics["metrics"]["legacy_metric_totals"]["cost_usd"], 0.01)
             self.assertEqual(metrics["metrics"]["totals"]["llm_calls"], 1)
