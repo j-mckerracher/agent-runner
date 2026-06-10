@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Harness Engineering Action Plan for Agent Workbench</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff;
+      --fg: #1f2937;
+      --muted: #6b7280;
+      --border: #d1d5db;
+      --panel: #f9fafb;
+      --accent: #2563eb;
+      --good: #047857;
+      --warn: #b45309;
+      --bad: #b91c1c;
+      --code: #111827;
+      --code-bg: #f3f4f6;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b1020;
+        --fg: #e5e7eb;
+        --muted: #9ca3af;
+        --border: #374151;
+        --panel: #111827;
+        --accent: #60a5fa;
+        --good: #34d399;
+        --warn: #fbbf24;
+        --bad: #f87171;
+        --code: #e5e7eb;
+        --code-bg: #1f2937;
+      }
+    }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
+    }
+    h1, h2, h3, h4 { line-height: 1.2; }
+    h1 { font-size: 2.2rem; margin-bottom: 0.25rem; }
+    h2 { margin-top: 2.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.35rem; }
+    h3 { margin-top: 1.75rem; }
+    h4 { margin-top: 1.25rem; }
+    a { color: var(--accent); }
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      color: var(--code);
+      background: var(--code-bg);
+    }
+    code { padding: 0.1rem 0.25rem; border-radius: 0.25rem; }
+    pre { padding: 1rem; border-radius: 0.5rem; overflow-x: auto; border: 1px solid var(--border); }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    th, td { border: 1px solid var(--border); padding: 0.6rem; vertical-align: top; }
+    th { background: var(--panel); text-align: left; }
+    .lede { color: var(--muted); font-size: 1.1rem; }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem; margin: 1rem 0; }
+    .priority { font-weight: 700; }
+    .p0 { color: var(--bad); }
+    .p1 { color: var(--warn); }
+    .p2 { color: var(--good); }
+    .small { color: var(--muted); font-size: 0.92rem; }
+    .toc ol { columns: 2; }
+    @media (max-width: 800px) { .toc ol { columns: 1; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Harness Engineering Action Plan for Agent Workbench</h1>
+  <p class="lede">Detailed implementation directions for turning the existing local multi-agent runner into a stronger production-grade AI harness: measurable, reproducible, debuggable, guarded, and safe to change.</p>
+
+  <div class="panel">
+    <strong>Source note.</strong> The referenced X post links to an X Article titled <em>Harness Engineering: What Every AI Engineer Needs to Know in 2026</em>. X exposed only the post preview without login, but an accessible mirrored article with the same title was available. The action plan below is based on the verified accessible text and the current repository structure. The article's core framing is: do not only ship prompts or models; ship the harness around them: evaluations, test datasets, observability, guardrails, routing, rollback paths, and release controls.
+  </div>
+
+  <section class="toc">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#current-state">Current state of this runner</a></li>
+      <li><a href="#north-star">North-star harness properties</a></li>
+      <li><a href="#roadmap">Prioritized roadmap</a></li>
+      <li><a href="#typed-evals">Typed evaluator contracts</a></li>
+      <li><a href="#trajectory-evals">Trajectory-level evaluation</a></li>
+      <li><a href="#repro-bundles">Failure reproduction bundles</a></li>
+      <li><a href="#workspace-isolation">Workspace isolation for parallel UoWs</a></li>
+      <li><a href="#budgets">Budget and circuit-breaker enforcement</a></li>
+      <li><a href="#release-gates">Release gates and rollback controls</a></li>
+      <li><a href="#prompt-versioning">Prompt/model/materialization version lineage</a></li>
+      <li><a href="#fix-guidance">Failure reports that guide fixes</a></li>
+      <li><a href="#tests">Test plan</a></li>
+      <li><a href="#sequence">Suggested implementation sequence</a></li>
+    </ol>
+  </section>
+
+  <section id="current-state">
+    <h2>1. Current state of this runner</h2>
+    <p>Agent Workbench already contains many of the right harness primitives. The recommended work is mostly about making those primitives stricter, more machine-readable, and more actionable.</p>
+
+    <table>
+      <thead>
+        <tr><th>Harness capability</th><th>Current implementation</th><th>What to improve</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Workflow orchestration</td>
+          <td><code>run.py</code> executes materialize, intake, task generation, task assignment, execution, QA, and PR review.</td>
+          <td>Make the stage outputs, stage gates, and failure states more formally typed and resumable.</td>
+        </tr>
+        <tr>
+          <td>Evaluator loops</td>
+          <td><code>core/evaluator_optimizer_loops.py</code> runs eval-optimizer loops for planning, assignment, implementation, and QA.</td>
+          <td>Replace string-based pass/fail detection with JSON schemas, score dimensions, and machine-readable required fixes.</td>
+        </tr>
+        <tr>
+          <td>Artifacts</td>
+          <td>Canonical artifacts live under <code>agent-context/&lt;change-id&gt;/</code>, with validation in <code>core/artifact_utils.py</code>.</td>
+          <td>Add a run manifest and reproduction manifest tying together artifacts, events, prompts, repo state, and model state.</td>
+        </tr>
+        <tr>
+          <td>Observability</td>
+          <td>Events, Opik tracing, LLM call metadata, token estimates, and GUI trace bridge exist.</td>
+          <td>Use those traces as evaluation inputs and publish trajectory summaries in reports.</td>
+        </tr>
+        <tr>
+          <td>Runner abstraction</td>
+          <td><code>core/run_cmds.py</code>, <code>core/runner_models.py</code>, and runner-specific materialized assets support Claude, Codex, Copilot, Gemini, and OpenAI-compatible backends.</td>
+          <td>Normalize all runner outputs into the same typed telemetry and policy model.</td>
+        </tr>
+        <tr>
+          <td>Tool guardrails</td>
+          <td>OpenAI-compatible local tool runtime has allowed roots, typed artifact writers, forbidden write paths, network command blocking, output truncation, and max tool steps.</td>
+          <td>Apply equivalent policy reporting across all runner types and make policy violations first-class eval data.</td>
+        </tr>
+        <tr>
+          <td>Escalation</td>
+          <td><code>core/user_escalation.py</code> and <code>core/escalation_mcp_server.py</code> support blocking user questions through the GUI/TTY.</td>
+          <td>Score escalation behavior: missing escalation when required, unnecessary escalation, unresolved escalation, and escalation latency.</td>
+        </tr>
+        <tr>
+          <td>Evals</td>
+          <td><code>eval/runner.py</code>, <code>eval/agent_runner.py</code>, and <code>eval/agent_metrics.py</code> support hidden-test workflow benchmarks and standalone agent metrics.</td>
+          <td>Add trajectory and harness-health metrics beyond final test pass/fail.</td>
+        </tr>
+        <tr>
+          <td>Prompt/materialization versioning</td>
+          <td><code>core/materialize.py</code> records hashes and generated runner assets.</td>
+          <td>Attach materialization hashes and prompt lineage to every run, eval result, and reproduction bundle.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="north-star">
+    <h2>2. North-star harness properties</h2>
+    <p>A production-grade AI runner should make every meaningful behavior change answerable with evidence. The target properties are:</p>
+    <ol>
+      <li><strong>Measurable:</strong> Every workflow produces typed scores, not just logs and prose.</li>
+      <li><strong>Reproducible:</strong> Any failed stage can be rerun from a manifest without reconstructing context manually.</li>
+      <li><strong>Trajectory-aware:</strong> The harness evaluates the path the agent took: tool calls, commands, edits, tests, escalations, and retries.</li>
+      <li><strong>Guarded:</strong> The runner enforces budgets, permissions, diff scope, and release gates before producing or merging changes.</li>
+      <li><strong>Comparable:</strong> Runs can be compared across model, prompt, runner, materialization, and configuration changes.</li>
+      <li><strong>Actionable:</strong> Failure reports identify the responsible stage, missing evidence, likely root cause, and next command to run.</li>
+    </ol>
+  </section>
+
+  <section id="roadmap">
+    <h2>3. Prioritized roadmap</h2>
+    <table>
+      <thead>
+        <tr><th>Priority</th><th>Theme</th><th>Primary files</th><th>Outcome</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="priority p0">P0</td>
+          <td>Typed evaluator contracts</td>
+          <td><code>core/evaluator_optimizer_loops.py</code>, <code>core/artifact_utils.py</code>, agent evaluator prompts</td>
+          <td>Pass/fail, scores, blockers, and fixes become machine-readable.</td>
+        </tr>
+        <tr>
+          <td class="priority p0">P0</td>
+          <td>Failure reproduction bundle</td>
+          <td><code>run.py</code>, <code>server/events.py</code>, <code>core/materialize.py</code></td>
+          <td>A failed run can be reproduced in under five minutes.</td>
+        </tr>
+        <tr>
+          <td class="priority p1">P1</td>
+          <td>Trajectory-level evaluation</td>
+          <td><code>eval/agent_metrics.py</code>, <code>eval/runner.py</code>, <code>server/events.py</code></td>
+          <td>The eval suite scores process quality, not only final outputs.</td>
+        </tr>
+        <tr>
+          <td class="priority p1">P1</td>
+          <td>Workspace isolation for parallel UoWs</td>
+          <td><code>run.py</code>, <code>core/repo_prep.py</code>, <code>core/steps.py</code></td>
+          <td>Parallel agent work cannot corrupt a shared working tree.</td>
+        </tr>
+        <tr>
+          <td class="priority p1">P1</td>
+          <td>Budgets and circuit breakers</td>
+          <td><code>core/run_cmds.py</code>, <code>run.py</code>, <code>server/config.py</code></td>
+          <td>Cost, latency, token, retry, and diff budgets are enforced, not only observed.</td>
+        </tr>
+        <tr>
+          <td class="priority p2">P2</td>
+          <td>Release gates and rollback controls</td>
+          <td><code>core/check_gates.py</code>, <code>core/run_gates.py</code>, <code>run.py</code></td>
+          <td>PR creation is blocked unless test, QA, review, scope, and rollback criteria pass.</td>
+        </tr>
+        <tr>
+          <td class="priority p2">P2</td>
+          <td>Prompt/model lineage reports</td>
+          <td><code>core/materialize.py</code>, <code>core/run_cmds.py</code>, <code>eval/runner.py</code></td>
+          <td>Behavior regressions can be tied to prompt, model, or harness changes.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="typed-evals">
+    <h2>4. Add typed evaluator contracts</h2>
+    <p>The current evaluator loops stop early when <code>"PASS"</code> appears in the evaluator output. That is fragile: a sentence such as “does not PASS” can accidentally pass, and the harness cannot reliably aggregate score details.</p>
+
+    <h3>4.1 Add a canonical evaluator result schema</h3>
+    <p>Create a new module, for example <code>core/evaluator_result.py</code>, with a schema like this:</p>
+    <pre><code>{
+  "schema_version": "evaluator-result/v1",
+  "status": "PASS | FAIL | BLOCKED",
+  "overall_score": 0.0,
+  "dimensions": [
+    {
+      "id": "acceptance_criteria_coverage",
+      "score": 0.0,
+      "severity": "critical | major | minor",
+      "summary": "What was evaluated",
+      "evidence_refs": ["agent-context/.../tasks.yaml"],
+      "required_fixes": ["Add explicit AC-2 task coverage"]
+    }
+  ],
+  "blockers": [
+    {
+      "id": "missing_human_decision",
+      "summary": "A product decision is required",
+      "requires_escalation": true
+    }
+  ],
+  "regression_risk": "low | medium | high",
+  "summary": "Short human-readable evaluation summary"
+}</code></pre>
+
+    <h3>4.2 Parser and compatibility behavior</h3>
+    <ul>
+      <li>Add <code>parse_evaluator_result(text: str) -&gt; EvaluatorResult</code>.</li>
+      <li>Accept fenced JSON, raw JSON, and legacy text.</li>
+      <li>For legacy text, map exact normalized <code>PASS</code> to pass, exact normalized <code>FAIL</code> to fail, and all other content to <code>FAIL</code> with <code>raw_response</code>.</li>
+      <li>Never use substring detection for pass/fail.</li>
+      <li>Persist both raw evaluator output and parsed evaluator result.</li>
+    </ul>
+
+    <h3>4.3 Update loop logic</h3>
+    <p>Modify <code>core/evaluator_optimizer_loops.py</code>:</p>
+    <ul>
+      <li>In <code>run_uow_eval_loop</code>, replace <code>passed = "PASS" in evaluator_out</code> with <code>parsed.status == "PASS"</code>.</li>
+      <li>In <code>run_eval_optimizer_loop</code>, use the same parser.</li>
+      <li>Emit loop events with <code>overall_score</code>, <code>dimension_scores</code>, <code>blocker_count</code>, and <code>critical_failure_count</code>.</li>
+      <li>Write <code>eval_impl_N.json</code> using the typed schema, not an ad hoc fallback.</li>
+    </ul>
+
+    <h3>4.4 Update evaluator prompts</h3>
+    <p>Evaluator agents should be required to output only JSON in this schema. Relevant source prompt directories include <code>agent-definition-source</code> and materialized runner assets. Because this repo intentionally avoids automatic prompt mutation during workflow runs, update the canonical source prompts and then run materialization explicitly.</p>
+
+    <h3>4.5 Acceptance criteria</h3>
+    <ul>
+      <li>String outputs containing “PASS” inside longer text no longer pass unless the parsed status is exactly <code>PASS</code>.</li>
+      <li>All evaluator-loop events include typed status and score fields.</li>
+      <li>Existing tests in <code>tests/test_evaluator_optimizer_loops.py</code> are updated to cover typed pass, typed fail, malformed JSON, and legacy exact PASS.</li>
+    </ul>
+  </section>
+
+  <section id="trajectory-evals">
+    <h2>5. Add trajectory-level evaluation</h2>
+    <p>Agentic systems are not adequately evaluated by final output alone. The harness should score whether the agent took a safe, efficient, evidence-backed path.</p>
+
+    <h3>5.1 Define a trajectory summary artifact</h3>
+    <p>Create <code>agent-context/&lt;change-id&gt;/summary/trajectory.json</code> at the end of each run and, for finer debugging, <code>agent-context/&lt;change-id&gt;/execution/&lt;uow-id&gt;/trajectory.json</code> for each UoW.</p>
+    <p>Suggested fields:</p>
+    <pre><code>{
+  "schema_version": "trajectory/v1",
+  "change_id": "ABC-123",
+  "stage": "execution",
+  "uow_id": "uow-1",
+  "runner": "claude",
+  "model": "...",
+  "tool_calls": {
+    "total": 18,
+    "by_name": {"read_file": 5, "write_file": 2, "run_shell": 3}
+  },
+  "commands": [
+    {"command": "pytest tests/test_x.py", "cwd": "...", "returncode": 0, "duration_ms": 1200}
+  ],
+  "files_changed": ["src/example.py", "tests/test_example.py"],
+  "tests_observed": {
+    "ran": true,
+    "commands": ["pytest tests/test_example.py"],
+    "failures": 0
+  },
+  "escalations": {
+    "requested": 0,
+    "resolved": 0,
+    "unresolved": 0
+  },
+  "policy_violations": [],
+  "retry_count": 0,
+  "duration_ms": 30000,
+  "tokens_estimated": {"input": 12000, "output": 2000}
+}</code></pre>
+
+    <h3>5.2 Build trajectory summaries from existing events</h3>
+    <p>Most data is already emitted through <code>server/events.py</code> and LLM-call events in <code>core/run_cmds.py</code>. Add a summarizer near <code>run.py</code>'s existing <code>_summarize_event_rows</code> and <code>_write_run_metrics</code> helpers, or create <code>core/trajectory.py</code>.</p>
+
+    <h3>5.3 Score trajectories in evals</h3>
+    <p>Extend <code>eval/agent_metrics.py</code> and <code>eval/runner.py</code> with trajectory metrics:</p>
+    <ul>
+      <li><strong>Evidence discipline:</strong> did the agent inspect relevant files before editing?</li>
+      <li><strong>Test discipline:</strong> did the agent run targeted tests or explain why not?</li>
+      <li><strong>Scope discipline:</strong> were changed files related to assigned UoWs?</li>
+      <li><strong>Escalation discipline:</strong> did the agent escalate only blocking decisions?</li>
+      <li><strong>Retry health:</strong> did the loop converge quickly or churn?</li>
+      <li><strong>Policy health:</strong> were there denied writes, network attempts, forbidden shell commands, or max-tool-step breaches?</li>
+    </ul>
+
+    <h3>5.4 Acceptance criteria</h3>
+    <ul>
+      <li>Every workflow run writes <code>summary/trajectory.json</code>.</li>
+      <li>Every UoW writes a trajectory artifact when execution starts.</li>
+      <li>Eval reports include trajectory scores alongside hidden-test results.</li>
+      <li>GUI and JSON reports can display top trajectory warnings.</li>
+    </ul>
+  </section>
+
+  <section id="repro-bundles">
+    <h2>6. Add failure reproduction bundles</h2>
+    <p>A good harness makes failure reproduction fast. When a workflow fails, engineers should not have to infer which prompt, model, branch, artifact, config, or event log was involved.</p>
+
+    <h3>6.1 Add a reproduction manifest</h3>
+    <p>On failure and on success, write <code>agent-context/&lt;change-id&gt;/summary/repro_manifest.json</code>. On failure, also print the path in the terminal and GUI event log.</p>
+    <pre><code>{
+  "schema_version": "repro-manifest/v1",
+  "change_id": "ABC-123",
+  "status": "failed",
+  "failed_stage": "execution",
+  "failed_uow_id": "uow-2",
+  "repo": {
+    "path": "/repo",
+    "head_sha": "...",
+    "branch": "feature/abc-123",
+    "dirty_status": "...",
+    "diff_stat": "..."
+  },
+  "runner": {
+    "default_runner": "claude",
+    "default_model": "...",
+    "per_agent_models": {"qa-evaluator": {"runner": "gemini", "model": "..."}}
+  },
+  "materialization": {
+    "metadata_files": [".claude/.materialization.json", ".openai-compat/.materialization.json"],
+    "content_hashes": {}
+  },
+  "artifacts": {
+    "story": "agent-context/ABC-123/intake/story.yaml",
+    "tasks": "agent-context/ABC-123/planning/tasks.yaml",
+    "assignments": "agent-context/ABC-123/planning/assignments.json",
+    "events": "agent-context/ABC-123/summary/events.jsonl",
+    "run_metrics": "agent-context/ABC-123/summary/run_metrics.json"
+  },
+  "rerun_commands": {
+    "full_workflow": "python3 run.py --repo /repo --manual-story-file ... --change-id ABC-123 --runner claude",
+    "hidden_tests": "python3 eval/runner.py --benchmark ...",
+    "failed_stage_debug": "python3 scripts/replay_stage.py --manifest ... --stage execution --uow-id uow-2"
+  }
+}</code></pre>
+
+    <h3>6.2 Implement minimal replay before full deterministic replay</h3>
+    <p>Do not try to make every external LLM call deterministic at first. Start with a high-value reproducibility bundle that captures enough state to rerun manually. Later, use cassette recording and hermetic mode to replay subprocess I/O.</p>
+
+    <h3>6.3 Suggested implementation files</h3>
+    <ul>
+      <li><code>run.py</code>: write manifest in success and exception paths near <code>_write_workflow_status</code> and <code>_write_run_metrics</code>.</li>
+      <li><code>server/runner_proc.py</code>: surface manifest path in job failure summaries.</li>
+      <li><code>server/events.py</code>: emit <code>repro.manifest_written</code>.</li>
+      <li><code>eval/runner.py</code>: copy manifest into benchmark reports.</li>
+    </ul>
+
+    <h3>6.4 Acceptance criteria</h3>
+    <ul>
+      <li>Every failed workflow has a manifest even if failure occurs mid-stage.</li>
+      <li>The manifest includes repo SHA, branch, dirty status, runner/model, materialization hashes, event log path, failed stage, failed UoW if known, and rerun commands.</li>
+      <li>Tests cover manifest creation on success and on exception.</li>
+    </ul>
+  </section>
+
+  <section id="workspace-isolation">
+    <h2>7. Isolate parallel UoW execution</h2>
+    <p><code>run.py</code> can execute multiple UoWs in parallel via <code>ThreadPoolExecutor</code>. If those UoWs operate in the same working tree, agents can race on files, tests, generated artifacts, and git state.</p>
+
+    <h3>7.1 Add a workspace strategy</h3>
+    <p>Introduce a configurable execution workspace mode:</p>
+    <ul>
+      <li><code>shared</code>: current behavior, allowed only for sequential batches or explicitly trusted runs.</li>
+      <li><code>worktree</code>: create one git worktree per parallel UoW.</li>
+      <li><code>copy</code>: fallback for repos where worktrees are unavailable.</li>
+    </ul>
+
+    <h3>7.2 Worktree flow</h3>
+    <ol>
+      <li>Before a parallel batch, ensure the base repo is clean enough for branching or record its dirty state.</li>
+      <li>Create worktrees under a per-run temp directory, such as <code>agent-context/&lt;change-id&gt;/workspaces/&lt;uow-id&gt;</code> or a runtime temp root.</li>
+      <li>Run <code>run_uow_eval_loop</code> with that UoW-specific repo path.</li>
+      <li>After each UoW passes, collect a patch with <code>git diff</code>.</li>
+      <li>Apply patches to the primary repo sequentially in batch order.</li>
+      <li>If patches conflict, emit a typed merge conflict artifact and escalate to a resolver stage or fail the batch with actionable evidence.</li>
+      <li>Clean up worktrees unless debug retention is enabled.</li>
+    </ol>
+
+    <h3>7.3 Suggested implementation files</h3>
+    <ul>
+      <li><code>core/repo_prep.py</code>: add worktree helpers: create, remove, patch export, patch apply.</li>
+      <li><code>run.py</code>: modify execution-stage parallel branch to allocate per-UoW repo paths.</li>
+      <li><code>core/steps.py</code>: ensure prompts and artifact references distinguish target repo path from artifact root.</li>
+      <li><code>tests/test_repo_prep.py</code> and a new <code>tests/test_parallel_workspaces.py</code>: cover worktree creation and patch conflict behavior.</li>
+    </ul>
+
+    <h3>7.4 Acceptance criteria</h3>
+    <ul>
+      <li>Parallel UoWs never write to the same target repo path.</li>
+      <li>Each UoW records its workspace path and patch path in its trajectory artifact.</li>
+      <li>Conflicting patches fail with a clear artifact, not silent corruption.</li>
+    </ul>
+  </section>
+
+  <section id="budgets">
+    <h2>8. Enforce budgets and circuit breakers</h2>
+    <p>The runner already captures token estimates, costs, latency, retries, and tool counts. Turn those observations into controls.</p>
+
+    <h3>8.1 Add budget configuration</h3>
+    <p>Extend <code>server/config.py</code> and CLI arguments in <code>run.py</code> with a budget block:</p>
+    <pre><code>{
+  "budgets": {
+    "run": {
+      "max_wall_time_seconds": 7200,
+      "max_estimated_tokens": 1000000,
+      "max_cost_usd": 20.0
+    },
+    "stage": {
+      "max_iterations": 3,
+      "max_retries": 5,
+      "max_duration_seconds": 1800
+    },
+    "uow": {
+      "max_changed_files": 25,
+      "max_diff_lines": 1500,
+      "max_tool_steps": 80,
+      "max_policy_violations": 0
+    }
+  }
+}</code></pre>
+
+    <h3>8.2 Enforcement points</h3>
+    <ul>
+      <li><code>core/run_cmds.py</code>: enforce per-agent tool step, retry, and command timeout budgets across all runner transports where possible.</li>
+      <li><code>run.py</code>: enforce run and stage wall-clock budgets between stages and loop iterations.</li>
+      <li><code>core/evaluator_optimizer_loops.py</code>: stop loops on budget exhaustion and emit <code>status: BLOCKED</code> or <code>status: BUDGET_EXHAUSTED</code>.</li>
+      <li><code>core/check_gates.py</code>: enforce changed-file and diff-size limits before PR review.</li>
+    </ul>
+
+    <h3>8.3 Budget events</h3>
+    <p>Emit explicit events such as <code>budget.warning</code>, <code>budget.exceeded</code>, and <code>budget.snapshot</code>. Include budget type, current value, limit, stage, UoW, runner, and model.</p>
+
+    <h3>8.4 Acceptance criteria</h3>
+    <ul>
+      <li>Budget exhaustion produces a typed failure reason in workflow status and run metrics.</li>
+      <li>Budget events are visible in the GUI event stream.</li>
+      <li>Tests verify that budget limits stop loops deterministically.</li>
+    </ul>
+  </section>
+
+  <section id="release-gates">
+    <h2>9. Add release gates and rollback controls</h2>
+    <p>The article emphasizes release controls and rollback paths. For this runner, the natural point is immediately before PR creation/review.</p>
+
+    <h3>9.1 Final release gate artifact</h3>
+    <p>Create <code>agent-context/&lt;change-id&gt;/summary/release_gate.json</code>:</p>
+    <pre><code>{
+  "schema_version": "release-gate/v1",
+  "status": "PASS | FAIL | WARNING",
+  "checks": [
+    {"id": "qa_report_passed", "status": "PASS", "evidence_refs": ["qa/qa_report.yaml"]},
+    {"id": "hidden_tests_passed", "status": "PASS", "evidence_refs": []},
+    {"id": "diff_scope", "status": "PASS", "changed_files": 8, "diff_lines": 300},
+    {"id": "critical_pr_findings", "status": "PASS", "count": 0},
+    {"id": "rollback_notes", "status": "PASS", "evidence_refs": ["summary/rollback_plan.html"]}
+  ],
+  "blocking_failures": [],
+  "warnings": []
+}</code></pre>
+
+    <h3>9.2 Rollback plan</h3>
+    <p>Generate a small rollback plan for every non-evaluation run. Because global instructions prefer HTML for new docs, use <code>summary/rollback_plan.html</code>. Include:</p>
+    <ul>
+      <li>Files changed.</li>
+      <li>Database migrations or config changes, if any.</li>
+      <li>How to revert the branch or patch.</li>
+      <li>Known runtime toggles or feature flags.</li>
+      <li>Validation commands to run after rollback.</li>
+    </ul>
+
+    <h3>9.3 Suggested implementation files</h3>
+    <ul>
+      <li><code>core/check_gates.py</code>: add release gate check functions.</li>
+      <li><code>core/run_gates.py</code>: orchestrate gate execution.</li>
+      <li><code>run.py</code>: call final gates before <code>steps.step_pr_review</code>.</li>
+      <li><code>server/evaluate.py</code> and GUI routes: display release-gate status in run detail pages.</li>
+    </ul>
+
+    <h3>9.4 Acceptance criteria</h3>
+    <ul>
+      <li>PR review/creation is skipped or blocked when critical release gates fail.</li>
+      <li>Gate failures include evidence references and suggested remediation.</li>
+      <li>Evaluation runs can opt into gates without creating PRs.</li>
+    </ul>
+  </section>
+
+  <section id="prompt-versioning">
+    <h2>10. Attach prompt/model/materialization lineage to every run</h2>
+    <p>The harness should make it easy to answer: “Did this regression come from the model, prompt, tool runtime, or target repo?”</p>
+
+    <h3>10.1 Run lineage artifact</h3>
+    <p>Create <code>agent-context/&lt;change-id&gt;/summary/run_lineage.json</code> with:</p>
+    <ul>
+      <li>Runner name and model for each agent role.</li>
+      <li>Prompt source path and prompt hash for each agent role.</li>
+      <li>Materialization metadata file paths and content hashes.</li>
+      <li>Runner code version: git SHA of this harness repository.</li>
+      <li>Target repo SHA and branch.</li>
+      <li>Configuration file path and hash.</li>
+      <li>OpenAI-compatible endpoint identity where safe to record.</li>
+    </ul>
+
+    <h3>10.2 Integrate lineage into eval reports</h3>
+    <p>Extend <code>eval/result_schema.py</code> and reports generated by <code>eval/runner.py</code> so every benchmark result includes lineage. Then add comparison grouping by:</p>
+    <ul>
+      <li>model</li>
+      <li>runner</li>
+      <li>prompt hash</li>
+      <li>materialization hash</li>
+      <li>target repo SHA</li>
+    </ul>
+
+    <h3>10.3 Acceptance criteria</h3>
+    <ul>
+      <li>Every run has a lineage artifact.</li>
+      <li>Eval reports include lineage for each trial.</li>
+      <li>A baseline-vs-candidate comparison can attribute behavior changes to model/prompt/harness changes when only one axis changed.</li>
+    </ul>
+  </section>
+
+  <section id="fix-guidance">
+    <h2>11. Make failure reports guide fixes</h2>
+    <p>A strong harness does not only say “failed.” It says what failed, why it matters, where the evidence is, and what to do next.</p>
+
+    <h3>11.1 Failure diagnosis artifact</h3>
+    <p>Create <code>agent-context/&lt;change-id&gt;/summary/failure_diagnosis.json</code> when a workflow fails or when release gates fail:</p>
+    <pre><code>{
+  "schema_version": "failure-diagnosis/v1",
+  "primary_failure": {
+    "stage": "qa",
+    "uow_id": null,
+    "category": "test_failure | evaluator_failure | budget_exhausted | policy_violation | runner_error | artifact_invalid",
+    "summary": "QA evaluator found missing AC-3 evidence"
+  },
+  "evidence_refs": ["qa/qa_report.yaml", "summary/events.jsonl"],
+  "likely_root_causes": [
+    {"confidence": 0.8, "summary": "Implementation report did not reference AC-3 tests"}
+  ],
+  "recommended_next_actions": [
+    "Open qa/qa_report.yaml and inspect missing AC evidence",
+    "Rerun failed UoW with the repro manifest command",
+    "Add a hidden test for AC-3 if missing"
+  ]
+}</code></pre>
+
+    <h3>11.2 Human-readable HTML report</h3>
+    <p>Also generate <code>summary/failure_report.html</code> for easy review in the GUI or browser. It should link to artifacts, display timeline snippets, show score dimensions, and include copy-paste rerun commands.</p>
+
+    <h3>11.3 Acceptance criteria</h3>
+    <ul>
+      <li>Workflow failures produce both JSON and HTML failure reports.</li>
+      <li>The reports include stage, category, evidence, and next actions.</li>
+      <li>Server job summaries link to the report when available.</li>
+    </ul>
+  </section>
+
+  <section id="tests">
+    <h2>12. Test plan</h2>
+    <p>Use the existing test suite style and add targeted tests per feature.</p>
+
+    <table>
+      <thead>
+        <tr><th>Feature</th><th>Suggested tests</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Typed evaluator contracts</td>
+          <td>Extend <code>tests/test_evaluator_optimizer_loops.py</code> for typed PASS/FAIL/BLOCKED, malformed JSON fallback, exact legacy PASS, and substring false positives.</td>
+        </tr>
+        <tr>
+          <td>Trajectory summary</td>
+          <td>Add tests that feed synthetic event rows into the summarizer and verify commands, tool calls, tests, policy violations, and escalation counts.</td>
+        </tr>
+        <tr>
+          <td>Repro manifest</td>
+          <td>Add tests around success and exception paths in <code>run.py</code> helpers; verify required fields and rerun command presence.</td>
+        </tr>
+        <tr>
+          <td>Workspace isolation</td>
+          <td>Use temporary git repos to verify worktree creation, patch export/apply, cleanup, and conflict artifacts.</td>
+        </tr>
+        <tr>
+          <td>Budgets</td>
+          <td>Unit-test budget checks and integration-test loop termination on max iterations, max tool steps, and max duration with mocked clocks.</td>
+        </tr>
+        <tr>
+          <td>Release gates</td>
+          <td>Test passing gates, critical gate failure blocking PR review, warning-only gates, and JSON artifact shape.</td>
+        </tr>
+        <tr>
+          <td>Lineage</td>
+          <td>Test prompt hash collection, materialization metadata loading, target repo SHA detection, and eval report serialization.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>Recommended validation commands before merging these changes:</p>
+    <pre><code>python -m pytest tests/test_evaluator_optimizer_loops.py tests/test_artifact_utils.py tests/test_run_cmds.py
+python -m pytest tests/test_eval_runner.py tests/test_agent_metrics.py
+python -m pytest</code></pre>
+  </section>
+
+  <section id="sequence">
+    <h2>13. Suggested implementation sequence</h2>
+    <ol>
+      <li><strong>Typed evaluator parser first.</strong> It is small, high leverage, and reduces false pass/fail behavior immediately.</li>
+      <li><strong>Persist typed evaluator artifacts.</strong> Make the loop outputs reliable before adding dashboards or advanced metrics.</li>
+      <li><strong>Add run lineage and repro manifest.</strong> This gives immediate operational value and supports every later feature.</li>
+      <li><strong>Add trajectory summary from existing events.</strong> Start with what is already emitted; do not over-instrument initially.</li>
+      <li><strong>Extend eval metrics with trajectory scores.</strong> Use simple deterministic scoring first, then add richer evaluator-assisted scoring later.</li>
+      <li><strong>Add budget enforcement.</strong> Begin with hard limits on loop iterations, wall time, tool steps, and diff size.</li>
+      <li><strong>Add release gates.</strong> Block PR review/creation when critical checks fail.</li>
+      <li><strong>Isolate parallel UoWs.</strong> This is high value but touches execution flow and git behavior, so implement after manifest/trajectory instrumentation can debug it.</li>
+    </ol>
+
+    <div class="panel">
+      <strong>Expected result.</strong> After these changes, Agent Workbench will be able to answer, for every run: what was attempted, what changed, which evidence was gathered, which gates passed, where behavior regressed, how to reproduce the failure, and whether the change is safe to release.
+    </div>
+  </section>
+
+  <footer class="small">
+    <p>Created for the <code>feat/improvements</code> branch as a planning document. This document intentionally describes implementation directions only; it does not itself change runner behavior.</p>
+  </footer>
+</main>
+</body>
+</html>
