@@ -60,6 +60,11 @@ def _git_ref_exists(repo: str | Path, ref: str) -> bool:
     return result.returncode == 0
 
 
+def _current_branch(repo: str | Path) -> str:
+    result = _run_git_command(repo, "branch", "--show-current")
+    return result.stdout.strip()
+
+
 def prepare_repo_branch(
     *,
     repo: str | Path,
@@ -70,6 +75,9 @@ def prepare_repo_branch(
     feature_branch = build_feature_branch_name(change_id, description_source)
 
     _run_git_command(repo_path, "rev-parse", "--is-inside-work-tree")
+
+    if _current_branch(repo_path) == feature_branch:
+        return feature_branch
 
     if _git_ref_exists(repo_path, "refs/heads/develop"):
         _run_git_command(repo_path, "checkout", "develop")
