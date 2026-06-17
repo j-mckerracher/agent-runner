@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import logging
 import json
+import sys
 import tempfile
+import types
 from contextlib import ExitStack
 from types import SimpleNamespace
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import core
 from core.cli_logging import DEFAULT_LOG_FORMAT, DemoteHttpxHealthcheckFilter, LocalTimezoneFormatter
 import run
 
@@ -89,6 +92,52 @@ class RunMainArgParseTests(unittest.TestCase):
         self.assertEqual(metadata["source"], "manual")
         self.assertEqual(metadata["manual_story_file"], str(story_path))
         self.assertEqual(metadata["original_ac_count"], 2)
+
+    def test_easy__workflow_stage_names_use_central_stage_constants(self) -> None:
+        self.assertEqual(run._workflow_stage_names(), list(run.WORKFLOW_STAGES))
+        self.assertEqual(run.WORKFLOW_STAGES[0], run.STAGE_MATERIALIZE)
+        self.assertEqual(run.WORKFLOW_STAGES[-1], run.STAGE_PR_REVIEW)
+
+    def test_easy__event_log_and_summary_refs_use_central_artifact_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            context_root = Path(tmpdir) / "agent-context"
+            logs_root = Path(tmpdir) / "logs"
+            with patch.object(run, "AGENT_CONTEXT_ROOT", context_root), patch.object(run, "LOGS_ROOT", logs_root):
+                event_path = run._event_log_path("TEST-PATH-001")
+                status_path = run._workflow_status_path("TEST-PATH-001")
+                summary_event_ref = run._summary_artifact_ref(run.ARTIFACT_FILE_EVENTS)
+
+        self.assertEqual(
+            event_path,
+            logs_root / "TEST-PATH-001" / run.ARTIFACT_FILE_EVENTS,
+        )
+        self.assertEqual(
+            status_path,
+            context_root / "TEST-PATH-001" / run.ARTIFACT_DIR_SUMMARY / run.WORKFLOW_STATUS_FILENAME,
+        )
+        self.assertEqual(
+            summary_event_ref,
+            f"{run.ARTIFACT_DIR_SUMMARY}/{run.ARTIFACT_FILE_EVENTS}",
+        )
+
+    def test_medium__stage_prompt_builders_use_central_artifact_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            context_root = Path(tmpdir) / "agent-context"
+            with patch.object(run, "AGENT_CONTEXT_ROOT", context_root):
+                task_prompt = run._task_generation_input(change_id="TEST-PROMPT-001", repo="/tmp/repo")
+                assigner_prompt = run._assignment_input(change_id="TEST-PROMPT-001", repo="/tmp/repo")
+                qa_prompt = run._qa_producer_input(
+                    change_id="TEST-PROMPT-001",
+                    repo="/tmp/repo",
+                    evidence_root=run._qa_evidence_root("TEST-PROMPT-001"),
+                )
+
+        base = context_root / "TEST-PROMPT-001"
+        self.assertIn(str(base / run.ARTIFACT_DIR_INTAKE), task_prompt)
+        self.assertIn(str(base / run.ARTIFACT_DIR_PLANNING / run.ARTIFACT_FILE_TASKS), assigner_prompt)
+        self.assertIn(str(base / run.ARTIFACT_DIR_INTAKE / run.ARTIFACT_FILE_STORY), assigner_prompt)
+        self.assertIn(str(base / run.ARTIFACT_DIR_QA / run.ARTIFACT_FILE_QA_REPORT), qa_prompt)
+        self.assertIn(run.ARTIFACT_FILE_QA_REPORT, qa_prompt)
 
 
 class RunAgentLlmOverrideResolverTests(unittest.TestCase):
@@ -175,6 +224,35 @@ class RunMainStagePlumbingTests(unittest.TestCase):
         config.update(overrides)
         return config
 
+    def _install_fake_workflow_modules(self, stack: ExitStack):
+        steps_module = types.ModuleType("core.steps")
+        steps_module.step_intake = Mock()
+        steps_module.step_pr_review = Mock(return_value="/tmp/pr_review.md")
+        steps_module.step_lessons_optimizer = Mock()
+        steps_module.step_task_gen_producer = Mock()
+        steps_module.step_task_gen_evaluator = Mock()
+        steps_module.step_task_assigner = Mock()
+        steps_module.step_assignment_evaluator = Mock()
+        steps_module.step_qa_engineer = Mock()
+        steps_module.step_qa_evaluator = Mock()
+
+        loops_module = types.ModuleType("core.evaluator_optimizer_loops")
+        loops_module.run_eval_optimizer_loop = Mock()
+        loops_module.run_uow_eval_loop = Mock()
+
+        stack.enter_context(
+            patch.dict(
+                sys.modules,
+                {
+                    "core.steps": steps_module,
+                    "core.evaluator_optimizer_loops": loops_module,
+                },
+            )
+        )
+        stack.enter_context(patch.object(core, "steps", steps_module, create=True))
+        stack.enter_context(patch.object(core, "evaluator_optimizer_loops", loops_module, create=True))
+        return steps_module, loops_module
+
     def test_easy__main_configures_requested_log_level(self) -> None:
         workflow_input = SimpleNamespace(
             repo="/tmp/repo",
@@ -186,6 +264,7 @@ class RunMainStagePlumbingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with ExitStack() as stack:
+                self._install_fake_workflow_modules(stack)
                 stack.enter_context(patch.object(run, "AGENT_CONTEXT_ROOT", Path(tmpdir) / "agent-context"))
                 configure_logging_mock = stack.enter_context(patch.object(run, "configure_logging"))
                 stack.enter_context(patch.object(run, "resolve_workflow_input", return_value=workflow_input))
@@ -201,12 +280,7 @@ class RunMainStagePlumbingTests(unittest.TestCase):
                 stack.enter_context(patch("core.opik_tracing.opik.Opik", return_value=Mock()))
                 stack.enter_context(patch("signal.signal"))
                 stack.enter_context(patch("core.materialize.run_materialization"))
-                stack.enter_context(patch("core.steps.step_intake"))
-                stack.enter_context(patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop"))
-                stack.enter_context(patch("core.evaluator_optimizer_loops.run_uow_eval_loop"))
-                stack.enter_context(patch("core.steps.step_pr_review"))
                 stack.enter_context(patch("run.load_assignments", return_value={"batches": []}))
-                stack.enter_context(patch("core.steps.step_lessons_optimizer"))
                 run.main(
                     repo="/tmp/repo",
                     story_file="/tmp/story.json",
@@ -237,25 +311,25 @@ class RunMainStagePlumbingTests(unittest.TestCase):
             call_order.append("intake")
             raise StopAfterIntake("stop after intake")
 
-        with patch.object(run, "resolve_workflow_input", return_value=workflow_input), \
-             patch.object(run, "use_runner_root"), \
-             patch.object(run, "clean_workspace"), \
-             patch.object(run, "_load_runner_config", return_value=self._config()), \
-             patch.object(run, "_emit"), \
-             patch.object(run, "_write_workflow_status"), \
-             patch.object(run, "_require_file"), \
-             patch.object(run, "_require_dir"), \
-             patch.object(run, "prepare_repo_branch", side_effect=fake_prepare_repo_branch) as prepare_repo_branch_mock, \
-             patch("core.opik_tracing.opik.configure"), \
-             patch("core.opik_tracing.opik.Opik", return_value=Mock()), \
-             patch("signal.signal"), \
-             patch("core.materialize.run_materialization"), \
-             patch("core.steps.step_intake", side_effect=fake_step_intake) as intake_mock, \
-             patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop"), \
-             patch("core.evaluator_optimizer_loops.run_uow_eval_loop"), \
-             patch("core.steps.step_pr_review"), \
-             patch("run.load_assignments", return_value={"batches": []}), \
-             patch("core.steps.step_lessons_optimizer"):
+        with ExitStack() as stack:
+            steps_module, _loops_module = self._install_fake_workflow_modules(stack)
+            steps_module.step_intake.side_effect = fake_step_intake
+            stack.enter_context(patch.object(run, "resolve_workflow_input", return_value=workflow_input))
+            stack.enter_context(patch.object(run, "use_runner_root"))
+            stack.enter_context(patch.object(run, "clean_workspace"))
+            stack.enter_context(patch.object(run, "_load_runner_config", return_value=self._config()))
+            stack.enter_context(patch.object(run, "_emit"))
+            stack.enter_context(patch.object(run, "_write_workflow_status"))
+            stack.enter_context(patch.object(run, "_require_file"))
+            stack.enter_context(patch.object(run, "_require_dir"))
+            prepare_repo_branch_mock = stack.enter_context(
+                patch.object(run, "prepare_repo_branch", side_effect=fake_prepare_repo_branch)
+            )
+            stack.enter_context(patch("core.opik_tracing.opik.configure"))
+            stack.enter_context(patch("core.opik_tracing.opik.Opik", return_value=Mock()))
+            stack.enter_context(patch("signal.signal"))
+            stack.enter_context(patch("core.materialize.run_materialization"))
+            stack.enter_context(patch("run.load_assignments", return_value={"batches": []}))
             with self.assertRaises(StopAfterIntake):
                 run.main(
                     repo="/tmp/repo",
@@ -270,9 +344,9 @@ class RunMainStagePlumbingTests(unittest.TestCase):
             change_id="TEST-BRANCH-001",
             description_source="Fix flaky invoice export",
         )
-        intake_mock.assert_called_once()
+        steps_module.step_intake.assert_called_once()
         self.assertEqual(call_order[:2], ["branch", "intake"])
-        self.assertEqual(intake_mock.call_args.kwargs["feature_branch"], "feature/test-branch")
+        self.assertEqual(steps_module.step_intake.call_args.kwargs["feature_branch"], "feature/test-branch")
 
     def test_easy__configure_logging_uses_local_timezone_formatter(self) -> None:
         httpx_logger = logging.getLogger("httpx")
@@ -343,6 +417,7 @@ class RunMainStagePlumbingTests(unittest.TestCase):
         intake_mock = Mock()
         with tempfile.TemporaryDirectory() as tmpdir:
             with ExitStack() as stack:
+                steps_module, _loops_module = self._install_fake_workflow_modules(stack)
                 stack.enter_context(patch.object(run, "AGENT_CONTEXT_ROOT", Path(tmpdir) / "agent-context"))
                 stack.enter_context(patch.object(run, "resolve_workflow_input", return_value=workflow_input))
                 stack.enter_context(patch.object(run, "use_runner_root"))
@@ -357,12 +432,8 @@ class RunMainStagePlumbingTests(unittest.TestCase):
                 stack.enter_context(patch("core.opik_tracing.opik.Opik", return_value=Mock()))
                 stack.enter_context(patch("signal.signal"))
                 stack.enter_context(patch("core.materialize.run_materialization"))
-                stack.enter_context(patch("core.steps.step_intake", intake_mock))
-                stack.enter_context(patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop"))
-                stack.enter_context(patch("core.evaluator_optimizer_loops.run_uow_eval_loop"))
-                stack.enter_context(patch("core.steps.step_pr_review"))
+                steps_module.step_intake = intake_mock
                 stack.enter_context(patch("run.load_assignments", return_value={"batches": []}))
-                stack.enter_context(patch("core.steps.step_lessons_optimizer"))
                 run.main(
                     repo="/tmp/repo",
                     story_file="/tmp/story.json",
@@ -396,6 +467,7 @@ class RunMainStagePlumbingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with ExitStack() as stack:
+                steps_module, loops_module = self._install_fake_workflow_modules(stack)
                 stack.enter_context(patch.object(run, "AGENT_CONTEXT_ROOT", Path(tmpdir) / "agent-context"))
                 stack.enter_context(patch.object(run, "resolve_workflow_input", return_value=workflow_input))
                 stack.enter_context(patch.object(run, "use_runner_root"))
@@ -410,12 +482,11 @@ class RunMainStagePlumbingTests(unittest.TestCase):
                 stack.enter_context(patch("core.opik_tracing.opik.Opik", return_value=Mock()))
                 stack.enter_context(patch("signal.signal"))
                 stack.enter_context(patch("core.materialize.run_materialization"))
-                intake_mock = stack.enter_context(patch("core.steps.step_intake"))
-                stack.enter_context(patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop", side_effect=fake_eval_loop))
-                stack.enter_context(patch("core.evaluator_optimizer_loops.run_uow_eval_loop", side_effect=fake_uow_loop))
-                pr_review_mock = stack.enter_context(patch("core.steps.step_pr_review"))
+                intake_mock = steps_module.step_intake
+                loops_module.run_eval_optimizer_loop.side_effect = fake_eval_loop
+                loops_module.run_uow_eval_loop.side_effect = fake_uow_loop
+                pr_review_mock = steps_module.step_pr_review
                 stack.enter_context(patch("run.load_assignments", return_value={"batches": [{"batch_id": 1, "parallel_execution": False, "uows": [{"uow_id": "UOW-001"}]}]}))
-                stack.enter_context(patch("core.steps.step_lessons_optimizer"))
                 run.main(
                     repo="/tmp/repo",
                     story_file="/tmp/story.json",
@@ -458,6 +529,7 @@ class RunMainStagePlumbingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with ExitStack() as stack:
+                self._install_fake_workflow_modules(stack)
                 stack.enter_context(patch.object(run, "AGENT_CONTEXT_ROOT", Path(tmpdir) / "agent-context"))
                 stack.enter_context(patch.dict(run.os.environ, {"AGENT_RUNNER_EVENT_LOG": "/tmp/events.jsonl"}, clear=False))
                 stack.enter_context(patch.object(run, "resolve_workflow_input", return_value=workflow_input))
@@ -473,12 +545,7 @@ class RunMainStagePlumbingTests(unittest.TestCase):
                 stack.enter_context(patch("core.opik_tracing.opik.Opik", return_value=Mock()))
                 stack.enter_context(patch("signal.signal"))
                 stack.enter_context(patch("core.materialize.run_materialization"))
-                stack.enter_context(patch("core.steps.step_intake"))
-                stack.enter_context(patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop"))
-                stack.enter_context(patch("core.evaluator_optimizer_loops.run_uow_eval_loop"))
-                stack.enter_context(patch("core.steps.step_pr_review"))
                 stack.enter_context(patch("run.load_assignments", return_value={"batches": []}))
-                stack.enter_context(patch("core.steps.step_lessons_optimizer"))
                 run.main(
                     repo="/tmp/repo",
                     story_file="/tmp/story.json",
@@ -510,6 +577,7 @@ class RunMainStagePlumbingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with ExitStack() as stack:
+                steps_module, loops_module = self._install_fake_workflow_modules(stack)
                 stack.enter_context(patch.object(run, "AGENT_CONTEXT_ROOT", Path(tmpdir) / "agent-context"))
                 stack.enter_context(patch.object(run, "resolve_workflow_input", return_value=workflow_input))
                 stack.enter_context(patch.object(run, "use_runner_root"))
@@ -524,12 +592,11 @@ class RunMainStagePlumbingTests(unittest.TestCase):
                 stack.enter_context(patch("core.opik_tracing.opik.Opik", return_value=Mock()))
                 stack.enter_context(patch("signal.signal"))
                 stack.enter_context(patch("core.materialize.run_materialization"))
-                stack.enter_context(patch("core.steps.step_intake"))
-                stack.enter_context(patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop", side_effect=fake_eval_loop))
-                stack.enter_context(patch("core.evaluator_optimizer_loops.run_uow_eval_loop"))
-                pr_review_mock = stack.enter_context(patch("core.steps.step_pr_review", side_effect=fake_pr_review))
+                loops_module.run_eval_optimizer_loop.side_effect = fake_eval_loop
+                pr_review_mock = steps_module.step_pr_review
+                pr_review_mock.side_effect = fake_pr_review
                 stack.enter_context(patch("run.load_assignments", return_value={"batches": []}))
-                lessons_mock = stack.enter_context(patch("core.steps.step_lessons_optimizer"))
+                lessons_mock = steps_module.step_lessons_optimizer
                 run.main(
                     repo="/tmp/repo",
                     story_file="/tmp/story.json",
@@ -560,6 +627,7 @@ class RunMainStagePlumbingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with ExitStack() as stack:
+                steps_module, loops_module = self._install_fake_workflow_modules(stack)
                 stack.enter_context(patch.object(run, "AGENT_CONTEXT_ROOT", Path(tmpdir) / "agent-context"))
                 stack.enter_context(patch.dict(run.os.environ, {"AGENT_RUNNER_EVALUATION_RUN": "1"}, clear=False))
                 stack.enter_context(patch.object(run, "resolve_workflow_input", return_value=workflow_input))
@@ -575,12 +643,9 @@ class RunMainStagePlumbingTests(unittest.TestCase):
                 stack.enter_context(patch("core.opik_tracing.opik.Opik", return_value=Mock()))
                 stack.enter_context(patch("signal.signal"))
                 stack.enter_context(patch("core.materialize.run_materialization"))
-                stack.enter_context(patch("core.steps.step_intake"))
-                stack.enter_context(patch("core.evaluator_optimizer_loops.run_eval_optimizer_loop", side_effect=fake_eval_loop))
-                stack.enter_context(patch("core.evaluator_optimizer_loops.run_uow_eval_loop"))
-                pr_review_mock = stack.enter_context(patch("core.steps.step_pr_review"))
+                loops_module.run_eval_optimizer_loop.side_effect = fake_eval_loop
+                pr_review_mock = steps_module.step_pr_review
                 stack.enter_context(patch("run.load_assignments", return_value={"batches": []}))
-                stack.enter_context(patch("core.steps.step_lessons_optimizer"))
                 run.main(
                     repo="/tmp/repo",
                     story_file="/tmp/story.json",

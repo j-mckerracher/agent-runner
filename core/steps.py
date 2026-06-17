@@ -1280,7 +1280,6 @@ def step_intake(
     feature_branch: str | None = None,
 ):
     logger.info("step_intake: change_id=%s mode=%s runner=%s source=%s", change_id, intake_mode, runner, intake_source)
-    print(f"Received intake source ({intake_mode}): {intake_source}")
     _annotate_trace(
         stage="intake",
         runner=runner,
