@@ -1,45 +1,67 @@
 # ============================================================================
 # Python-related artifacts and caches
 # ============================================================================
-__pycache__/              # Python bytecode cache directories
-*.py[cod]                 # Compiled Python files (.pyc, .pyo, .pyd)
-*$py.class                # Python class file variants
-.pytest_cache/            # pytest test cache
-.mypy_cache/              # mypy type checker cache
-.ruff_cache/              # ruff linter cache
-.coverage                 # test coverage report
-htmlcov/                  # HTML coverage report directory
-.venv/                    # Python virtual environment
-venv/                     # Alternative virtual environment directory name
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
 
 # ============================================================================
-# IDE and OS-specific files
+# IDE, editor, and OS-specific files
 # ============================================================================
-.DS_Store                 # macOS system file
-.idea/                    # JetBrains IDE settings
-.vscode/                  # Visual Studio Code settings
+.DS_Store
+.idea/
+.vscode/
+.cursor/
+.serena/
+
+# ============================================================================
+# Local environment and generated docs
+# ============================================================================
+.env
+AGENTS.md
+
+# ============================================================================
+# Node.js (local tooling only)
+# ============================================================================
+node_modules/
+package.json
+package-lock.json
 
 # ============================================================================
 # Local Agent Workbench runtime state and temporary data
 # ============================================================================
-agent-context/            # Agent execution context and state directories
-logs/                     # Application log files
-status/                   # Status tracking files
+agent-context/
+logs/
+status/
+workbench.db
+graphify-out/
+run-analysis-report.html
 
 # ============================================================================
-# Evaluation reports and artifacts (local runs only)
+# Local skill copies (tracked skills live under .claude/skills/)
 # ============================================================================
-eval/reports/*.json       # JSON evaluation reports
-eval/reports/analyze/     # Evaluation analysis output
+.claude/skills/agent-workbench-harness/
+
+# ============================================================================
+# Evaluation artifacts (local runs only)
+# ============================================================================
+eval/agent_datasets/
+eval/agent_reports/
+eval/benchmarks/
+eval/reports/
 
 # ============================================================================
 # Temporary and generated files
 # ============================================================================
-package-lock.json         # Node.js lock file (not committed; only include package.json)
-/tmp_artifacts/           # Temporary build artifacts
-/tmp_vault/               # Temporary vault data
-/tmp_vault_direct/        # Direct temporary vault data
-/workflow-fixtures/       # Workflow test fixtures
-/eval/benchmarks/         # Benchmark evaluation results
-/.playwright-mcp/         # Playwright MCP configuration
-/.env                     # Local environment variables (secrets, API keys)
+/tmp_artifacts/
+/tmp_vault/
+/tmp_vault_direct/
+/workflow-fixtures/
+/.playwright-mcp/
