@@ -9,6 +9,34 @@ import yaml
 
 
 class EvaluatorOptimizerLoopTelemetryTests(unittest.TestCase):
+    def test_easy__eval_optimizer_loop_omitted_runner_model_propagates_none(self):
+        from core.evaluator_optimizer_loops import run_eval_optimizer_loop
+
+        producer_calls = []
+        evaluator_calls = []
+
+        def producer(prompt: str, **kwargs) -> str:
+            producer_calls.append((prompt, kwargs))
+            return f"produced:{prompt}"
+
+        def evaluator(prompt: str, **kwargs) -> str:
+            evaluator_calls.append((prompt, kwargs))
+            return "PASS"
+
+        output, evaluation = run_eval_optimizer_loop(
+            producer,
+            "agent-context/LOOP-2/planning/task.yaml",
+            evaluator,
+            "agent-context/LOOP-2/qa/eval.yaml",
+            iter_count=1,
+            runner="claude",
+        )
+
+        self.assertEqual(output, "produced:agent-context/LOOP-2/planning/task.yaml")
+        self.assertEqual(evaluation, "PASS")
+        self.assertIsNone(producer_calls[0][1]["runner_model"])
+        self.assertIsNone(evaluator_calls[0][1]["runner_model"])
+
     def test_medium__eval_optimizer_loop_emits_explicit_loop_events(self):
         from core.evaluator_optimizer_loops import run_eval_optimizer_loop
         from server import events
@@ -254,6 +282,63 @@ class EvaluatorOptimizerLoopTelemetryTests(unittest.TestCase):
             self.assertEqual(payload["status"], "PASS")
             self.assertEqual(payload["summary"], "alpha verified")
             self.assertEqual(payload["artifact_evaluated"], "impl_report.yaml")
+
+    def test_easy__uow_eval_loop_omitted_runner_model_propagates_none(self):
+        from core.evaluator_optimizer_loops import run_uow_eval_loop
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "agent-context"
+            uow_dir = root / "CHANGE-2" / "execution" / "UOW-001"
+            uow_dir.mkdir(parents=True)
+            (uow_dir / "uow_spec.yaml").write_text(
+                yaml.safe_dump(
+                    {
+                        "uow_id": "UOW-001",
+                        "title": "Implement beta ordering helper",
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+            software_engineer_calls = []
+            evaluator_calls = []
+
+            def software_engineer(**kwargs) -> str:
+                software_engineer_calls.append(kwargs)
+                (uow_dir / "impl_report.yaml").write_text(
+                    yaml.safe_dump(
+                        {
+                            "change_id": "CHANGE-2",
+                            "uow_id": "UOW-001",
+                            "status": "complete",
+                            "implementation_summary": "Beta helper verified",
+                            "definition_of_done_status": [
+                                {"item": "Beta order preserved", "met": True, "evidence": "beta verified"}
+                            ],
+                        },
+                        sort_keys=False,
+                    ),
+                    encoding="utf-8",
+                )
+                return "implemented"
+
+            def evaluator(**kwargs) -> str:
+                evaluator_calls.append(kwargs)
+                return "PASS"
+
+            with patch("core.evaluator_optimizer_loops.steps.AGENT_CONTEXT_ROOT", root), patch(
+                "core.evaluator_optimizer_loops.steps.step_software_engineer", side_effect=software_engineer
+            ), patch("core.evaluator_optimizer_loops.steps.step_software_engineer_evaluator", side_effect=evaluator):
+                run_uow_eval_loop(
+                    "UOW-001",
+                    "CHANGE-2",
+                    repo="/tmp/repo",
+                    iter_count=1,
+                    runner="claude",
+                )
+
+        self.assertIsNone(software_engineer_calls[0]["runner_model"])
+        self.assertIsNone(evaluator_calls[0]["runner_model"])
 
 
 if __name__ == "__main__":

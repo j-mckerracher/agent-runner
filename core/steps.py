@@ -12,7 +12,7 @@ from .opik_compat import opik_context
 from .repo_prep import build_feature_branch_name
 from .run_cmds import run_claude_cmd, run_agent_cmd
 from .opik_integration import call_evaluator_sdk
-from .runner_models import DEFAULT_GEMINI_MODEL, resolve_agent_model
+from .runner_models import resolve_agent_model
 from .runtime_paths import agent_context_root, logs_root
 from .story_inputs import load_manual_story, normalize_acceptance_criteria
 from .ui_trace_bridge import track_with_ui
@@ -1275,7 +1275,7 @@ def step_intake(
     change_id: str,
     intake_mode: str = "ado",
     runner: str = "claude",
-    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    runner_model: str | None = None,
     extra_context: str | None = None,
     feature_branch: str | None = None,
 ):
@@ -1373,7 +1373,7 @@ def step_intake(
 def step_task_gen_producer(
     context: str,
     runner: str = "claude",
-    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    runner_model: str | None = None,
 ) -> str:
     change_id = _extract_change_id(context)
     repo = _extract_repo_path(context)
@@ -1409,7 +1409,7 @@ def step_task_gen_producer(
 def step_task_gen_evaluator(
     context: str,
     runner: str = "claude",
-    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    runner_model: str | None = None,
 ) -> str:
     change_id = _extract_change_id(context)
     logger.info("step_task_gen_evaluator: change_id=%s runner=%s", change_id, runner)
@@ -1442,7 +1442,7 @@ def step_task_gen_evaluator(
 def step_task_assigner(
     context: str,
     runner: str = "claude",
-    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    runner_model: str | None = None,
 ) -> str:
     change_id = _extract_change_id(context)
     repo = _extract_repo_path(context)
@@ -1479,7 +1479,7 @@ def step_task_assigner(
 def step_assignment_evaluator(
     context: str,
     runner: str = "claude",
-    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    runner_model: str | None = None,
 ) -> str:
     change_id = _extract_change_id(context)
     logger.info("step_assignment_evaluator: change_id=%s runner=%s", change_id, runner)
@@ -1518,7 +1518,7 @@ def step_software_engineer(
     evaluator_feedback: str = "",
     evaluator_feedback_path: str = "",
     runner: str = "claude",
-    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    runner_model: str | None = None,
 ) -> str:
     logger.info(
         "step_software_engineer: uow_id=%s change_id=%s runner=%s has_feedback=%s",
@@ -1577,7 +1577,7 @@ def step_software_engineer_evaluator(
     change_id: str,
     repo: str,
     runner: str = "claude",
-    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    runner_model: str | None = None,
 ) -> str:
     logger.info("step_software_engineer_evaluator: uow_id=%s change_id=%s runner=%s", uow_id, change_id, runner)
     _annotate_trace(
@@ -1618,7 +1618,7 @@ def step_software_engineer_evaluator(
 def step_qa_engineer(
     context: str,
     runner: str = "claude",
-    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    runner_model: str | None = None,
 ) -> str:
     change_id = _extract_change_id(context)
     repo = _extract_repo_path(context)
@@ -1649,7 +1649,7 @@ def step_qa_engineer(
 def step_qa_evaluator(
     context: str,
     runner: str = "claude",
-    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    runner_model: str | None = None,
 ) -> str:
     change_id = _extract_change_id(context)
     logger.info("step_qa_evaluator: change_id=%s runner=%s", change_id, runner)
@@ -1779,7 +1779,7 @@ def step_pr_review(
     change_id: str,
     repo: str,
     runner: str = "claude",
-    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    runner_model: str | None = None,
 ) -> str:
     logger.info("step_pr_review: change_id=%s runner=%s", change_id, runner)
     _annotate_trace(stage="pr-review", runner=runner, change_id=change_id)
@@ -1845,7 +1845,7 @@ def step_lessons_optimizer(
     change_id: str,
     repo: str,
     runner: str = "claude",
-    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    runner_model: str | None = None,
 ) -> str:
     """Disabled: prompt optimization must be a manual, operator-controlled action."""
     logger.info("step_lessons_optimizer: disabled; refusing invocation for change_id=%s runner=%s", change_id, runner)

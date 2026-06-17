@@ -380,6 +380,21 @@ class StepIntakeManualModeTests(unittest.TestCase):
             request_user_input.assert_not_called()
 
 
+class StepRunnerModelDefaultTests(unittest.TestCase):
+    def test_easy__task_gen_producer_omitted_runner_model_resolves_with_none(self):
+        context = "Generate a task plan from agent-context/CHANGE-1/intake/story.yaml."
+
+        with (
+            patch("core.steps.resolve_agent_model", return_value="claude-haiku-4-5-20251001") as resolve_agent_model,
+            patch("core.steps.run_agent_cmd", return_value="task plan complete") as run_agent_cmd,
+        ):
+            result = step_task_gen_producer(context=context, runner="claude")
+
+        self.assertEqual(result, "task plan complete")
+        resolve_agent_model.assert_called_once_with("task-generator", "claude", None)
+        self.assertEqual(run_agent_cmd.call_args.kwargs["runner_model"], "claude-haiku-4-5-20251001")
+
+
 class PullRequestStageTests(unittest.TestCase):
     def _write_pr_stage_artifacts(self, root: Path, change_id: str = "WI-123") -> Path:
         context_root = root / "agent-context"

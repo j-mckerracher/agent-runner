@@ -9,7 +9,6 @@ from .opik_compat import opik_context
 
 from . import steps
 from .artifact_utils import normalize_impl_report_file, snapshot_impl_report_attempt, validate_impl_report_alignment
-from .runner_models import DEFAULT_GEMINI_MODEL
 from .ui_trace_bridge import start_span_with_ui, track_with_ui
 
 logger = logging.getLogger(__name__)
@@ -107,7 +106,7 @@ def run_uow_eval_loop(
     repo: str,
     iter_count: int = 3,
     runner: str = "claude",
-    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    runner_model: str | None = None,
     evaluator_runner: str | None = None,
     evaluator_runner_model: str | None = None,
 ) -> tuple[str, str]:
@@ -296,7 +295,7 @@ def run_eval_optimizer_loop(
     evaluator_prompt,
     iter_count: int = 3,
     runner: str = "claude",
-    runner_model: str | None = DEFAULT_GEMINI_MODEL,
+    runner_model: str | None = None,
     evaluator_runner: str | None = None,
     evaluator_runner_model: str | None = None,
 ):

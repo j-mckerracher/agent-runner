@@ -161,6 +161,14 @@ class TestResolveAgentModel(unittest.TestCase):
             self.assertIsNotNone(result)
             self.assertIn(result.split("/", 1)[-1], RUNNER_MODEL_CHOICES[runner])
 
+    def test_builtin_runner_defaults_are_unique(self):
+        builtin_defaults = {
+            runner: model
+            for runner, model in RUNNER_DEFAULT_MODELS.items()
+            if runner in RUNNER_MODEL_CHOICES
+        }
+        self.assertEqual(len(set(builtin_defaults.values())), len(builtin_defaults))
+
 
 class RunnerLlmConfigTests(unittest.TestCase):
     def test_easy__cheapest_model_resolution_for_builtin_runners(self):

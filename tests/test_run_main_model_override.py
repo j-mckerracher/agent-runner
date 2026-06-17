@@ -102,6 +102,19 @@ class RunAgentLlmOverrideResolverTests(unittest.TestCase):
         self.assertEqual(resolved["qa-engineer"], {"runner": "copilot", "model": "gpt-5.4"})
         self.assertEqual(resolved["pr-reviewer"], {"runner": "copilot", "model": "gpt-5.4"})
 
+    def test_easy__global_model_still_wins_over_configured_agent_default(self) -> None:
+        resolved = run.resolve_agent_llm_overrides(
+            runner="copilot",
+            model="gpt-5.4",
+            config={
+                "agent_model_defaults": {
+                    "qa-engineer": {"copilot": "gpt-5-mini"},
+                }
+            },
+        )
+
+        self.assertEqual(resolved["qa-engineer"], {"runner": "copilot", "model": "gpt-5.4"})
+
     def test_easy__runner_only_override_uses_runner_default_model(self) -> None:
         resolved = run.resolve_agent_llm_overrides(
             runner="copilot",
