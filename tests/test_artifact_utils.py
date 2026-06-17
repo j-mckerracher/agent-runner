@@ -154,6 +154,49 @@ class ImplReportArtifactIntegrityTests(unittest.TestCase):
                         uow_id="UOW-004",
                     )
 
+    def test_easy__content_poor_spec_does_not_raise_domain_mismatch(self):
+        """Regression: content-poor spec (metadata-only) must not hard-fail validation.
+
+        When uow_spec.yaml has no real domain vocabulary — only structural fields like
+        change_id / uow_id / assigned_role — the validator must skip the domain check
+        (existing "No strong domain terms" warning path) instead of raising
+        ImplReportValidationError.  Triggered by the easy-t1-20260617 run failure.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "agent-context"
+            change_id = "easy-t1-20260617-184653325252"
+            uow_dir = root / change_id / "execution" / "UOW-004"
+            # Spec has only metadata keys — exactly the content-poor fallback shape.
+            self._write_yaml(
+                uow_dir / "uow_spec.yaml",
+                {
+                    "uow_id": "UOW-004",
+                    "source_task_id": "UOW-004",
+                    "change_id": change_id,
+                    "story_id": "story-001",
+                    "assigned_role": "global-software-engineer",
+                    "dependencies": [],
+                    "priority": "medium",
+                    "complexity": "low",
+                },
+            )
+            self._write_yaml(
+                uow_dir / "impl_report.yaml",
+                {
+                    "change_id": change_id,
+                    "uow_id": "UOW-004",
+                    "status": "complete",
+                    "implementation_summary": "Added the requested feature.",
+                },
+            )
+            # Must NOT raise; the content-poor spec triggers the "no strong domain
+            # terms" warning path, which returns a passing result.
+            validate_impl_report_alignment(
+                agent_context_root=root,
+                change_id=change_id,
+                uow_id="UOW-004",
+            )
+
     def test_easy__snapshot_impl_report_attempt_copies_current_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "agent-context"
