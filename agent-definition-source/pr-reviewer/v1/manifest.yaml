@@ -1,6 +1,6 @@
 name: pr-reviewer
 version: v1
-description: "Review-only pull request agent, v1"
+description: "no-mistakes gate agent — drives axi run/respond loop, auto-fixes mechanical findings, escalates ask-user findings, v1"
 source: "agent-definition-source/pr-reviewer/v1/prompt.md"
 claude_code_agent_file: "12-pr-reviewer.agent.md"
 codex_agent_file: "12-pr-reviewer.agent.md"

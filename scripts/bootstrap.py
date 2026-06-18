@@ -29,6 +29,9 @@ RTK_TAG = "mayo-v0.39.0"
 RTK_INSTALL_INFO_URL = "https://dev.azure.com/mclm/Mayo%20Open%20Developer%20Network/_git/mayo-rtk-ai"
 GRAPHIFY_PACKAGE = "graphifyy"
 GRAPHIFY_INFO_URL = "https://github.com/safishamsi/graphify"
+NO_MISTAKES_REPO_URL = "https://dev.azure.com/mclm/Mayo%20Open%20Developer%20Network/_git/ai-skill-no-mistakes"
+NO_MISTAKES_INSTALL_INFO_URL = "https://dev.azure.com/mclm/Mayo%20Open%20Developer%20Network/_git/ai-skill-no-mistakes"
+NO_MISTAKES_LOCAL_CLONE = Path.home() / "Code" / "no-mistakes"
 BOOTSTRAP_REEXEC_ENV = "AGENT_RUNNER_BOOTSTRAP_REEXEC"
 OPIK_RUNTIME_ENV_KEYS = (
     "OPIK_BASE_URL",
@@ -780,6 +783,143 @@ def _check_graphify(*, with_graphify: bool, no_graphify: bool) -> None:
         )
 
 
+def _register_no_mistakes_global_permission() -> None:
+    """Add Bash(no-mistakes *) to ~/.claude/settings.json permissions.allow if not already present."""
+    import json as _json
+
+    settings_path = Path.home() / ".claude" / "settings.json"
+    if not settings_path.exists():
+        return
+    try:
+        data = _json.loads(settings_path.read_text(encoding="utf-8"))
+        allow: list = data.setdefault("permissions", {}).setdefault("allow", [])
+        entry = "Bash(no-mistakes *)"
+        if entry not in allow:
+            allow.append(entry)
+            settings_path.write_text(_json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[bootstrap] Warning: could not update claude settings for no-mistakes: {exc}", flush=True)
+
+
+def _install_no_mistakes() -> bool:
+    """Build and install no-mistakes from the Mayo ADO fork. Returns True on success."""
+    _echo_step("Installing no-mistakes (pre-upstream validation gate)")
+
+    go_cmd = _find_command("go")
+    if not go_cmd:
+        print(
+            "[bootstrap] Warning: Go toolchain not found (go missing). no-mistakes install skipped.\n"
+            f"  Install Go then re-run bootstrap, or see {NO_MISTAKES_INSTALL_INFO_URL}",
+            flush=True,
+        )
+        return False
+
+    git_cmd = _find_command("git")
+    if not git_cmd:
+        print("[bootstrap] Warning: git not found. no-mistakes install skipped.", flush=True)
+        return False
+
+    try:
+        # Use the existing local clone if present, otherwise clone.
+        if NO_MISTAKES_LOCAL_CLONE.exists():
+            clone_dir = NO_MISTAKES_LOCAL_CLONE
+            print(f"[bootstrap] Using existing no-mistakes clone at {clone_dir}", flush=True)
+        else:
+            clone_dir = RUNNER_ROOT / ".no-mistakes-build"
+            if clone_dir.exists():
+                import shutil as _shutil
+                _shutil.rmtree(clone_dir)
+            _run([git_cmd, "clone", "--depth", "1", NO_MISTAKES_REPO_URL, str(clone_dir)])
+
+        _run(["make", "install"], cwd=clone_dir)
+
+        # Codesign on macOS (ad-hoc) so Gatekeeper doesn't block it.
+        import shutil as _shutil
+        import subprocess as _subprocess
+        gopath = _subprocess.check_output([go_cmd, "env", "GOPATH"], text=True).strip()
+        binary = Path(gopath) / "bin" / "no-mistakes"
+        if sys.platform == "darwin" and binary.exists():
+            _subprocess.run(
+                ["codesign", "-s", "-", str(binary)],
+                check=False, capture_output=True,
+            )
+
+        print(f"[bootstrap] no-mistakes installed. See {NO_MISTAKES_INSTALL_INFO_URL}", flush=True)
+        return True
+    except BootstrapError as exc:
+        print(
+            f"[bootstrap] Warning: no-mistakes build/install failed: {exc}\n"
+            "  The pr-review stage will fail until no-mistakes is available.",
+            flush=True,
+        )
+        return False
+
+
+def _check_no_mistakes(*, with_no_mistakes: bool, no_no_mistakes: bool) -> None:
+    """Optionally install no-mistakes — best-effort, never blocks bootstrap."""
+    if no_no_mistakes:
+        print(
+            "[bootstrap] Skipping no-mistakes (--no-no-mistakes). "
+            "The pr-review stage will fail until it is installed.",
+            flush=True,
+        )
+        return
+
+    if _find_command("no-mistakes"):
+        print("[bootstrap] no-mistakes already installed.", flush=True)
+        _register_no_mistakes_global_permission()
+        try:
+            _run(["no-mistakes", "init"])
+        except BootstrapError as exc:
+            print(f"[bootstrap] Warning: no-mistakes init failed: {exc}. Skill may not be registered.", flush=True)
+        return
+
+    if with_no_mistakes:
+        if _install_no_mistakes():
+            _register_no_mistakes_global_permission()
+            try:
+                _run(["no-mistakes", "init"])
+            except BootstrapError as exc:
+                print(f"[bootstrap] Warning: no-mistakes init failed: {exc}.", flush=True)
+        return
+
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        print(
+            "[bootstrap] no-mistakes CLI not found (skipping install in non-interactive mode). "
+            "Pass --with-no-mistakes to install automatically.\n"
+            f"  See {NO_MISTAKES_INSTALL_INFO_URL}",
+            flush=True,
+        )
+        return
+
+    _echo_step("Optional: no-mistakes pre-upstream validation gate")
+    print(
+        "no-mistakes runs a validation pipeline (intent → rebase → review → test → lint → "
+        "push → PR → CI) before changes reach the remote. The pr-review workflow stage "
+        "requires it.\n"
+        f"  Source: {NO_MISTAKES_INSTALL_INFO_URL}\n"
+        "  Requires: Go toolchain\n"
+        "Skip this to continue without the gate (the pr-review stage will fail).",
+        flush=True,
+    )
+    try:
+        raw = input("  Install no-mistakes now? [y/N]: ").strip().lower()
+    except EOFError:
+        return
+    if raw in ("y", "yes"):
+        if _install_no_mistakes():
+            _register_no_mistakes_global_permission()
+            try:
+                _run(["no-mistakes", "init"])
+            except BootstrapError as exc:
+                print(f"[bootstrap] Warning: no-mistakes init failed: {exc}.", flush=True)
+    else:
+        print(
+            "[bootstrap] no-mistakes skipped. The pr-review stage will fail until it is installed.",
+            flush=True,
+        )
+
+
 def _prompt_for_opik() -> bool:
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return False
@@ -855,6 +995,17 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip graphify installation. Skips the interactive prompt.",
     )
+    no_mistakes_group = parser.add_mutually_exclusive_group()
+    no_mistakes_group.add_argument(
+        "--with-no-mistakes",
+        action="store_true",
+        help="Build and install the no-mistakes gate CLI from the Mayo ADO fork. Skips the interactive prompt.",
+    )
+    no_mistakes_group.add_argument(
+        "--no-no-mistakes",
+        action="store_true",
+        help="Skip no-mistakes installation. Skips the interactive prompt.",
+    )
     parser.add_argument("--eval-target-repo", default=None, help="Target repo path or Git URL used for generated workflow eval benchmarks.")
     parser.add_argument("--eval-target-sha", default=None, help="Gold-master commit SHA for generated workflow eval benchmarks.")
     eval_group = parser.add_mutually_exclusive_group()
@@ -882,6 +1033,10 @@ def main() -> int:
         _check_graphify(
             with_graphify=getattr(args, "with_graphify", False),
             no_graphify=getattr(args, "no_graphify", False),
+        )
+        _check_no_mistakes(
+            with_no_mistakes=getattr(args, "with_no_mistakes", False),
+            no_no_mistakes=getattr(args, "no_no_mistakes", False),
         )
         _install_requirements()
         if getattr(args, "materialize", False):

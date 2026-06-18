@@ -1,178 +1,12 @@
 {
   "agents": [
     {
-      "name": "assignment-evaluator",
-      "version": "v2"
-    },
-    {
-      "name": "implementation-evaluator",
-      "version": "v3"
-    },
-    {
-      "name": "information-explorer",
-      "version": "v2"
-    },
-    {
-      "name": "intake",
-      "version": "v3"
-    },
-    {
       "name": "pr-reviewer",
       "version": "v1"
-    },
-    {
-      "name": "qa-engineer",
-      "version": "v2"
-    },
-    {
-      "name": "qa-evaluator",
-      "version": "v2"
-    },
-    {
-      "name": "reference-librarian",
-      "version": "v2"
-    },
-    {
-      "name": "software-engineer",
-      "version": "v2"
-    },
-    {
-      "name": "task-assigner",
-      "version": "v2"
-    },
-    {
-      "name": "task-generator",
-      "version": "v3"
-    },
-    {
-      "name": "task-plan-evaluator",
-      "version": "v2"
     }
   ],
-  "skills": [
-    {
-      "name": "agentic-eval",
-      "version": "v1"
-    },
-    {
-      "name": "artifact-io",
-      "version": "v1"
-    },
-    {
-      "name": "azure-devops-cli",
-      "version": "v1"
-    },
-    {
-      "name": "code-comment-standards",
-      "version": "v1"
-    },
-    {
-      "name": "cypress",
-      "version": "v1"
-    },
-    {
-      "name": "evaluator-framework",
-      "version": "v1"
-    },
-    {
-      "name": "execution-discipline",
-      "version": "v1"
-    },
-    {
-      "name": "frontend-design",
-      "version": "v1"
-    },
-    {
-      "name": "interrogate-eng",
-      "version": "v1"
-    },
-    {
-      "name": "lessons-capture",
-      "version": "v1"
-    },
-    {
-      "name": "librarian-query-protocol",
-      "version": "v1"
-    },
-    {
-      "name": "mcs-products-mono-ui-onboarding",
-      "version": "v1"
-    },
-    {
-      "name": "nx-cli",
-      "version": "v1"
-    },
-    {
-      "name": "ov",
-      "version": "v1"
-    },
-    {
-      "name": "scope-and-security",
-      "version": "v1"
-    },
-    {
-      "name": "session-logging",
-      "version": "v2"
-    },
-    {
-      "name": "storybook",
-      "version": "v1"
-    }
-  ],
-  "scripts": [
-    {
-      "name": "check-ac-coverage.py",
-      "version": "source"
-    },
-    {
-      "name": "check-dependency-cycles.py",
-      "version": "source"
-    },
-    {
-      "name": "check-test-harnesses.py",
-      "version": "source"
-    },
-    {
-      "name": "detect-ui-changes.py",
-      "version": "source"
-    },
-    {
-      "name": "generate-obsidian-archive.py",
-      "version": "source"
-    },
-    {
-      "name": "init-artifact-dirs.py",
-      "version": "source"
-    },
-    {
-      "name": "init-session-log.py",
-      "version": "source"
-    },
-    {
-      "name": "parse-lessons.py",
-      "version": "source"
-    },
-    {
-      "name": "parse-test-steps.py",
-      "version": "source"
-    },
-    {
-      "name": "request-user-input.py",
-      "version": "source"
-    },
-    {
-      "name": "validate-artifact-schema.py",
-      "version": "source"
-    },
-    {
-      "name": "validate-diff-size.py",
-      "version": "source"
-    },
-    {
-      "name": "validate-scope.py",
-      "version": "source"
-    }
-  ],
+  "skills": [],
+  "scripts": [],
   "target_dir": "/Users/mckerracher.joshua/Code/agent-workbench/.github",
   "content_hashes": {
     "agent:assignment-evaluator@v2": "9b33bed0ad1be7ed1007ff93f7cabd53598d235f4ee5cf1a270003508553ef01",
@@ -216,10 +50,10 @@
     "script:validate-artifact-schema.py@source": "cedf70d4d04d5bee79182eea24c4792051174c708cf4476313ce37f9203441c9",
     "script:validate-diff-size.py@source": "d22f20f6eba1a6d32163a7d7a88c1110de4ab9a6a4c3794345d128ffc5a63880",
     "script:validate-scope.py@source": "acdd22b90d0bde7897de5fadc41480f8960a2c25b86fce494a3fefcdc06d7383",
-    "agent:pr-reviewer@v1": "d1d5e3523fa4756e5615f6574fb7aa5323f925f4281bcb0731160d81e867f3a0",
+    "agent:pr-reviewer@v1": "cd90fd0a2c63d5e3e794ffcbe1d9ffffd3d3e5c6a9bca55ad838bcc528306d14",
     "agent:qa-engineer@v2": "d4f2faf2b4addcb9e9cf85e140f81a916c3a260424d32f37bcf965c493770797",
     "agent:software-engineer@v2": "befc7670162d840c0bd9fc58201163d35e13d5b0d25d7c0695c1a92bd54c0f0f",
     "agent:task-generator@v3": "914b50cdace7953785556118835d93107bb42cbfae45cee5e280772c369f0d81"
   },
-  "materialized_at": "2026-06-17T22:23:17Z"
+  "materialized_at": "2026-06-18T15:36:56Z"
 }

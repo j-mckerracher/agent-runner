@@ -95,7 +95,7 @@ def _pr_json_path(change_id: str) -> Path:
 
 
 def _pr_review_path(change_id: str) -> Path:
-    return _pr_dir(change_id) / "pr_review.md"
+    return _pr_dir(change_id) / "no_mistakes_report.md"
 
 
 def _utc_timestamp() -> str:
@@ -1783,24 +1783,26 @@ def step_pr_review(
     logger.info("step_pr_review: change_id=%s runner=%s", change_id, runner)
     _annotate_trace(stage="pr-review", runner=runner, change_id=change_id)
     feature_branch = _load_workflow_feature_branch(change_id)
-    pr_payload = _create_ado_pull_request(change_id, repo, feature_branch)
-    review_path = _pr_review_path(change_id)
-    review_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path = _pr_review_path(change_id)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    story_data = _load_yaml_mapping(_intake_story_path(change_id))
+    intent = story_data.get("goal") or story_data.get("title") or f"Implement change {change_id}"
     prompt = (
-        f"Review the pull request created for change {change_id}.\n"
-        f"Target repo: {repo}\n"
+        f"Drive the no-mistakes validation gate for change {change_id}.\n"
         f"Feature branch: {feature_branch}\n"
-        f"Target branch: develop\n"
-        f"PR metadata path: {_pr_json_path(change_id)}\n"
+        f"Target repo: {repo}\n"
         f"Story: {_intake_story_path(change_id)}\n"
         f"Constraints: {_intake_constraints_path(change_id)}\n"
         f"Task plan: {_task_plan_path(change_id)}\n"
         f"Assignments: {_assignments_path(change_id)}\n"
         f"Implementation reports: {AGENT_CONTEXT_ROOT}/{change_id}/execution/*/impl_report.yaml\n"
         f"QA report: {AGENT_CONTEXT_ROOT}/{change_id}/qa/qa_report.yaml\n"
-        f"Write the complete review to {review_path}.\n"
-        "This is review-only. Do not modify code, tests, commits, branches, PR metadata, or any artifact except pr_review.md. "
-        "After writing the markdown review, stop."
+        f"Intent (for no-mistakes axi run --intent): {intent}\n"
+        f"Write the gate report to: {report_path}\n"
+        "Run no-mistakes axi run with the intent above. "
+        "Authorize auto-fix findings via axi respond --action fix. "
+        "Escalate ask-user findings — record them in the report and fail the stage. "
+        "Write the gate report to the path above when done."
     )
     resolved_model = resolve_agent_model("pr-reviewer", runner, runner_model)
     result = run_agent_cmd(
@@ -1811,9 +1813,8 @@ def step_pr_review(
         change_id=change_id,
         **_agent_runner_kwargs(resolved_model),
     )
-    if not review_path.is_file():
-        pr_id = pr_payload.get("pullRequestId") or pr_payload.get("pull_request_id") or pr_payload.get("id") or "unknown"
-        review_path.write_text(
+    if not report_path.is_file():
+        report_path.write_text(
             "\n".join(
                 [
                     "# Pull Request Review",
@@ -1822,11 +1823,11 @@ def step_pr_review(
                     "",
                     "Risk level: unverified",
                     "",
-                    "Overall: review artifact fallback",
+                    "Overall: no-mistakes gate artifact fallback",
                     "",
                     f"PR id: {pr_id}",
                     "",
-                    "The reviewer agent did not create the expected markdown file. Its raw response is preserved below.",
+                    "The no-mistakes gate agent did not create the expected report file. Its raw response is preserved below.",
                     "",
                     "## Reviewer Response",
                     "",
@@ -1836,8 +1837,8 @@ def step_pr_review(
             ),
             encoding="utf-8",
         )
-    logger.info("step_pr_review: completed change_id=%s review_path=%s", change_id, review_path)
-    return str(review_path)
+    logger.info("step_pr_review: completed change_id=%s review_path=%s", change_id, report_path)
+    return str(report_path)
 
 
 def step_lessons_optimizer(
