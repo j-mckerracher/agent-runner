@@ -1,6 +1,6 @@
 ---
 description: 'Dual-phase hyperagent: implements units of work (Phase 1) and performs metacognitive self-improvement (Phase 2)'
-name: software-engineer-hyperagent
+name: software-engineer
 disable-model-invocation: false
 ---
 

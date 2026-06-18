@@ -1,4 +1,4 @@
-name: qa
+name: qa-engineer
 version: v2
 description: "qa agent, v2"
 source: "agent-definition-source/qa/v2/prompt.md"

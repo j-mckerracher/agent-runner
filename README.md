@@ -25,6 +25,7 @@ The `materialize` stage is a preflight stage. It verifies runner assets by defau
 | **Manual-first story intake** | Paste a story manually by default, use local JSON fixtures for offline testing, or optionally point the same workflow at a live Azure DevOps work item. |
 | **Traceable artifacts** | Every run writes canonical artifacts under the per-user data directory, in `agent-context/<change-id>/`. |
 | **Opik integration** | Bootstrap can start a local Opik stack and the UI can deep-link runs and evaluation views into Opik. |
+| **graphify integration** | Bootstrap optionally installs the graphify knowledge-graph CLI. On the first run against any target repo, `run.py` launches a background graphify index so agents can query the code graph. |
 | **Evaluation framework** | `eval/runner.py` runs the official hidden-test benchmarks with AC-level scoring, repeated trials, baseline comparison, and structured reports. |
 | **Hermetic recordings** | Server-launched runs can record subprocess I/O into local cassettes. |
 
@@ -61,6 +62,7 @@ The current platform is intentionally local-first and workflow-centric. The next
 | Python 3.9+ | Yes      | `run.py`, `server_main.py`, bootstrap, eval tools | Bootstrap creates `.venv/`, but does not install Python. |
 | `git` | Yes      | bootstrap and normal repo workflows | Used for the repo itself and for syncing the local Opik checkout. |
 | Docker Desktop | No       | bundled local Opik stack | Required only if you opt in to the bundled local Opik stack at bootstrap time (the bootstrap script will prompt you). Skip-able by default or via `--no-opik`. |
+| `graphify` CLI | No       | code knowledge graph | Install via `uv tool install graphifyy` or accept the bootstrap prompt. `run.py` indexes new repos in the background. Skip-able via `--no-graphify`. |
 | One AI backend | Yes      | actual workflow execution | Install and authenticate at least one CLI backend (`claude`, `codex`, `copilot`, or `gemini`) or configure `openai-compat` for a local `/api/chat` endpoint. |
 | Azure CLI + `azure-devops` extension | No       | optional live ADO intake mode | Manual story entry and local synthetic stories do not require Azure DevOps tooling. |
 
@@ -106,6 +108,8 @@ If Opik is skipped, not configured, or temporarily unreachable, workflow runs co
 | `--reload` | off | Start the FastAPI server with `--reload` for development. |
 | `--with-opik` | — | Enable the bundled local Opik stack (requires Docker). Skips the interactive prompt. |
 | `--no-opik` | — | Skip the bundled local Opik stack. Skips the interactive prompt. |
+| `--with-graphify` | — | Install the graphify knowledge-graph CLI (`graphifyy`). Skips the interactive prompt. |
+| `--no-graphify` | — | Skip graphify installation. Skips the interactive prompt. |
 | `--eval-target-repo` | — | Target repo path or Git URL used for generated workflow eval benchmarks. |
 | `--materialize` | off | Explicitly refresh generated runner assets during bootstrap. Off by default so prompt-file changes remain manual. |
 | `--eval-target-sha` | — | Gold-master commit SHA for generated workflow eval benchmarks. |

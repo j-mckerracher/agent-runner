@@ -497,7 +497,7 @@ class RunMainStagePlumbingTests(unittest.TestCase):
                         "intake": {"runner": "claude", "model": "claude-sonnet-4-6"},
                         "task-generator": {"runner": "codex", "model": "gpt-5.5"},
                         "task-plan-evaluator": {"runner": "openai-compat", "model": "judge:model"},
-                        "software-engineer-hyperagent": {"runner": "codex", "model": "gpt-5.4"},
+                        "software-engineer": {"runner": "codex", "model": "gpt-5.4"},
                         "implementation-evaluator": {"runner": "claude", "model": "claude-haiku-4-5-20251001"},
                         "qa-engineer": {"runner": "gemini", "model": "gemini-2.5-flash"},
                         "qa-evaluator": {"runner": "openai-compat", "model": "qa:judge"},

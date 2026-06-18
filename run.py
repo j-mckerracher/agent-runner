@@ -28,7 +28,7 @@ from core.runner_models import (
     resolve_runner_llm_config,
 )
 from core.runner_failover import RunnerFailoverPolicy, discover_prior_runner_candidates
-from core.repo_prep import prepare_repo_branch
+from core.repo_prep import ensure_graphify_index, prepare_repo_branch
 from core.story_inputs import count_acceptance_criteria
 from core.workflow_constants import *  # noqa: F403
 from core.workflow_inputs import DEFAULT_TEST_STORY_FILE, resolve_workflow_input
@@ -99,7 +99,7 @@ AGENT_NAMES = [
     "task-plan-evaluator",
     "task-assigner",
     "assignment-evaluator",
-    "software-engineer-hyperagent",
+    "software-engineer",
     "implementation-evaluator",
     "qa-engineer",
     "qa-evaluator",
@@ -1117,6 +1117,10 @@ def main(
             description_source=workflow_input.branch_description_source,
         )
         logger.info("main: prepared working branch %s", feature_branch)
+        try:
+            ensure_graphify_index(resolved_repo)
+        except Exception as exc:  # best-effort: never block the workflow on indexing
+            logger.warning("main: graphify index launch failed: %s", exc)
 
         _emit(
             EVENT_TYPE_JOB_START,
@@ -1330,7 +1334,7 @@ def main(
                             change_id=resolved_change_id,
                             repo=resolved_repo,
                             iter_count=loop_iter_count,
-                            **_agent_llm_kwargs(agent_llms, "software-engineer-hyperagent"),
+                            **_agent_llm_kwargs(agent_llms, "software-engineer"),
                             evaluator_runner=agent_llms["implementation-evaluator"]["runner"],
                             evaluator_runner_model=agent_llms["implementation-evaluator"]["model"],
                         )

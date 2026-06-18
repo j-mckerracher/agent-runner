@@ -27,6 +27,8 @@ OPIK_INFO_URL = "https://github.com/comet-ml/opik/blob/main/README.md"
 RTK_REPO_URL = "https://dev.azure.com/mclm/Mayo%20Open%20Developer%20Network/_git/mayo-rtk-ai"
 RTK_TAG = "mayo-v0.39.0"
 RTK_INSTALL_INFO_URL = "https://dev.azure.com/mclm/Mayo%20Open%20Developer%20Network/_git/mayo-rtk-ai"
+GRAPHIFY_PACKAGE = "graphifyy"
+GRAPHIFY_INFO_URL = "https://github.com/safishamsi/graphify"
 BOOTSTRAP_REEXEC_ENV = "AGENT_RUNNER_BOOTSTRAP_REEXEC"
 OPIK_RUNTIME_ENV_KEYS = (
     "OPIK_BASE_URL",
@@ -711,6 +713,73 @@ def _server_env(opik_settings: dict[str, str] | None) -> dict[str, str]:
     return env
 
 
+def _install_graphify() -> bool:
+    """Install the graphify CLI (PyPI package 'graphifyy'). Returns True on success."""
+    _echo_step("Installing graphify knowledge-graph CLI")
+    try:
+        if _find_command("uv"):
+            _run(["uv", "tool", "install", "--upgrade", GRAPHIFY_PACKAGE])
+        else:
+            _run([sys.executable, "-m", "pip", "install", "--upgrade", GRAPHIFY_PACKAGE])
+        print(f"[bootstrap] graphify installed. See {GRAPHIFY_INFO_URL}", flush=True)
+        return True
+    except BootstrapError as exc:
+        print(
+            f"[bootstrap] Warning: graphify install failed: {exc}\n"
+            "  Agents that use graphify will skip graph features until it is available.",
+            flush=True,
+        )
+        return False
+
+
+def _check_graphify(*, with_graphify: bool, no_graphify: bool) -> None:
+    """Optionally install the graphify CLI — best-effort, never blocks bootstrap."""
+    if no_graphify:
+        print(
+            "[bootstrap] Skipping graphify (--no-graphify). "
+            "Agents will skip graph features if the CLI is absent.",
+            flush=True,
+        )
+        return
+
+    if _find_command("graphify"):
+        print("[bootstrap] graphify CLI found.", flush=True)
+        return
+
+    # --with-graphify: install without prompting.
+    if with_graphify:
+        _install_graphify()
+        return
+
+    # Interactive session only — non-interactive environments skip silently.
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        print(
+            "[bootstrap] graphify CLI not found (skipping install in non-interactive mode). "
+            f"Install manually: uv tool install {GRAPHIFY_PACKAGE}  |  {GRAPHIFY_INFO_URL}",
+            flush=True,
+        )
+        return
+
+    _echo_step("Optional: graphify knowledge-graph CLI")
+    print(
+        "graphify builds a code knowledge graph that agents can query for deeper repo context.\n"
+        f"  Learn more: {GRAPHIFY_INFO_URL}\n"
+        "Skip this to continue without graph features (you can install it later).",
+        flush=True,
+    )
+    try:
+        raw = input("  Install graphify now? [y/N]: ").strip().lower()
+    except EOFError:
+        return
+    if raw in ("y", "yes"):
+        _install_graphify()
+    else:
+        print(
+            "[bootstrap] graphify skipped. Agents will skip graph features if the CLI is absent.",
+            flush=True,
+        )
+
+
 def _prompt_for_opik() -> bool:
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return False
@@ -775,6 +844,17 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip the bundled local Opik stack. Skips the interactive prompt.",
     )
+    graphify_group = parser.add_mutually_exclusive_group()
+    graphify_group.add_argument(
+        "--with-graphify",
+        action="store_true",
+        help="Install the graphify knowledge-graph CLI (graphifyy). Skips the interactive prompt.",
+    )
+    graphify_group.add_argument(
+        "--no-graphify",
+        action="store_true",
+        help="Skip graphify installation. Skips the interactive prompt.",
+    )
     parser.add_argument("--eval-target-repo", default=None, help="Target repo path or Git URL used for generated workflow eval benchmarks.")
     parser.add_argument("--eval-target-sha", default=None, help="Gold-master commit SHA for generated workflow eval benchmarks.")
     eval_group = parser.add_mutually_exclusive_group()
@@ -799,6 +879,10 @@ def main() -> int:
         _warn_if_no_ai_backend()
         _announce_optional_azure_devops()
         _check_rtk()
+        _check_graphify(
+            with_graphify=getattr(args, "with_graphify", False),
+            no_graphify=getattr(args, "no_graphify", False),
+        )
         _install_requirements()
         if getattr(args, "materialize", False):
             _materialize_agents()

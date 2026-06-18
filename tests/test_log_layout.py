@@ -168,8 +168,8 @@ class LogLayoutTests(unittest.TestCase):
                         f'{{"ts":"2026-05-20T16:00:00.000000Z","type":"{run.EVENT_TYPE_STAGE_START}","stage":"{run.STAGE_EXECUTION}"}}',
                         '{"ts":"2026-05-20T16:00:01.000000Z","type":"uow.start","uow_id":"UOW-001"}',
                         '{"ts":"2026-05-20T16:00:02.000000Z","type":"opik.start","name":"uow-iteration-1","metadata":{"uow_id":"UOW-001"}}',
-                        '{"ts":"2026-05-20T16:00:03.000000Z","type":"cli.exit","agent":"software-engineer-hyperagent","duration_ms":2500,"exit_code":0}',
-                        '{"ts":"2026-05-20T16:00:03.100000Z","type":"llm.call","agent":"software-engineer-hyperagent","runner":"claude","model":"claude-sonnet","status":"ok","duration_ms":2500,"attempt":1,"max_attempts":1,"prompt_est_tokens":100,"response_est_tokens":25,"tokens_in":90,"tokens_out":20,"cost_usd":0.02,"prompt_sha256":"abc","response_sha256":"def","response_parse_ok":true}',
+                        '{"ts":"2026-05-20T16:00:03.000000Z","type":"cli.exit","agent":"software-engineer","duration_ms":2500,"exit_code":0}',
+                        '{"ts":"2026-05-20T16:00:03.100000Z","type":"llm.call","agent":"software-engineer","runner":"claude","model":"claude-sonnet","status":"ok","duration_ms":2500,"attempt":1,"max_attempts":1,"prompt_est_tokens":100,"response_est_tokens":25,"tokens_in":90,"tokens_out":20,"cost_usd":0.02,"prompt_sha256":"abc","response_sha256":"def","response_parse_ok":true}',
                         '{"ts":"2026-05-20T16:00:04.000000Z","type":"metrics","tokens_in":10,"tokens_out":5,"cost_usd":0.01}',
                         f'{{"ts":"2026-05-20T16:00:05.000000Z","type":"{run.EVENT_TYPE_UOW_END}","uow_id":"UOW-001","status":"{run.STATUS_OK}"}}',
                         f'{{"ts":"2026-05-20T16:00:06.000000Z","type":"{run.EVENT_TYPE_STAGE_END}","stage":"{run.STAGE_EXECUTION}","status":"{run.STATUS_OK}"}}',
@@ -211,7 +211,7 @@ class LogLayoutTests(unittest.TestCase):
             self.assertEqual(metrics["metrics"]["totals"]["llm_calls"], 1)
             self.assertEqual(metrics["metrics"]["llm_latency"]["overall"]["p95_ms"], 2500.0)
             self.assertEqual(
-                metrics["metrics"]["llm_calls_by_agent"]["software-engineer-hyperagent"]["tokens_in"],
+                metrics["metrics"]["llm_calls_by_agent"]["software-engineer"]["tokens_in"],
                 90,
             )
             self.assertEqual(

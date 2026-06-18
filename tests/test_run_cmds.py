@@ -112,7 +112,7 @@ class CliSessionLogTests(unittest.TestCase):
             ):
                 run_cmds._write_cli_session_log(
                     runner="claude",
-                    agent="software-engineer-hyperagent",
+                    agent="software-engineer",
                     cmd=["claude", "-p", "hidden prompt"],
                     result=result,
                     duration_ms=1234,
@@ -122,12 +122,12 @@ class CliSessionLogTests(unittest.TestCase):
                     max_attempts=1,
                 )
 
-            log_files = list((logs_root / "CHANGE-1" / "software-engineer-hyperagent").glob("*_session.json"))
+            log_files = list((logs_root / "CHANGE-1" / "software-engineer").glob("*_session.json"))
             self.assertEqual(len(log_files), 1)
             payload = json.loads(log_files[0].read_text(encoding="utf-8"))
             self.assertEqual(payload["change_id"], "CHANGE-1")
             self.assertEqual(payload["stage"], "execution")
-            self.assertEqual(payload["agent"], "software-engineer-hyperagent")
+            self.assertEqual(payload["agent"], "software-engineer")
             self.assertEqual(payload["model"], "claude-sonnet")
             self.assertEqual(payload["attempt"], 1)
             self.assertEqual(payload["cmd"], ["claude"])
@@ -282,7 +282,7 @@ class OpenaiCompatRunnerTests(unittest.TestCase):
             ):
                 result = run_cmds.run_openai_compat_cmd(
                     prompt="Write the file and finish.",
-                    agent="software-engineer-hyperagent",
+                    agent="software-engineer",
                     model="openai-compat/deepseek-v4-pro:cloud",
                     runner="openai-compat",
                     repo=str(repo),

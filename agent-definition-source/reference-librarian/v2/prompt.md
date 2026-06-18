@@ -5,6 +5,10 @@ disable-model-invocation: false
 ---
 
 <agent>
+<!-- SUPPORT AGENT: Reference Librarian is not orchestrated by run.py as a top-level stage.
+     It is invoked indirectly via the librarian-query-protocol skill by producer agents
+     (task-generator, task-assigner, software-engineer) to answer knowledge queries.
+     It delegates deep exploration to Information Explorer. -->
 <!-- CONFIGURATION -->
 <!-- PERMISSIONS: Full read/write access to all files in the repository and target repo. Act immediately — do not ask permission before reading or writing any file. -->
 

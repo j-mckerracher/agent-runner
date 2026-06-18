@@ -1,6 +1,6 @@
 ---
 description: 'Normalizes workflow context into canonical intake artifacts'
-name: intake-agent
+name: intake
 disable-model-invocation: false
 ---
 
@@ -60,9 +60,7 @@ Use `interrogate-eng` only to resolve materially missing or ambiguous requiremen
 4. Do not ask open-ended discovery prompts such as “what else should I know?” or implementation-detail questions the downstream engineer can safely decide later.
 5. Do not ask procedural questions about how to run the workflow, which stage comes next, or whether you have permission to proceed.
 6. If the run is synthetic, clearly non-interactive, or clarification cannot be obtained promptly, continue by documenting the open question, blocking status, recommended default, and downstream impact in `constraints.md`.
-7. Deliver each clarification through the `request_user_input` MCP tool — never end your turn with an open chat question. Chat output cannot be answered in single-turn runners; only the escalation channel reaches the user.
-8. After clarification, fold the user's answer into `story.yaml` by **appending new ACs** (`AC{n+1}`, `AC{n+2}`, …). The original `AC1..ACn` from the source story are **immutable** — never edit, reorder, renumber, or delete them. New ACs must be testable.
-9. After clarification, translate the result into the existing intake artifact schema. Do not introduce a new artifact contract.
+7. After clarification, translate the result into the existing intake artifact schema. Do not introduce a new artifact contract.
 
 ## Core Responsibilities
 
@@ -99,7 +97,7 @@ Create or refresh `intake/story.yaml` with:
 - `change_id`
 - `title`
 - `description`
-- `acceptance_criteria` normalized as a canonical downstream-compatible `AC1`, `AC2`, ... mapping — **original ACs are immutable**; clarification-driven ACs must be appended as `AC{n+1}`, `AC{n+2}`, … and may never modify or reorder existing entries
+- `acceptance_criteria` normalized as a canonical downstream-compatible `AC1`, `AC2`, ... mapping
 - `examples`
 - `constraints`
 - `non_functional_requirements`
@@ -131,6 +129,8 @@ Create or refresh `intake/config.yaml` with:
 
 ### Synthetic fixture handling
 
+> **Documentation only**: synthetic and manual intake modes bypass this prompt entirely — artifacts are written deterministically by the Python runtime (`core/steps.py`). The instructions below apply only when this agent is invoked in ADO mode.
+
 - When the runner provides a local synthetic fixture for workflow testing, read the fixture file directly and preserve its original contents under `raw_input`.
 - For synthetic fixtures, normalize acceptance criteria from either a list or a keyed map into the canonical `AC1`, `AC2`, ... mapping in `story.yaml`.
 - Only populate `ado_provenance` or other ADO-specific config sections when the fixture explicitly provides ADO metadata.
@@ -161,11 +161,11 @@ The workflow runner prepares the working branch in the **code repository** (`cod
 1. **Checkout `develop`**
 2. **Pull latest with fast-forward only** via `git pull --ff-only`
 3. **Derive a short description** from the story using 2–5 lowercase hyphenated words with only `a-z`, `0-9`, and `-`
-4. **Create or switch to** `feature/{change-id}-brief-description`
+4. **Create or switch to** `feature/{change-id}-{short-description-of-changes}`, where `{short-description-of-changes}` is a generated 2-5 word slug describing the requested work, not the literal text `short-description-of-changes`, `brief-description`, or `short-description`
 
 During intake, do **not** redo that setup unless you detect the repo is no longer on the expected branch. Instead:
 
-1. **Verify the current branch** in the code repo still matches `feature/{change-id}-brief-description`
+1. **Verify the current branch** in the code repo still matches `feature/{change-id}-{short-description-of-changes}` with a real generated description slug
 2. **If it does not match**, fix it by repeating the same sequence: checkout `develop`, pull `--ff-only`, then create or switch to the correctly named feature branch
 3. **Record the actual branch name** in `intake/config.yaml` under `run_metadata.feature_branch`
 
@@ -216,4 +216,3 @@ Return a concise status summary that states:
 5. whether any open questions or assumptions remain
 
 </agent>
-

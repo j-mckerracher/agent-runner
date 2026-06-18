@@ -69,40 +69,48 @@ Follow the **artifact-io** skill protocol. This agent's specific paths:
 
 Produce `assignments.json` as **valid JSON** with this structure:
 
+> **Schema note**: Use `batches` (not `execution_schedule`) and `batch_id` (not `batch`) — these are the canonical keys consumed by the runtime. Every UoW must include all fields consumed by UoW-spec materialization: `uow_id`, `source_task_id`, `assigned_role`, `title`, `rationale`, `dependencies`.
+
 ```json
 {
   "story_id": "<CHANGE-ID>",
-  "execution_schedule": [
+  "batches": [
     {
-      "batch": 1,
+      "batch_id": 1,
       "uows": [
         {
           "uow_id": "UOW-001",
           "source_task_id": "T1",
           "assigned_role": "software-engineer",
+          "title": "Foundational data model",
           "priority_in_batch": 1,
-          "rationale": "No dependencies, foundational work"
+          "rationale": "No dependencies, foundational work",
+          "dependencies": []
         }
       ],
       "parallel_execution": false,
       "batch_rationale": "Sequential foundation work"
     },
     {
-      "batch": 2,
+      "batch_id": 2,
       "uows": [
         {
           "uow_id": "UOW-002",
           "source_task_id": "T2",
           "assigned_role": "software-engineer",
+          "title": "API implementation",
           "priority_in_batch": 1,
-          "rationale": "API implementation"
+          "rationale": "API implementation",
+          "dependencies": ["UOW-001"]
         },
         {
           "uow_id": "UOW-003",
           "source_task_id": "T3",
           "assigned_role": "software-engineer",
+          "title": "UI component work",
           "priority_in_batch": 2,
-          "rationale": "UI component work"
+          "rationale": "UI component work",
+          "dependencies": ["UOW-001"]
         }
       ],
       "parallel_execution": true,

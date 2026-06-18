@@ -1,0 +1,5 @@
+name: task-generator
+version: v3
+description: "task-generator agent, v3 (Graphify-integrated dependency validation)"
+source: "agent-definition-source/task-generator/v3/prompt.md"
+claude_code_agent_file: "02-task-generator.agent.md"

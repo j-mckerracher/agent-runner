@@ -6,7 +6,7 @@ Usage by an agent (simple mode):
     python agent-script-source/request-user-input.py \\
       --change-id "$CHANGE_ID" \\
       --stage execution \\
-      --agent software-engineer-hyperagent \\
+      --agent software-engineer \\
       --uow-id UOW-001 \\
       --title "Need compatibility decision" \\
       --message "The requested change alters an existing API contract..." \\

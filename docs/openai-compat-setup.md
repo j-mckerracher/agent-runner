@@ -123,7 +123,7 @@ Use `agent_model_defaults` to pin an alias/model pair to one agent:
     }
   },
   "agent_model_defaults": {
-    "software-engineer-hyperagent": {
+    "software-engineer": {
       "fast-coder": "deepseek-coder:6.7b"
     }
   }

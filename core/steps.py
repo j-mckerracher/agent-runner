@@ -1548,11 +1548,11 @@ def step_software_engineer(
             f"product decision, compatibility approval, or user-only clarification, use the "
             f"user escalation protocol and continue after receiving the response."
         )
-    resolved_model = resolve_agent_model("software-engineer-hyperagent", runner, runner_model)
+    resolved_model = resolve_agent_model("software-engineer", runner, runner_model)
     result = run_agent_cmd(
         runner=runner,
         prompt=prompt,
-        agent="software-engineer-hyperagent",
+        agent="software-engineer",
         repo=repo,
         change_id=change_id,
         **_agent_runner_kwargs(resolved_model),

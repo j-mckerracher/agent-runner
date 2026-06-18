@@ -159,11 +159,11 @@ The workflow runner prepares the working branch in the **code repository** (`cod
 1. **Checkout `develop`**
 2. **Pull latest with fast-forward only** via `git pull --ff-only`
 3. **Derive a short description** from the story using 2–5 lowercase hyphenated words with only `a-z`, `0-9`, and `-`
-4. **Create or switch to** `feature/{change-id}-brief-description`
+4. **Create or switch to** `feature/{change-id}-{short-description-of-changes}`, where `{short-description-of-changes}` is a generated 2-5 word slug describing the requested work, not the literal text `short-description-of-changes`, `brief-description`, or `short-description`
 
 During intake, do **not** redo that setup unless you detect the repo is no longer on the expected branch. Instead:
 
-1. **Verify the current branch** in the code repo still matches `feature/{change-id}-brief-description`
+1. **Verify the current branch** in the code repo still matches `feature/{change-id}-{short-description-of-changes}` with a real generated description slug
 2. **If it does not match**, fix it by repeating the same sequence: checkout `develop`, pull `--ff-only`, then create or switch to the correctly named feature branch
 3. **Record the actual branch name** in `intake/config.yaml` under `run_metadata.feature_branch`
 
@@ -214,4 +214,3 @@ Return a concise status summary that states:
 5. whether any open questions or assumptions remain
 
 </agent>
-

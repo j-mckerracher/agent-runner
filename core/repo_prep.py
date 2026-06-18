@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
 import re
+import shutil
 import subprocess
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def _slugify_branch_segment(
@@ -107,3 +111,45 @@ def prepare_repo_branch(
         _run_git_command(repo_path, "checkout", "-b", feature_branch)
 
     return feature_branch
+
+
+def ensure_graphify_index(repo: "str | Path") -> bool:
+    """Launch a background graphify index for *repo* if one does not yet exist.
+
+    Returns True if indexing was launched, False if skipped (already indexed,
+    CLI not installed, or indexing is already in progress).  Never raises —
+    graphify is a best-effort, non-blocking enrichment.
+    """
+    repo_path = Path(repo).expanduser().resolve()
+
+    # Already indexed: fast-path marker written by graphify on first successful build.
+    if (repo_path / "graphify-out" / "graph.json").exists():
+        return False
+
+    # Rebuild in progress (lock written by the git hook / prior launch).
+    if (repo_path / "graphify-out" / ".rebuild.lock").exists():
+        logger.info("ensure_graphify_index: rebuild already in progress for %s; skipping", repo_path)
+        return False
+
+    graphify_bin = shutil.which("graphify")
+    if graphify_bin is None:
+        logger.info("ensure_graphify_index: graphify CLI not found; skipping index for %s", repo_path)
+        return False
+
+    log_path = Path.home() / ".cache" / "graphify-index.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    print(
+        f"[graphify] No index found for {repo_path}; "
+        f"launching background index process (log: {log_path})",
+        flush=True,
+    )
+    log_file = open(log_path, "a")  # noqa: WPS515 — file kept open by subprocess
+    subprocess.Popen(
+        [graphify_bin, str(repo_path)],
+        cwd=str(repo_path),
+        stdout=log_file,
+        stderr=log_file,
+        start_new_session=True,
+    )
+    return True

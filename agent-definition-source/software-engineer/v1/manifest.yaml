@@ -1,0 +1,5 @@
+name: software-engineer
+version: v1
+description: "software-engineer agent, v1"
+source: "agent-definition-source/software-engineer/v1/prompt.md"
+claude_code_agent_file: "04-software-engineer.agent.md"
