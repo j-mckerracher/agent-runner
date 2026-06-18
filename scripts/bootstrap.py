@@ -32,6 +32,10 @@ GRAPHIFY_INFO_URL = "https://github.com/safishamsi/graphify"
 NO_MISTAKES_REPO_URL = "https://dev.azure.com/mclm/Mayo%20Open%20Developer%20Network/_git/ai-skill-no-mistakes"
 NO_MISTAKES_INSTALL_INFO_URL = "https://dev.azure.com/mclm/Mayo%20Open%20Developer%20Network/_git/ai-skill-no-mistakes"
 NO_MISTAKES_LOCAL_CLONE = Path.home() / "Code" / "no-mistakes"
+PONYTAIL_REPO_URL = "https://dev.azure.com/mclm/Mayo%20Open%20Developer%20Network/_git/ai-skill-ponytail"
+PONYTAIL_INSTALL_INFO_URL = PONYTAIL_REPO_URL
+PONYTAIL_LOCAL_CLONE = Path.home() / "Code" / "skill-forks" / "ponytail"
+PONYTAIL_SKILL_DEST = Path.home() / ".claude" / "skills" / "ponytail"
 BOOTSTRAP_REEXEC_ENV = "AGENT_RUNNER_BOOTSTRAP_REEXEC"
 OPIK_RUNTIME_ENV_KEYS = (
     "OPIK_BASE_URL",
@@ -920,6 +924,98 @@ def _check_no_mistakes(*, with_no_mistakes: bool, no_no_mistakes: bool) -> None:
         )
 
 
+def _install_ponytail() -> bool:
+    """Clone ai-skill-ponytail and copy the core ponytail skill into ~/.claude/skills/. Returns True on success."""
+    _echo_step("Installing ponytail (laziest-solution-that-works skill)")
+
+    git_cmd = _find_command("git")
+    if not git_cmd:
+        print("[bootstrap] Warning: git not found. ponytail install skipped.", flush=True)
+        return False
+
+    try:
+        import shutil as _shutil
+
+        # Use the existing local clone if present, otherwise clone.
+        if PONYTAIL_LOCAL_CLONE.exists():
+            clone_dir = PONYTAIL_LOCAL_CLONE
+            print(f"[bootstrap] Using existing ponytail clone at {clone_dir}", flush=True)
+        else:
+            clone_dir = RUNNER_ROOT / ".ponytail-build"
+            if clone_dir.exists():
+                _shutil.rmtree(clone_dir)
+            _run([git_cmd, "clone", "--depth", "1", PONYTAIL_REPO_URL, str(clone_dir)])
+
+        skill_src = clone_dir / "skills" / "ponytail"
+        if not skill_src.is_dir():
+            print(f"[bootstrap] Warning: ponytail skill dir not found at {skill_src}.", flush=True)
+            return False
+
+        # Fresh copy into ~/.claude/skills/ponytail.
+        if PONYTAIL_SKILL_DEST.exists():
+            _shutil.rmtree(PONYTAIL_SKILL_DEST)
+        _shutil.copytree(skill_src, PONYTAIL_SKILL_DEST)
+
+        if not (PONYTAIL_SKILL_DEST / "SKILL.md").exists():
+            print("[bootstrap] Warning: ponytail SKILL.md missing after copy.", flush=True)
+            return False
+
+        print(f"[bootstrap] ponytail skill installed at {PONYTAIL_SKILL_DEST}. See {PONYTAIL_INSTALL_INFO_URL}", flush=True)
+        return True
+    except BootstrapError as exc:
+        print(
+            f"[bootstrap] Warning: ponytail install failed: {exc}\n"
+            "  The ponytail skill will not be available until it is installed.",
+            flush=True,
+        )
+        return False
+
+
+def _check_ponytail(*, with_ponytail: bool, no_ponytail: bool) -> None:
+    """Optionally install the ponytail skill — best-effort, never blocks bootstrap."""
+    if no_ponytail:
+        print(
+            "[bootstrap] Skipping ponytail (--no-ponytail). "
+            "The ponytail skill will not be available.",
+            flush=True,
+        )
+        return
+
+    if (PONYTAIL_SKILL_DEST / "SKILL.md").exists():
+        print("[bootstrap] ponytail skill already installed.", flush=True)
+        return
+
+    if with_ponytail:
+        _install_ponytail()
+        return
+
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        print(
+            "[bootstrap] ponytail skill not found (skipping install in non-interactive mode). "
+            "Pass --with-ponytail to install automatically.\n"
+            f"  See {PONYTAIL_INSTALL_INFO_URL}",
+            flush=True,
+        )
+        return
+
+    _echo_step("Optional: ponytail laziest-solution-that-works skill")
+    print(
+        "ponytail enforces YAGNI, stdlib/native-first, and one-liner discipline before the agent "
+        "writes code. It reduces code size ~54% and cost ~20% with no safety regressions.\n"
+        f"  Source: {PONYTAIL_INSTALL_INFO_URL}\n"
+        "  Requires: git",
+        flush=True,
+    )
+    try:
+        raw = input("  Install ponytail now? [y/N]: ").strip().lower()
+    except EOFError:
+        return
+    if raw in ("y", "yes"):
+        _install_ponytail()
+    else:
+        print("[bootstrap] ponytail skipped.", flush=True)
+
+
 def _prompt_for_opik() -> bool:
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return False
@@ -1006,6 +1102,17 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip no-mistakes installation. Skips the interactive prompt.",
     )
+    ponytail_group = parser.add_mutually_exclusive_group()
+    ponytail_group.add_argument(
+        "--with-ponytail",
+        action="store_true",
+        help="Clone ai-skill-ponytail and copy the ponytail skill to ~/.claude/skills/ponytail. Skips the interactive prompt.",
+    )
+    ponytail_group.add_argument(
+        "--no-ponytail",
+        action="store_true",
+        help="Skip ponytail skill installation. Skips the interactive prompt.",
+    )
     parser.add_argument("--eval-target-repo", default=None, help="Target repo path or Git URL used for generated workflow eval benchmarks.")
     parser.add_argument("--eval-target-sha", default=None, help="Gold-master commit SHA for generated workflow eval benchmarks.")
     eval_group = parser.add_mutually_exclusive_group()
@@ -1037,6 +1144,10 @@ def main() -> int:
         _check_no_mistakes(
             with_no_mistakes=getattr(args, "with_no_mistakes", False),
             no_no_mistakes=getattr(args, "no_no_mistakes", False),
+        )
+        _check_ponytail(
+            with_ponytail=getattr(args, "with_ponytail", False),
+            no_ponytail=getattr(args, "no_ponytail", False),
         )
         _install_requirements()
         if getattr(args, "materialize", False):

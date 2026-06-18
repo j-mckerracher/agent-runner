@@ -1,8 +1,8 @@
 {
   "agents": [
     {
-      "name": "pr-reviewer",
-      "version": "v1"
+      "name": "software-engineer",
+      "version": "v2"
     }
   ],
   "skills": [],
@@ -52,8 +52,8 @@
     "script:validate-scope.py@source": "acdd22b90d0bde7897de5fadc41480f8960a2c25b86fce494a3fefcdc06d7383",
     "agent:pr-reviewer@v1": "cd90fd0a2c63d5e3e794ffcbe1d9ffffd3d3e5c6a9bca55ad838bcc528306d14",
     "agent:qa-engineer@v2": "d4f2faf2b4addcb9e9cf85e140f81a916c3a260424d32f37bcf965c493770797",
-    "agent:software-engineer@v2": "befc7670162d840c0bd9fc58201163d35e13d5b0d25d7c0695c1a92bd54c0f0f",
+    "agent:software-engineer@v2": "038dc9796ff278ff0d9aa938f2c46758cf6a226c1555caf84c47763582565883",
     "agent:task-generator@v3": "914b50cdace7953785556118835d93107bb42cbfae45cee5e280772c369f0d81"
   },
-  "materialized_at": "2026-06-18T15:36:56Z"
+  "materialized_at": "2026-06-18T17:48:25Z"
 }

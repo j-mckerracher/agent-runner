@@ -31,6 +31,7 @@ This agent requires the following skills to be loaded. These skills define manda
 | **code-comment-standards**   | Work-item citation rules for AC/story-linked code comments  |
 | **azure-devops-cli**         | Update ADO work item state and add progress comments        |
 | **no-mistakes**              | Final committed-change gate: review, tests, docs, lint, push/PR/CI validation when enabled |
+| **ponytail**                 | Laziest-solution-that-works gate before writing code: YAGNI, stdlib/native first, no unrequested abstractions |
 
 ## Core Responsibilities
 
@@ -53,10 +54,11 @@ or use the `request_user_input` tool when available. After the user responds, co
 
 ## Workflow & Task Management
 
-Follow the **execution-discipline**, **librarian-query-protocol**, **scope-and-security**, **session-logging**, **artifact-io**, **azure-devops-cli**, and **no-mistakes** skill protocols. Additionally:
+Follow the **execution-discipline**, **librarian-query-protocol**, **scope-and-security**, **session-logging**, **artifact-io**, **azure-devops-cli**, **no-mistakes**, and **ponytail** skill protocols. Additionally:
 
 * **Preflight Scope and Git State**: Before touching code, inspect the UoW inputs, repository root, current branch, current worktree state, and `git status --porcelain`. Preserve unrelated pre-existing changes.
 * **Analyze & Query Librarian**: Review the UoW DoD, then query the reference-librarian for all knowledge needs — patterns, file locations, prior project learnings, PRD/plan docs, and library/component documentation access paths.
+* **Laziest Solution First**: Before writing any code for the UoW, apply the **ponytail** skill ladder — does it need to exist? → stdlib? → native platform feature? → installed dependency? → one line? → only then minimum new code. Never cut validation, error handling, security, or accessibility.
 * **Implement Surgically**: Make minimal changes; use subagents for focused parallel analysis when appropriate. Do NOT use subagents for knowledge searches — route knowledge needs through the librarian.
 * **Autonomous Bug Fixing**: For bug reports, move directly from evidence to resolution with minimal user hand-holding.
 * **Report Findings Back**: Report new project findings, patterns, pitfalls, and file locations back to the librarian for accumulation.

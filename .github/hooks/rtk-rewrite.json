@@ -1,13 +1,11 @@
 {
-  "version": 1,
   "hooks": {
-    "preToolUse": [
+    "PreToolUse": [
       {
         "type": "command",
         "command": "rtk hook copilot",
-        "matcher": "bash",
         "cwd": ".",
-        "timeoutSec": 5
+        "timeout": 5
       }
     ]
   }
