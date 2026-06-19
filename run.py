@@ -1421,9 +1421,9 @@ def main(
                 last_completed_stage = STAGE_QA
                 failed_stage = None
 
-            # ── Stage 6: Pull Request Creation + Review ─────────────────────
+            # ── Stage 6: No-Mistakes Gate + PR (via no-mistakes) ─────────────
             if os.environ.get("AGENT_RUNNER_EVALUATION_RUN", "").strip().lower() in {"1", "true", "yes"}:
-                print("Evaluation run detected; skipping PR creation and review.")
+                print("Evaluation run detected; skipping no-mistakes gate.")
                 last_completed_stage = STAGE_QA
                 failed_stage = None
             else:

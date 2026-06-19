@@ -90,10 +90,6 @@ def _pr_dir(change_id: str) -> Path:
     return AGENT_CONTEXT_ROOT / change_id / "pr"
 
 
-def _pr_json_path(change_id: str) -> Path:
-    return _pr_dir(change_id) / "pr.json"
-
-
 def _pr_review_path(change_id: str) -> Path:
     return _pr_dir(change_id) / "no_mistakes_report.md"
 
@@ -1683,87 +1679,6 @@ def _load_workflow_feature_branch(change_id: str) -> str:
     return feature_branch.strip()
 
 
-def _load_story_title(change_id: str) -> str:
-    story_path = _intake_story_path(change_id)
-    if not story_path.is_file():
-        return change_id
-    with story_path.open("r", encoding="utf-8") as handle:
-        story = yaml.safe_load(handle) or {}
-    title = story.get("title") if isinstance(story, dict) else None
-    return str(title).strip() if title else change_id
-
-
-def _commit_dirty_worktree_for_pr(repo: str | Path, change_id: str) -> bool:
-    status = _repo_command_stdout(repo, ["git", "status", "--porcelain"])
-    if not status:
-        return False
-    _run_repo_command(repo, ["git", "add", "-A"])
-    _run_repo_command(repo, ["git", "commit", "-m", f"Implement {change_id}"])
-    return True
-
-
-def _create_ado_pull_request(change_id: str, repo: str | Path, feature_branch: str) -> dict:
-    current_branch = _repo_command_stdout(repo, ["git", "rev-parse", "--abbrev-ref", "HEAD"])
-    if current_branch != feature_branch:
-        raise RuntimeError(
-            f"PR stage expected target repo to be on {feature_branch!r}, but it is on {current_branch!r}"
-        )
-
-    committed_changes = _commit_dirty_worktree_for_pr(repo, change_id)
-    _run_repo_command(repo, ["git", "push", "-u", "origin", feature_branch])
-
-    title = f"{change_id}: {_load_story_title(change_id)}"
-    description = "\n".join(
-        [
-            f"Automated workflow PR for `{change_id}`.",
-            "",
-            "Workflow artifacts:",
-            f"- Story: `{AGENT_CONTEXT_ROOT}/{change_id}/intake/story.yaml`",
-            f"- Task plan: `{AGENT_CONTEXT_ROOT}/{change_id}/planning/tasks.yaml`",
-            f"- Assignments: `{AGENT_CONTEXT_ROOT}/{change_id}/planning/assignments.json`",
-            f"- QA report: `{AGENT_CONTEXT_ROOT}/{change_id}/qa/qa_report.yaml`",
-            "",
-            "The workflow will run a review-only PR agent after this PR is created.",
-        ]
-    )
-    command = [
-        "az",
-        "repos",
-        "pr",
-        "create",
-        "--source-branch",
-        feature_branch,
-        "--target-branch",
-        "develop",
-        "--title",
-        title,
-        "--description",
-        description,
-        "--detect",
-        "true",
-        "--output",
-        "json",
-    ]
-    result = _run_repo_command(repo, command)
-    raw_stdout = (result.stdout or "").strip()
-    try:
-        pr_payload = json.loads(raw_stdout) if raw_stdout else {}
-    except json.JSONDecodeError:
-        pr_payload = {"raw_output": raw_stdout}
-    if not isinstance(pr_payload, dict):
-        pr_payload = {"value": pr_payload}
-    pr_payload.setdefault("source_branch", feature_branch)
-    pr_payload.setdefault("target_branch", "develop")
-    pr_payload.setdefault("title", title)
-    pr_payload["committed_dirty_worktree"] = committed_changes
-
-    pr_dir = _pr_dir(change_id)
-    pr_dir.mkdir(parents=True, exist_ok=True)
-    with _pr_json_path(change_id).open("w", encoding="utf-8") as handle:
-        json.dump(pr_payload, handle, indent=2)
-        handle.write("\n")
-    return pr_payload
-
 
 @track_with_ui(
     name="stage:pr-review",
@@ -1824,8 +1739,6 @@ def step_pr_review(
                     "Risk level: unverified",
                     "",
                     "Overall: no-mistakes gate artifact fallback",
-                    "",
-                    f"PR id: {pr_id}",
                     "",
                     "The no-mistakes gate agent did not create the expected report file. Its raw response is preserved below.",
                     "",
