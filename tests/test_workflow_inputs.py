@@ -9,6 +9,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from core.workflow_inputs import (
     DEFAULT_TEST_STORY_FILE,
@@ -319,22 +320,45 @@ class ResolveWorkflowInputAdoModeTests(unittest.TestCase):
     def setUp(self):
         self._repo = _make_repo_dir()
         self.addCleanup(self._repo.cleanup)
-        self.workflow_input = resolve_workflow_input(
-            repo=self._repo.name,
-            ado_url="https://dev.azure.com/example/project/_workitems/edit/555",
-        )
+        self._ado_url = "https://dev.azure.com/example/project/_workitems/edit/555"
 
     def test_easy__ado_mode_intake_mode_field_is_ado(self):
-        self.assertEqual(self.workflow_input.intake_mode, "ado")
+        with patch(
+            "core.workflow_inputs._fetch_ado_branch_description",
+            return_value="Fix branch naming behavior",
+        ):
+            workflow_input = resolve_workflow_input(repo=self._repo.name, ado_url=self._ado_url)
+        self.assertEqual(workflow_input.intake_mode, "ado")
 
     def test_easy__ado_mode_change_id_resolves_from_url_to_555(self):
-        self.assertEqual(self.workflow_input.change_id, "555")
+        with patch("core.workflow_inputs._fetch_ado_branch_description", return_value=None):
+            workflow_input = resolve_workflow_input(repo=self._repo.name, ado_url=self._ado_url)
+        self.assertEqual(workflow_input.change_id, "555")
 
     def test_easy__ado_mode_intake_source_preserves_full_url_path(self):
-        self.assertIn("_workitems/edit/555", self.workflow_input.intake_source)
+        with patch("core.workflow_inputs._fetch_ado_branch_description", return_value=None):
+            workflow_input = resolve_workflow_input(repo=self._repo.name, ado_url=self._ado_url)
+        self.assertIn("_workitems/edit/555", workflow_input.intake_source)
 
-    def test_easy__ado_mode_branch_description_source_is_none(self):
-        self.assertIsNone(self.workflow_input.branch_description_source)
+    def test_easy__ado_mode_branch_description_source_uses_ado_title(self):
+        with patch(
+            "core.workflow_inputs._fetch_ado_branch_description",
+            return_value="Fix branch naming behavior",
+        ):
+            workflow_input = resolve_workflow_input(repo=self._repo.name, ado_url=self._ado_url)
+        self.assertEqual(workflow_input.branch_description_source, "Fix branch naming behavior")
+
+    def test_easy__ado_mode_branch_description_source_falls_back_to_extra_context(self):
+        with patch("core.workflow_inputs._fetch_ado_branch_description", return_value=None):
+            workflow_input = resolve_workflow_input(
+                repo=self._repo.name,
+                ado_url=self._ado_url,
+                extra_context="Fix branch naming behavior from work item",
+            )
+        self.assertEqual(
+            workflow_input.branch_description_source,
+            "Fix branch naming behavior from work item",
+        )
 
 
 class ResolveWorkflowInputManualModeTests(unittest.TestCase):

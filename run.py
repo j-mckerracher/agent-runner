@@ -1025,6 +1025,7 @@ def main(
             ado_url=ado_url,
             story_file=story_file,
             manual_story_file=manual_story_file,
+            extra_context=extra_context,
         )
         use_runner_root()
         resolved_repo = workflow_input.repo

@@ -4,9 +4,11 @@ import json
 import logging
 import os
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from .story_inputs import infer_manual_change_id, load_manual_story
 
@@ -24,6 +26,63 @@ class WorkflowInput:
     intake_mode: str
     intake_source: str
     branch_description_source: str | None = None
+
+
+def _fetch_ado_branch_description(ado_url: str | None) -> str | None:
+    if not ado_url:
+        return None
+
+    parsed = urlparse(ado_url)
+    if parsed.scheme not in {"http", "https"} or parsed.netloc != "dev.azure.com":
+        return None
+
+    path_parts = parsed.path.strip("/").split("/")
+    if len(path_parts) < 2:
+        return None
+
+    work_item_id = infer_change_id_from_ado_url(ado_url)
+    if not work_item_id:
+        return None
+
+    org_url = f"{parsed.scheme}://{parsed.netloc}/{path_parts[0]}"
+    try:
+        result = subprocess.run(
+            [
+                "az",
+                "boards",
+                "work-item",
+                "show",
+                "--id",
+                work_item_id,
+                "--org",
+                org_url,
+                "--query",
+                "fields.\"System.Title\"",
+                "--output",
+                "tsv",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        logger.warning(
+            "_fetch_ado_branch_description: failed to run az for %s: %s",
+            ado_url,
+            exc,
+        )
+        return None
+
+    if result.returncode != 0:
+        logger.warning(
+            "_fetch_ado_branch_description: az returned %d for %s",
+            result.returncode,
+            ado_url,
+        )
+        return None
+
+    title = result.stdout.strip()
+    return title or None
 
 
 def normalize_repo_path(repo: str | None) -> str:
@@ -151,6 +210,7 @@ def resolve_workflow_input(
     ado_url: str | None = None,
     story_file: str | None = None,
     manual_story_file: str | None = None,
+    extra_context: str | None = None,
 ) -> WorkflowInput:
     logger.debug(
         "resolve_workflow_input: repo=%s change_id=%s ado_url=%s story_file=%s manual_story_file=%s",
@@ -239,5 +299,5 @@ def resolve_workflow_input(
         change_id=resolved_change_id,
         intake_mode="ado",
         intake_source=ado_url or "",
-        branch_description_source=None,
+        branch_description_source=_fetch_ado_branch_description(ado_url) or extra_context,
     )

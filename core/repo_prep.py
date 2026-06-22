@@ -29,7 +29,7 @@ def build_feature_branch_name(change_id: str, description_source: str | None) ->
     change_segment = _slugify_branch_segment(change_id, fallback="change", limit=32)
     description_segment = _slugify_branch_segment(
         description_source,
-        fallback="short-description",
+        fallback="requested-changes",
         max_words=5,
         limit=48,
     )

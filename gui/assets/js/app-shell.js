@@ -64,7 +64,7 @@ const WORKFLOW_STAGE_AGENTS = [
     "task-plan-evaluator",
     "task-assigner",
     "assignment-evaluator",
-    "software-engineer-hyperagent",
+    "software-engineer",
     "implementation-evaluator",
     "qa-engineer",
     "qa-evaluator",

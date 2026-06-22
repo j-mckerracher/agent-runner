@@ -12,14 +12,14 @@ class BuildFeatureBranchNameTests(unittest.TestCase):
     def test_easy__uses_short_description_fallback_when_title_is_missing(self) -> None:
         self.assertEqual(
             build_feature_branch_name("WI-123456", None),
-            "feature/wi-123456-short-description",
+            "feature/wi-123456-requested-changes",
         )
 
 
 class PrepareRepoBranchTests(unittest.TestCase):
     def test_easy__returns_when_repo_is_already_on_feature_branch(self) -> None:
         repo = Path("/tmp/repo")
-        feature_branch = "feature/5001016-short-description"
+        feature_branch = "feature/5001016-requested-changes"
 
         def fake_run_git_command(_repo: Path, *args: str) -> CompletedProcess[str]:
             if args == ("rev-parse", "--is-inside-work-tree"):
