@@ -1,8 +1,8 @@
 {
   "agents": [
     {
-      "name": "software-engineer",
-      "version": "v2"
+      "name": "intake",
+      "version": "v3"
     }
   ],
   "skills": [],
@@ -12,7 +12,7 @@
     "agent:assignment-evaluator@v2": "9b33bed0ad1be7ed1007ff93f7cabd53598d235f4ee5cf1a270003508553ef01",
     "agent:implementation-evaluator@v3": "26cfac14299725e048f298f279bb39720030c6b30773fe0923b4b31fd3e14b71",
     "agent:information-explorer@v2": "d7cd7a4b8e8a330f03bae4b3875cb2c8acaafeb80a27fe4ea300f59f0ba9aea8",
-    "agent:intake@v3": "9a2d36e52e9b7845e3e21a371d9fb57589d9d8684990e38771d90d813dd8f2d2",
+    "agent:intake@v3": "a6e4b1e265795d70cd7e79169b11fb546009296d6873cde550604ab81a6ae728",
     "agent:qa@v2": "d4f2faf2b4addcb9e9cf85e140f81a916c3a260424d32f37bcf965c493770797",
     "agent:qa-evaluator@v2": "5ff09b0e100bd64bafeacdb415054b79fa6a09bc98fcc480f90c2669a5e3723e",
     "agent:reference-librarian@v2": "a4745b73a9f0581e96b681f0c2701da860d3a61a28cd19e7b4a0c27c63dea1ae",
@@ -55,5 +55,5 @@
     "agent:software-engineer@v2": "038dc9796ff278ff0d9aa938f2c46758cf6a226c1555caf84c47763582565883",
     "agent:task-generator@v3": "914b50cdace7953785556118835d93107bb42cbfae45cee5e280772c369f0d81"
   },
-  "materialized_at": "2026-06-18T17:48:25Z"
+  "materialized_at": "2026-06-22T18:23:02Z"
 }

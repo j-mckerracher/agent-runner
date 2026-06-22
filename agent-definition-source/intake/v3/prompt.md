@@ -52,7 +52,7 @@ Follow the **execution-discipline** skill protocol. Additionally:
 - **Clarification Discipline**: Use `interrogate-eng` only after exhausting the provided context.
 ## Clarification Protocol
 
-Use `interrogate-eng` only to resolve materially missing or ambiguous requirements that would otherwise reduce planner or QA readiness.
+Use `interrogate-eng` only to pressure-test the acceptance criteria for unspoken assumptions, internal contradictions, and materially missing or ambiguous requirements that would otherwise reduce planner or QA readiness.
 
 1. Review the provided workflow context, explicitly referenced planning docs, and any narrowly scoped repo evidence allowed by this prompt before asking anything.
 2. Ask exactly one question at a time. Keep clarifications compact and deterministic so they remain effective on smaller local models: at most 4 summary bullets, 1 concrete decision question, 1 recommended default, a short why, and the artifact impact.
