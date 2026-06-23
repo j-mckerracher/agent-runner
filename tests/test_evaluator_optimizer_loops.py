@@ -341,5 +341,59 @@ class EvaluatorOptimizerLoopTelemetryTests(unittest.TestCase):
         self.assertIsNone(evaluator_calls[0]["runner_model"])
 
 
+    def test_medium__eval_optimizer_loop_sanitizes_verbose_evaluator_feedback(self):
+        from core.evaluator_optimizer_loops import run_eval_optimizer_loop
+
+        producer_prompts = []
+
+        def producer(prompt: str, **_kwargs) -> str:
+            producer_prompts.append(prompt)
+            return "produced"
+
+        evaluator_outputs = [
+            """
+I'll evaluate the task plan.
+
+<tool_call>
+{"name": "write_file", "parameters": {"path": "eval_tasks_1.json", "content": "{\\"programmatic_gates\\": {"}}
+</tool_call>
+<tool_response>
+partial write failed
+</tool_response>
+
+Full rubric analysis (working notes):
+- AC3b is uncovered and must be mapped to the remove-button task.
+- AC7b is covered in prose but missing from acceptance_criteria_coverage.
+
+Now let me write the full evaluation:
+{"name": "write_file", "parameters": {"content": "large partial json"}}
+""",
+            "PASS",
+        ]
+
+        def evaluator(_prompt: str, **_kwargs) -> str:
+            return evaluator_outputs.pop(0)
+
+        output, evaluation = run_eval_optimizer_loop(
+            producer,
+            "Generate task plan for change 5001029.",
+            evaluator,
+            "Evaluate task plan for change 5001029.",
+            iter_count=2,
+            runner="claude",
+            runner_model="claude-sonnet",
+        )
+
+        self.assertEqual(output, "produced")
+        self.assertEqual(evaluation, "PASS")
+        retry_prompt = producer_prompts[1]
+        self.assertIn("AC3b is uncovered", retry_prompt)
+        self.assertIn("AC7b is covered", retry_prompt)
+        self.assertNotIn("<tool_call>", retry_prompt)
+        self.assertNotIn("<tool_response>", retry_prompt)
+        self.assertNotIn("write_file", retry_prompt)
+        self.assertNotIn("large partial json", retry_prompt)
+
+
 if __name__ == "__main__":
     unittest.main()

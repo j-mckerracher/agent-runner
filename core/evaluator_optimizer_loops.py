@@ -32,6 +32,43 @@ def _extract_json_object(text: str) -> dict | None:
     return None
 
 
+def _format_evaluator_feedback_for_retry(evaluator_out: str, *, limit: int = 6000) -> str:
+    """Keep retry prompts focused on actionable evaluator findings."""
+    raw = (evaluator_out or "").strip()
+    if not raw:
+        return ""
+
+    payload = _extract_json_object(raw)
+    if payload is not None:
+        selected: dict[str, object] = {}
+        for key in (
+            "overall_result",
+            "status",
+            "score",
+            "summary",
+            "issues",
+            "findings",
+            "required_changes",
+            "recommendations",
+            "programmatic_gates",
+            "gate_failure_details",
+        ):
+            if key in payload:
+                selected[key] = payload[key]
+        if selected:
+            return json.dumps(selected, indent=2, ensure_ascii=False)[:limit]
+
+    cleaned = re.sub(r"<tool_call>.*?</tool_call>", "", raw, flags=re.DOTALL)
+    cleaned = re.sub(r"<tool_response>.*?</tool_response>", "", cleaned, flags=re.DOTALL)
+    cleaned = re.sub(r"(?is)^.*?Full rubric analysis", "Full rubric analysis", cleaned)
+    cleaned = re.sub(r"(?is)Now let me write the full evaluation:.*$", "", cleaned)
+    cleaned = "\n".join(line.rstrip() for line in cleaned.splitlines())
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    if len(cleaned) > limit:
+        cleaned = cleaned[:limit].rstrip() + "\n\n[feedback truncated]"
+    return cleaned
+
+
 def _persist_impl_evaluator_feedback(*, change_id: str, uow_id: str, iteration: int, evaluator_out: str) -> Path:
     uow_dir = steps.AGENT_CONTEXT_ROOT / change_id / "execution" / uow_id
     path = uow_dir / f"eval_impl_{iteration}.json"
@@ -349,38 +386,44 @@ def run_eval_optimizer_loop(
                 },
             ) as span:
                 span.input = {"iteration": iteration}
-                if i == 0 or not evaluator_out:
-                    combined_input = producer_input
-                else:
-                    combined_input = (
-                        f"{producer_input}\n\n"
-                        f"## Evaluator Issues to Fix (iteration {i}):\n{evaluator_out}\n\n"
-                        f"Revise your output artifact to address the issues above. "
-                        f"If resolving an issue requires a blocking product decision or user-only clarification, "
-                        f"use the user escalation protocol and continue after receiving the response."
-                    )
-                    logger.debug("run_eval_optimizer_loop: iteration %d injecting evaluator feedback (len=%d)", iteration, len(evaluator_out))
-                producer_out = producer_func(combined_input, runner=runner, runner_model=runner_model)
-                evaluator_out = evaluator_func(
-                    evaluator_prompt,
-                    runner=effective_evaluator_runner,
-                    runner_model=effective_evaluator_model,
+            if i == 0 or not evaluator_out:
+                combined_input = producer_input
+            else:
+                evaluator_feedback = _format_evaluator_feedback_for_retry(evaluator_out)
+                combined_input = (
+                    f"{producer_input}\n\n"
+                    f"## Evaluator Issues to Fix (iteration {i}):\n{evaluator_feedback}\n\n"
+                    f"Revise your output artifact to address the issues above. "
+                    f"If resolving an issue requires a blocking product decision or user-only clarification, "
+                    f"use the user escalation protocol and continue after receiving the response."
                 )
-                passed = "PASS" in evaluator_out
-                logger.info("run_eval_optimizer_loop: iteration %d/%d change_id=%s passed=%s", iteration, iter_count, change_id, passed)
-                span.output = {"passed": passed}
-                try:
-                    opik_context.update_current_span(
-                        metadata={
-                            "iteration": iteration,
-                            "attempt": iteration,
-                            "change_id": change_id,
-                            "stage": "eval-optimizer",
-                            "passed": passed,
-                        },
-                    )
-                except Exception:
-                    pass
+                logger.debug(
+                    "run_eval_optimizer_loop: iteration %d injecting evaluator feedback (raw_len=%d sanitized_len=%d)",
+                    iteration,
+                    len(evaluator_out),
+                    len(evaluator_feedback),
+                )
+            producer_out = producer_func(combined_input, runner=runner, runner_model=runner_model)
+            evaluator_out = evaluator_func(
+                evaluator_prompt,
+                runner=effective_evaluator_runner,
+                runner_model=effective_evaluator_model,
+            )
+            passed = "PASS" in evaluator_out
+            logger.info("run_eval_optimizer_loop: iteration %d/%d change_id=%s passed=%s", iteration, iter_count, change_id, passed)
+            span.output = {"passed": passed}
+            try:
+                opik_context.update_current_span(
+                    metadata={
+                        "iteration": iteration,
+                        "attempt": iteration,
+                        "change_id": change_id,
+                        "stage": "eval-optimizer",
+                        "passed": passed,
+                    },
+                )
+            except Exception:
+                pass
             _emit_loop_event(
                 "loop.iteration.end",
                 loop_name="eval-optimizer",
