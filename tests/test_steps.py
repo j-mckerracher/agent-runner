@@ -18,6 +18,7 @@ import yaml
 
 from core.steps import (
     build_intake_prompt,
+    _build_pr_description_from_impl_reports,
     _create_ado_pull_request,
     _write_synthetic_intake_artifacts,
     step_pr_review,
@@ -707,6 +708,161 @@ class CopilotPlanningFallbackTests(unittest.TestCase):
             self.assertEqual(uow_two["dependencies"], ["UOW-001"])
             self.assertEqual(uow_two["definition_of_done"], ["Coverage added"])
             self.assertEqual(uow_two["implementation_hints"], ["tests/test_feature.py"])
+
+
+class PullRequestDescriptionTests(unittest.TestCase):
+    def _write_story(self, context_root: Path, change_id: str, title: str = "Review created PR") -> None:
+        intake_dir = context_root / change_id / "intake"
+        intake_dir.mkdir(parents=True, exist_ok=True)
+        (intake_dir / "story.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "change_id": change_id,
+                    "title": title,
+                    "acceptance_criteria": {"AC1": "Create review artifact."},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+    def _write_impl_report(self, context_root: Path, change_id: str, uow_id: str, payload: dict) -> None:
+        report_path = context_root / change_id / "execution" / uow_id / "impl_report.yaml"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+    def test_medium__build_pr_description_from_impl_reports_uses_execution_order_and_tests(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            context_root = Path(tmpdir) / "agent-context"
+            self._write_story(context_root, "WI-123")
+            self._write_impl_report(
+                context_root,
+                "WI-123",
+                "UOW-001",
+                {
+                    "implementation_summary": "Added validation for search date range requests.",
+                    "files_modified": [
+                        {"path": "src/search/date_range.py", "change_summary": "Rejected date spans over 365 days."},
+                        {"path": "src/search/api.py", "change_summary": "Returned a validation error for oversized ranges."},
+                    ],
+                    "commands_executed": ["pytest tests/search/test_date_range.py"],
+                },
+            )
+            self._write_impl_report(
+                context_root,
+                "WI-123",
+                "UOW-002",
+                {
+                    "implementation_summary": "Updated UI messaging for invalid date ranges.",
+                    "files_modified": [
+                        {"path": "src/ui/search_form.tsx", "change_summary": "Displayed the 365-day limit in the filter form."},
+                    ],
+                    "test_results": [
+                        {"name": "search date range UI", "status": "passed", "details": "Covers invalid range messaging."}
+                    ],
+                },
+            )
+
+            with patch("core.steps.AGENT_CONTEXT_ROOT", context_root):
+                description = _build_pr_description_from_impl_reports("WI-123")
+
+        self.assertIn("Added validation for search date range requests.", description)
+        self.assertIn("## Changes", description)
+        self.assertLess(
+            description.index("Rejected date spans over 365 days."),
+            description.index("Displayed the 365-day limit in the filter form."),
+        )
+        self.assertIn("## Tests", description)
+        self.assertIn("pytest tests/search/test_date_range.py", description)
+        self.assertIn("search date range UI: passed - Covers invalid range messaging.", description)
+        self.assertNotIn("Workflow artifacts", description)
+        self.assertNotIn("qa_report.yaml", description)
+        self.assertNotIn("review-only", description)
+
+    def test_easy__build_pr_description_from_impl_reports_falls_back_without_reports(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            context_root = Path(tmpdir) / "agent-context"
+            self._write_story(context_root, "WI-124", title="Limit export range")
+
+            with patch("core.steps.AGENT_CONTEXT_ROOT", context_root):
+                description = _build_pr_description_from_impl_reports("WI-124")
+
+        self.assertIn("Limit export range.", description)
+        self.assertIn("Implements the requested code changes.", description)
+        self.assertNotIn("## Tests", description)
+        self.assertNotIn("assignments.json", description)
+
+    def test_easy__build_pr_description_from_impl_reports_skips_vague_entries(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            context_root = Path(tmpdir) / "agent-context"
+            self._write_story(context_root, "WI-125", title="Clarify export validation")
+            self._write_impl_report(
+                context_root,
+                "WI-125",
+                "UOW-001",
+                {
+                    "implementation_summary": "Implemented requested code changes.",
+                    "files_modified": [
+                        {"path": "src/export/validator.py", "change_summary": ""},
+                        {"path": "src/export/form.tsx", "change_summary": "updated code"},
+                    ],
+                },
+            )
+
+            with patch("core.steps.AGENT_CONTEXT_ROOT", context_root):
+                description = _build_pr_description_from_impl_reports("WI-125")
+
+        self.assertIn("Clarify export validation.", description)
+        self.assertIn("Implements the requested code changes.", description)
+        self.assertNotIn("Implemented requested code changes.", description)
+        self.assertNotIn("- updated code", description)
+
+    def test_medium__create_ado_pull_request_uses_impl_report_description(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            context_root = Path(tmpdir) / "agent-context"
+            self._write_story(context_root, "WI-126")
+            self._write_impl_report(
+                context_root,
+                "WI-126",
+                "UOW-001",
+                {
+                    "implementation_summary": "Added export date range validation.",
+                    "files_modified": [
+                        {"path": "src/export/validator.py", "change_summary": "Rejected export requests over 365 days."}
+                    ],
+                },
+            )
+            commands: list[list[str]] = []
+
+            def fake_run(command, cwd, check, capture_output, text):  # noqa: ARG001
+                commands.append(list(command))
+                if command[:4] == ["git", "rev-parse", "--abbrev-ref", "HEAD"]:
+                    return subprocess.CompletedProcess(command, 0, stdout="feature/wi-126-review-stage\n", stderr="")
+                if command[:3] == ["git", "status", "--porcelain"]:
+                    return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+                if command[:4] == ["az", "repos", "pr", "create"]:
+                    return subprocess.CompletedProcess(
+                        command,
+                        0,
+                        stdout='{"pullRequestId": 126, "url": "https://example/pr/126"}\n',
+                        stderr="",
+                    )
+                return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+            with (
+                patch("core.steps.AGENT_CONTEXT_ROOT", context_root),
+                patch("core.steps.subprocess.run", side_effect=fake_run),
+            ):
+                payload = _create_ado_pull_request("WI-126", "/tmp/target-repo", "feature/wi-126-review-stage")
+
+        self.assertFalse(payload["committed_dirty_worktree"])
+        az_command = next(command for command in commands if command[:4] == ["az", "repos", "pr", "create"])
+        description = az_command[az_command.index("--description") + 1]
+        self.assertIn("Added export date range validation.", description)
+        self.assertIn("Rejected export requests over 365 days.", description)
+        self.assertNotIn("Workflow artifacts", description)
+        self.assertNotIn("qa_report.yaml", description)
+        self.assertNotIn("automated workflow PR", description)
 
 
 if __name__ == "__main__":

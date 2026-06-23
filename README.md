@@ -203,7 +203,7 @@ python3 run.py --repo /absolute/path/to/target/repo --log-level debug
 Current built-in default models are:
 
 - `claude` → `claude-haiku-4-5-20251001`
-- `codex` → `gpt-5.2-codex` (any model name accepted; presets are suggestions only)
+- `codex` → `gpt-5.5` (any model name accepted; presets are suggestions only)
 - `copilot` → `gpt-5-mini`
 - `gemini` → `gemini-2.5-flash`
 - `openai-compat` → `deepseek-v4-pro:cloud` (any model name accepted; presets are suggestions only)
@@ -230,8 +230,10 @@ python3 run.py \
 | `--manual-story-file PATH` | none | Path to a JSON file containing manually pasted story fields (`title`, `description`, `acceptance_criteria`, optional work item reference fields, optional extra context). Treats work item IDs and URLs as reference-only metadata unless explicit write-back is enabled later. |
 | `--runner NAME` | `claude` | LLM backend to use: `claude` (Anthropic), `codex` (OpenAI Codex CLI), `copilot` (OpenAI/GitHub), `gemini` (Google), `openai-compat` (any OpenAI-compatible endpoint), or a custom alias defined in the per-user config file under `runner_aliases`. |
 | `--model NAME` | runner default | Model name to pass to the selected runner. Defaults to the runner's built-in default when omitted. For `codex` and `openai-compat`, any model name is accepted; `claude`/`copilot`/`gemini` require a known model from their allowlists. |
+| `--agent-runner AGENT=RUNNER` | none | Per-agent runner override. Repeatable. `AGENT` must be one of the 10 valid agent names (see [Agent names](#agent-names)). Example: `--agent-runner qa-engineer=gemini`. |
+| `--agent-model AGENT=MODEL` | none | Per-agent model override. Repeatable. Same valid agent names as `--agent-runner`. Example: `--agent-model qa-engineer=gemini-2.5-flash`. |
 | `--extra-context TEXT` | none | Free-form text appended verbatim to the intake agent's prompt. Useful for passing a reference PR URL, design notes, or other supplemental context. |
-| `--skip-lessons-optimizer` | always on | Deprecated compatibility flag. The lessons optimizer is disabled and is never invoked. |
+| `--skip-lessons-optimizer` | off (no-op) | Deprecated compatibility flag. The lessons optimizer is disabled and is never invoked. |
 | `--materialize` | off | Explicitly copy enabled agent/skill/script source files into runner-specific generated directories before the workflow starts. |
 | `--skip-materialize` | on | Do not refresh generated runner assets. This is the default so prompt-file changes remain manual. |
 | `--calibration-fast-mode` | off | Use a cheaper single-iteration profile for every evaluator/optimizer loop. Intended for synthesis calibration runs where full loop quality is not required. |
@@ -262,6 +264,10 @@ python3 eval/runner.py \
 ```
 
 For the full evaluation workflow, artifacts, source types, calibration, plugins, baselines, and troubleshooting, see [`eval/README.md`](eval/README.md).
+
+The `eval/` directory also contains a second evaluation mode — **Single-Agent Artifact Evals** (`eval/agent_runner.py`, `eval/agent_metrics.py`) — which scores a single agent's output on a dataset of prompts and expected artifacts (`eval/agent_datasets/`). This mode is separate from the benchmark harness and is documented in the *Single-Agent Artifact Evals* section of `eval/README.md`.
+
+Additional benchmark harness flags not shown above: `--update-baseline`, `--regression-quality-pp` (default 5.0 pp), `--regression-efficiency-pct` (default 15 %), `--no-verify-gold-fails`, `--allow-hidden-skips`. See `eval/README.md` for details.
 
 ## Local API + GUI
 
@@ -448,8 +454,24 @@ Manual story files are JSON objects with these required fields:
 4. **Task Assignment** — writes `planning/assignments.json`
 5. **Execution** — iterates through units of work and writes per-UoW implementation reports
 6. **QA** — validates the implementation and writes `qa/qa_report.yaml`
+7. **PR Review** — commits and pushes the feature branch, opens an Azure DevOps PR targeting `develop`, runs the `pr-reviewer` agent → `pr/pr_review.md`. Skipped when `AGENT_RUNNER_EVALUATION_RUN` is set.
 
 The lessons optimizer stage is disabled. Workflow runs do not write `summary/lessons_optimizer_report.yaml` and do not make optimizer-driven prompt edits.
+
+### Agent names
+
+The harness defines ten agents. These are the valid keys for `--agent-runner` and `--agent-model` overrides:
+
+- `intake`
+- `task-generator`
+- `task-plan-evaluator`
+- `task-assigner`
+- `assignment-evaluator`
+- `software-engineer`
+- `implementation-evaluator`
+- `qa-engineer`
+- `qa-evaluator`
+- `pr-reviewer`
 
 When runs are launched through the local API, the server also records structured events in `<data-dir>/logs/<change-id>/events.jsonl`, streams them over SSE, writes per-agent CLI session summaries under `<data-dir>/logs/<change-id>/<agent>/`, and copies event-derived metrics into `summary/run_metrics.yaml`.
 
@@ -465,8 +487,10 @@ When Opik tracing is active, each agent-call span is annotated with the same non
 python3 -m pytest -q tests/test_server_routes.py tests/test_server_events.py
 python3 -m pytest -q tests/test_workflow_inputs.py tests/test_runner_proc.py
 python3 -m pytest -q tests/test_eval_runner.py tests/test_eval_seed_benchmarks.py
-python3 -m pytest -q tests/
+python3 -m pytest -q tests/   # full suite (~40 test files)
 ```
+
+A few other test files worth knowing about: `test_runner_models.py`, `test_runner_failover.py`, `test_telemetry.py`, `test_user_escalation.py`, `test_materialize.py`. Run any of them directly to focus on a subsystem.
 
 ### Testing agent escalation
 

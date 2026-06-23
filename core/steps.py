@@ -94,6 +94,110 @@ def _pr_review_path(change_id: str) -> Path:
     return _pr_dir(change_id) / "no_mistakes_report.md"
 
 
+def _normalize_pr_description_text(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.split()).strip()
+
+
+def _is_vague_pr_summary(value: str) -> bool:
+    normalized = value.casefold().rstrip(".")
+    return normalized in {
+        "",
+        "implemented requested code changes",
+        "implements requested code changes",
+        "implemented the requested code changes",
+        "implements the requested code changes",
+        "made requested changes",
+        "made code changes",
+        "updated code",
+        "completed requested work",
+    }
+
+
+def _format_sentence(value: str) -> str:
+    return value if value.endswith((".", "!", "?")) else f"{value}."
+
+
+def _append_unique(items: list[str], value: str) -> None:
+    if value and value not in items:
+        items.append(value)
+
+
+def _build_pr_description_from_impl_reports(change_id: str) -> str:
+    story_data = _load_yaml_mapping(_intake_story_path(change_id))
+    story_title = _normalize_pr_description_text(story_data.get("title")) or f"Implement change {change_id}"
+    execution_dir = AGENT_CONTEXT_ROOT / change_id / "execution"
+    report_paths = sorted(path for path in execution_dir.glob("*/impl_report.yaml") if path.is_file())
+
+    if not report_paths:
+        return (
+            f"{_format_sentence(story_title)}\n\n"
+            "## Changes\n"
+            "- Implements the requested code changes.\n"
+        )
+
+    opening_sentence = ""
+    change_bullets: list[str] = []
+    test_bullets: list[str] = []
+
+    for report_path in report_paths:
+        raw_report = yaml.safe_load(report_path.read_text(encoding="utf-8")) or {}
+        report = raw_report if isinstance(raw_report, dict) else {}
+
+        implementation_summary = _normalize_pr_description_text(report.get("implementation_summary"))
+        if implementation_summary and not _is_vague_pr_summary(implementation_summary):
+            if not opening_sentence:
+                opening_sentence = implementation_summary
+            _append_unique(change_bullets, implementation_summary)
+
+        for file_entry in report.get("files_modified") or []:
+            if not isinstance(file_entry, dict):
+                continue
+            change_summary = _normalize_pr_description_text(file_entry.get("change_summary"))
+            if change_summary and not _is_vague_pr_summary(change_summary):
+                _append_unique(change_bullets, change_summary)
+
+        for command_entry in report.get("commands_executed") or []:
+            if isinstance(command_entry, dict):
+                command_text = _normalize_pr_description_text(
+                    command_entry.get("command") or command_entry.get("summary") or command_entry.get("name")
+                )
+            else:
+                command_text = _normalize_pr_description_text(command_entry)
+            if command_text:
+                _append_unique(test_bullets, command_text)
+
+        for test_entry in report.get("test_results") or []:
+            if isinstance(test_entry, dict):
+                name = _normalize_pr_description_text(
+                    test_entry.get("name") or test_entry.get("test") or test_entry.get("summary")
+                )
+                status = _normalize_pr_description_text(test_entry.get("status"))
+                details = _normalize_pr_description_text(test_entry.get("details"))
+                parts = [part for part in (name, status, details) if part]
+                test_text = ": ".join(parts[:2])
+                if len(parts) > 2:
+                    test_text = f"{test_text} - {parts[2]}" if test_text else parts[2]
+            else:
+                test_text = _normalize_pr_description_text(test_entry)
+            if test_text:
+                _append_unique(test_bullets, test_text)
+
+    if not opening_sentence:
+        opening_sentence = story_title
+
+    if not change_bullets:
+        change_bullets.append("Implements the requested code changes.")
+
+    lines = [_format_sentence(opening_sentence), "", "## Changes"]
+    lines.extend(f"- {bullet}" for bullet in change_bullets)
+    if test_bullets:
+        lines.extend(["", "## Tests"])
+        lines.extend(f"- {bullet}" for bullet in test_bullets)
+    return "\n".join(lines) + "\n"
+
+
 def _utc_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
@@ -1679,6 +1783,47 @@ def _load_workflow_feature_branch(change_id: str) -> str:
     return feature_branch.strip()
 
 
+def _create_ado_pull_request(change_id: str, repo: str, feature_branch: str) -> dict:
+    _repo_command_stdout(repo, ["git", "rev-parse", "--abbrev-ref", "HEAD"])
+    dirty_worktree = bool(_repo_command_stdout(repo, ["git", "status", "--porcelain"]))
+    if dirty_worktree:
+        _run_repo_command(repo, ["git", "add", "-A"])
+        _run_repo_command(repo, ["git", "commit", "-m", f"Implement {change_id}"])
+
+    _run_repo_command(repo, ["git", "push", "-u", "origin", feature_branch])
+
+    story_data = _load_yaml_mapping(_intake_story_path(change_id))
+    title = _normalize_pr_description_text(story_data.get("title")) or f"Implement {change_id}"
+    description = _build_pr_description_from_impl_reports(change_id)
+    payload_text = _repo_command_stdout(
+        repo,
+        [
+            "az",
+            "repos",
+            "pr",
+            "create",
+            "--source-branch",
+            feature_branch,
+            "--target-branch",
+            "develop",
+            "--title",
+            title,
+            "--description",
+            description,
+            "--output",
+            "json",
+        ],
+    )
+    payload = json.loads(payload_text or "{}")
+    if not isinstance(payload, dict):
+        raise RuntimeError("Azure DevOps PR create returned a non-object payload.")
+    payload["committed_dirty_worktree"] = dirty_worktree
+
+    pr_dir = _pr_dir(change_id)
+    pr_dir.mkdir(parents=True, exist_ok=True)
+    (pr_dir / "pr.json").write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return payload
+
 
 @track_with_ui(
     name="stage:pr-review",
@@ -1698,12 +1843,14 @@ def step_pr_review(
     logger.info("step_pr_review: change_id=%s runner=%s", change_id, runner)
     _annotate_trace(stage="pr-review", runner=runner, change_id=change_id)
     feature_branch = _load_workflow_feature_branch(change_id)
+    pr_payload = _create_ado_pull_request(change_id, repo, feature_branch)
     report_path = _pr_review_path(change_id)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     story_data = _load_yaml_mapping(_intake_story_path(change_id))
     intent = story_data.get("goal") or story_data.get("title") or f"Implement change {change_id}"
     prompt = (
         f"Drive the no-mistakes validation gate for change {change_id}.\n"
+        f"Pull request payload: {json.dumps(pr_payload, sort_keys=True)}\n"
         f"Feature branch: {feature_branch}\n"
         f"Target repo: {repo}\n"
         f"Story: {_intake_story_path(change_id)}\n"
