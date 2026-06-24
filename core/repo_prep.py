@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import shutil
 import subprocess
 from pathlib import Path
+
+from core.runtime_paths import worktrees_root
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +114,118 @@ def prepare_repo_branch(
         _run_git_command(repo_path, "checkout", "-b", feature_branch)
 
     return feature_branch
+
+
+def worktree_path_for(change_id: str) -> Path:
+    """Return the worktree directory path for *change_id* (sanitized + hashed)."""
+    slug = re.sub(r"[^a-z0-9]+", "-", change_id.lower()).strip("-")[:48] or "run"
+    digest = hashlib.sha256(change_id.encode("utf-8")).hexdigest()[:12]
+    return worktrees_root(create=True) / f"{slug}-{digest}"
+
+
+def _active_worktree_paths(repo: str | Path) -> set[Path]:
+    """Return the set of worktree paths currently registered for *repo*."""
+    result = subprocess.run(
+        ["git", "worktree", "list", "--porcelain"],
+        cwd=str(repo),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    paths: set[Path] = set()
+    for line in result.stdout.splitlines():
+        if line.startswith("worktree "):
+            paths.add(Path(line[len("worktree "):].strip()))
+    return paths
+
+
+def prepare_repo_worktree(
+    *,
+    repo: str | Path,
+    change_id: str,
+    description_source: str | None,
+) -> tuple[Path, str]:
+    """Create an isolated git worktree for *repo* on the feature branch.
+
+    Caller must hold git_admin_lock(repo) before calling.
+    Returns (worktree_path, feature_branch).
+    """
+    repo_path = Path(repo)
+    feature_branch = build_feature_branch_name(change_id, description_source)
+    wt_path = worktree_path_for(change_id)
+    wt_root = worktrees_root()
+
+    if wt_path.exists():
+        active = _active_worktree_paths(repo_path)
+        if wt_path.resolve() not in {p.resolve() for p in active}:
+            logger.warning("prepare_repo_worktree: reclaiming stale worktree dir %s", wt_path)
+            remove_worktree(repo=repo_path, worktree_path=wt_path)
+            if wt_path.exists():
+                # Guard: only rmtree if it's safely under worktrees_root
+                try:
+                    wt_path.resolve().relative_to(wt_root.resolve())
+                    shutil.rmtree(wt_path, ignore_errors=True)
+                except ValueError:
+                    raise RuntimeError(
+                        f"Refusing to remove {wt_path}: not under worktrees_root {wt_root}"
+                    )
+        else:
+            raise RuntimeError(
+                f"Worktree {wt_path} is already registered as active for {repo_path}"
+            )
+
+    _run_git_command(repo_path, "fetch", "origin", "--prune")
+
+    if _git_ref_exists(repo_path, "refs/remotes/origin/develop"):
+        base_ref = "origin/develop"
+    else:
+        base_ref = "develop"
+
+    local_feature_ref = f"refs/heads/{feature_branch}"
+    remote_feature_ref = f"refs/remotes/origin/{feature_branch}"
+    if _git_ref_exists(repo_path, local_feature_ref):
+        _run_git_command(repo_path, "worktree", "add", str(wt_path), feature_branch)
+    elif _git_ref_exists(repo_path, remote_feature_ref):
+        _run_git_command(
+            repo_path,
+            "worktree", "add", "--track",
+            "-b", feature_branch,
+            str(wt_path),
+            f"origin/{feature_branch}",
+        )
+    else:
+        _run_git_command(repo_path, "worktree", "add", "-b", feature_branch, str(wt_path), base_ref)
+
+    logger.info("prepare_repo_worktree: created worktree %s on branch %s", wt_path, feature_branch)
+    return wt_path, feature_branch
+
+
+def remove_worktree(*, repo: str | Path, worktree_path: str | Path) -> None:
+    """Remove a git worktree.  Best-effort — never raises (used in finalize paths).
+
+    Caller must hold git_admin_lock(repo) before calling.
+    """
+    wt = Path(worktree_path)
+    repo_path = Path(repo)
+    try:
+        _run_git_command(repo_path, "worktree", "remove", "--force", str(wt))
+    except Exception as exc:
+        logger.warning("remove_worktree: git worktree remove failed for %s: %s", wt, exc)
+        try:
+            _run_git_command(repo_path, "worktree", "prune")
+        except Exception:
+            pass
+        wt_root = worktrees_root()
+        try:
+            wt.resolve().relative_to(wt_root.resolve())
+            shutil.rmtree(wt, ignore_errors=True)
+        except ValueError:
+            logger.warning("remove_worktree: skipping rmtree for %s (not under worktrees_root)", wt)
+    # Always prune after removal so the registry is consistent
+    try:
+        _run_git_command(repo_path, "worktree", "prune")
+    except Exception:
+        pass
 
 
 def ensure_graphify_index(repo: "str | Path") -> bool:
