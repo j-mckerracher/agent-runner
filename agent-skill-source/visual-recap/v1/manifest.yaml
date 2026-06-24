@@ -1,0 +1,5 @@
+name: visual-recap
+version: v1
+description: "Self-contained visual recap HTML generated at PR creation; links the pull request, lists changed files, and shows implementation/QA summaries."
+source: "agent-skill-source/visual-recap/v1/SKILL.md"
+skill_file: "SKILL.md"

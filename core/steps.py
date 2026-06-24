@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 
 from .artifact_utils import _load_yaml_mapping, load_assignments_file, normalize_assignments_file
+from .visual_artifacts import generate_plan_html, generate_recap_html, open_in_browser
 from .opik_compat import opik_context
 from .repo_prep import build_feature_branch_name
 from .run_cmds import run_claude_cmd, run_agent_cmd
@@ -1496,6 +1497,14 @@ def step_task_gen_producer(
     return result
 
 
+def render_task_plan_html(change_id: str, *, approved: bool) -> None:
+    try:
+        plan_path = generate_plan_html(change_id, approved=approved)
+        open_in_browser(plan_path, new_tab=True)
+    except Exception:
+        logger.exception("render_task_plan_html: plan HTML generation failed (non-fatal)")
+
+
 @track_with_ui(
     name="stage:task-gen-evaluator",
     type="tool",
@@ -1519,6 +1528,8 @@ def step_task_gen_evaluator(
         result = "PASS - Copilot compatibility fallback accepted existing planning/tasks.yaml."
     passed = "PASS" in result
     logger.info("step_task_gen_evaluator: change_id=%s passed=%s", change_id, passed)
+    if passed:
+        render_task_plan_html(change_id, approved=True)
     try:
         opik_context.update_current_trace(
             feedback_scores=[{"name": "evaluator_pass", "value": 1.0 if passed else 0.0}],
@@ -1844,6 +1855,11 @@ def step_pr_review(
     _annotate_trace(stage="pr-review", runner=runner, change_id=change_id)
     feature_branch = _load_workflow_feature_branch(change_id)
     pr_payload = _create_ado_pull_request(change_id, repo, feature_branch)
+    try:
+        recap_path = generate_recap_html(change_id, repo, pr_payload)
+        open_in_browser(recap_path, new_tab=False)
+    except Exception:
+        logger.exception("step_pr_review: recap generation failed (non-fatal)")
     report_path = _pr_review_path(change_id)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     story_data = _load_yaml_mapping(_intake_story_path(change_id))

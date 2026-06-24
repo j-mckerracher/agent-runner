@@ -1,0 +1,5 @@
+name: visual-plan
+version: v1
+description: "Self-contained visual plan HTML opened in a new browser tab when the task-plan-evaluator approves a plan. Shows story/goal, task cards, dependency list, and AC-coverage map."
+source: "agent-skill-source/visual-plan/v1/SKILL.md"
+skill_file: "SKILL.md"

@@ -1,12 +1,186 @@
 {
   "agents": [
     {
+      "name": "assignment-evaluator",
+      "version": "v2"
+    },
+    {
+      "name": "implementation-evaluator",
+      "version": "v3"
+    },
+    {
+      "name": "information-explorer",
+      "version": "v2"
+    },
+    {
+      "name": "intake",
+      "version": "v3"
+    },
+    {
+      "name": "pr-reviewer",
+      "version": "v1"
+    },
+    {
+      "name": "qa-engineer",
+      "version": "v2"
+    },
+    {
+      "name": "qa-evaluator",
+      "version": "v2"
+    },
+    {
+      "name": "reference-librarian",
+      "version": "v2"
+    },
+    {
       "name": "software-engineer",
+      "version": "v2"
+    },
+    {
+      "name": "task-assigner",
+      "version": "v2"
+    },
+    {
+      "name": "task-generator",
+      "version": "v3"
+    },
+    {
+      "name": "task-plan-evaluator",
       "version": "v2"
     }
   ],
-  "skills": [],
-  "scripts": [],
+  "skills": [
+    {
+      "name": "agentic-eval",
+      "version": "v1"
+    },
+    {
+      "name": "artifact-io",
+      "version": "v1"
+    },
+    {
+      "name": "azure-devops-cli",
+      "version": "v1"
+    },
+    {
+      "name": "code-comment-standards",
+      "version": "v1"
+    },
+    {
+      "name": "cypress",
+      "version": "v1"
+    },
+    {
+      "name": "evaluator-framework",
+      "version": "v1"
+    },
+    {
+      "name": "execution-discipline",
+      "version": "v1"
+    },
+    {
+      "name": "frontend-design",
+      "version": "v1"
+    },
+    {
+      "name": "interrogate-eng",
+      "version": "v1"
+    },
+    {
+      "name": "lessons-capture",
+      "version": "v1"
+    },
+    {
+      "name": "librarian-query-protocol",
+      "version": "v1"
+    },
+    {
+      "name": "mcs-products-mono-ui-onboarding",
+      "version": "v1"
+    },
+    {
+      "name": "nx-cli",
+      "version": "v1"
+    },
+    {
+      "name": "ov",
+      "version": "v1"
+    },
+    {
+      "name": "scope-and-security",
+      "version": "v1"
+    },
+    {
+      "name": "session-logging",
+      "version": "v2"
+    },
+    {
+      "name": "storybook",
+      "version": "v1"
+    },
+    {
+      "name": "visual-plan",
+      "version": "v1"
+    },
+    {
+      "name": "visual-recap",
+      "version": "v1"
+    }
+  ],
+  "scripts": [
+    {
+      "name": "check-ac-coverage.py",
+      "version": "source"
+    },
+    {
+      "name": "check-dependency-cycles.py",
+      "version": "source"
+    },
+    {
+      "name": "check-test-harnesses.py",
+      "version": "source"
+    },
+    {
+      "name": "detect-ui-changes.py",
+      "version": "source"
+    },
+    {
+      "name": "generate-obsidian-archive.py",
+      "version": "source"
+    },
+    {
+      "name": "init-artifact-dirs.py",
+      "version": "source"
+    },
+    {
+      "name": "init-session-log.py",
+      "version": "source"
+    },
+    {
+      "name": "parse-lessons.py",
+      "version": "source"
+    },
+    {
+      "name": "parse-test-steps.py",
+      "version": "source"
+    },
+    {
+      "name": "request-user-input.py",
+      "version": "source"
+    },
+    {
+      "name": "validate-artifact-schema.py",
+      "version": "source"
+    },
+    {
+      "name": "validate-diff-size.py",
+      "version": "source"
+    },
+    {
+      "name": "validate-scope.py",
+      "version": "source"
+    }
+  ],
   "target_dir": "/Users/mckerracher.joshua/Code/agent-workbench/.claude",
   "content_hashes": {
     "agent:assignment-evaluator@v2": "9b33bed0ad1be7ed1007ff93f7cabd53598d235f4ee5cf1a270003508553ef01",
@@ -19,7 +193,7 @@
     "agent:software-engineer-hyperagent@v2": "016708a0e10aba04516f7b4498ec98b2397a741c71aeb34573493be6a29716bd",
     "agent:task-assigner@v2": "af0a47871e65953937e92046033b43321ba9d13516ec249ac5c6f0f6949a43fb",
     "agent:task-generator@v2": "89b76afd664e56cc2cdf9456b0322e9d473440d29764314c22d3c00271c21b7a",
-    "agent:task-plan-evaluator@v2": "8dbc3634b333d7dac4884c2c9f197aeb915ab6eb57ff3d82a8e6cfe77a56cd81",
+    "agent:task-plan-evaluator@v2": "e321399bb83041bb0bee4968aebd1814a125f08f6bfc1c468e5f2ad7b59f768f",
     "skill:agentic-eval@v1": "7f05cf94e15bee6fcfa4340593a7b6984a08b5279ff906fb39cfd92dd267e831",
     "skill:artifact-io@v1": "583c09dbb309d616264a41dcb76d4b7d6d237a2c8071e46885bd7d22b5d3d502",
     "skill:azure-devops-cli@v1": "4ff7f8da9da48c8cd8d7a76e8bf73ca641549c8910b470a52dfe32e591826704",
@@ -50,10 +224,12 @@
     "script:validate-artifact-schema.py@source": "cedf70d4d04d5bee79182eea24c4792051174c708cf4476313ce37f9203441c9",
     "script:validate-diff-size.py@source": "d22f20f6eba1a6d32163a7d7a88c1110de4ab9a6a4c3794345d128ffc5a63880",
     "script:validate-scope.py@source": "acdd22b90d0bde7897de5fadc41480f8960a2c25b86fce494a3fefcdc06d7383",
-    "agent:pr-reviewer@v1": "cd90fd0a2c63d5e3e794ffcbe1d9ffffd3d3e5c6a9bca55ad838bcc528306d14",
+    "agent:pr-reviewer@v1": "87a3a6d8fee419c8e5a2e250096e2e031b910b303c6baeb7295bf98df556b6e7",
     "agent:qa-engineer@v2": "d4f2faf2b4addcb9e9cf85e140f81a916c3a260424d32f37bcf965c493770797",
     "agent:software-engineer@v2": "86223a6b9b0f78fb4676a2780a2ecd2379ac3f191ef00595db0471f7ecad1508",
-    "agent:task-generator@v3": "914b50cdace7953785556118835d93107bb42cbfae45cee5e280772c369f0d81"
+    "agent:task-generator@v3": "914b50cdace7953785556118835d93107bb42cbfae45cee5e280772c369f0d81",
+    "skill:visual-plan@v1": "79d991350466352c270bf8e39340726f4d8f4aae10a02fc385b70364c78543a8",
+    "skill:visual-recap@v1": "3826954918de79a4caf470a36a24da1ed96aa7434b0142743c6d958544e4daf9"
   },
-  "materialized_at": "2026-06-24T03:11:08Z"
+  "materialized_at": "2026-06-24T05:24:24Z"
 }

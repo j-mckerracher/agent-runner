@@ -4,6 +4,7 @@ import os
 import re
 import time
 from pathlib import Path
+from typing import Callable
 
 from .opik_compat import opik_context
 
@@ -335,6 +336,7 @@ def run_eval_optimizer_loop(
     runner_model: str | None = None,
     evaluator_runner: str | None = None,
     evaluator_runner_model: str | None = None,
+    on_exhausted: Callable[[str], None] | None = None,
 ):
     change_id = _extract_change_id(producer_input) or _extract_change_id(evaluator_prompt)
     effective_evaluator_runner = evaluator_runner or runner
@@ -474,6 +476,8 @@ def run_eval_optimizer_loop(
         runner=runner,
         model=runner_model,
     )
+    if actual_iterations >= iter_count and not passed and on_exhausted is not None:
+        on_exhausted(change_id)
 
     logger.info("run_eval_optimizer_loop: DONE change_id=%s", change_id)
     return producer_out, evaluator_out

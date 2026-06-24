@@ -395,5 +395,32 @@ Now let me write the full evaluation:
         self.assertNotIn("large partial json", retry_prompt)
 
 
+class EvalOptimizerLoopExhaustionHookTests(unittest.TestCase):
+    def test_easy__eval_optimizer_loop_calls_on_exhausted_once_after_terminal_failure(self):
+        from core.evaluator_optimizer_loops import run_eval_optimizer_loop
+
+        exhausted = []
+
+        def producer(prompt: str, **_kwargs) -> str:
+            return f"produced:{prompt}"
+
+        def evaluator(_prompt: str, **_kwargs) -> str:
+            return "FAIL"
+
+        output, evaluation = run_eval_optimizer_loop(
+            producer,
+            "agent-context/LOOP-3/planning/task.yaml",
+            evaluator,
+            "agent-context/LOOP-3/qa/eval.yaml",
+            iter_count=2,
+            runner="claude",
+            on_exhausted=exhausted.append,
+        )
+
+        self.assertTrue(output.startswith("produced:agent-context/LOOP-3/planning/task.yaml"))
+        self.assertEqual(evaluation, "FAIL")
+        self.assertEqual(exhausted, ["LOOP-3"])
+
+
 if __name__ == "__main__":
     unittest.main()

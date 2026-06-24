@@ -865,5 +865,34 @@ class PullRequestDescriptionTests(unittest.TestCase):
         self.assertNotIn("automated workflow PR", description)
 
 
+class TaskPlanRenderingTests(unittest.TestCase):
+    def test_easy__render_task_plan_html_passes_approval_state_to_visual_artifacts(self):
+        from core.steps import render_task_plan_html
+
+        with (
+            patch("core.steps.generate_plan_html", return_value=Path("/tmp/plan.html")) as generate_plan_html_mock,
+            patch("core.steps.open_in_browser") as open_in_browser_mock,
+        ):
+            render_task_plan_html("CHANGE-42", approved=False)
+
+        generate_plan_html_mock.assert_called_once_with("CHANGE-42", approved=False)
+        open_in_browser_mock.assert_called_once_with(Path("/tmp/plan.html"), new_tab=True)
+
+    def test_easy__step_task_gen_evaluator_renders_plan_only_on_pass(self):
+        from core.steps import step_task_gen_evaluator
+
+        context = "agent-context/CHANGE-42/planning/tasks.yaml"
+        with (
+            patch("core.steps.call_evaluator_sdk", return_value="FAIL") as evaluator_mock,
+            patch("core.steps.resolve_agent_model", return_value="judge-model"),
+            patch("core.steps.render_task_plan_html") as render_task_plan_html_mock,
+        ):
+            result = step_task_gen_evaluator(context, runner="claude")
+
+        evaluator_mock.assert_called_once_with(context, "task-plan-evaluator", model="judge-model", runner="claude")
+        self.assertEqual(result, "FAIL")
+        render_task_plan_html_mock.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

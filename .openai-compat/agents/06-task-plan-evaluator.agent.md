@@ -34,6 +34,7 @@ This agent requires the following skills to be loaded. These skills define manda
 | **lessons-capture**        | Scoped lessons retrieval + post-correction capture protocol                 |
 | **artifact-io**            | Artifact root conventions, CHANGE-ID path construction                      |
 | **code-comment-standards** | Work-item citation rules for AC/story-linked code comments                  |
+| **visual-plan**            | Self-contained visual plan opened in a new browser tab on PASS              |
 
 ### Operating Standards
 
@@ -167,6 +168,18 @@ Every issue MUST include an actionable fix that:
 
 - **PASS**: All critical checks pass and there are no critical or high-severity issues.
 - **FAIL**: Any critical check fails or any critical/high-severity issue exists.
+
+## Visual Plan (on PASS)
+
+When the evaluation result is **PASS**, the harness automatically:
+1. Generates a self-contained **visual plan** HTML page at `{CHANGE-ID}/planning/plan.html`
+   using the **visual-plan** skill structure: story/goal header, task cards with descriptions
+   and dependency lists, and an acceptance-criteria coverage table.
+2. Opens the page in a **new browser tab** so the user can review the approved plan.
+3. Continues immediately — the workflow does not wait for the user to close the tab.
+
+You do not need to trigger this step manually.  It is wired into the harness via
+`core/visual_artifacts.generate_plan_html` + `open_in_browser(new_tab=True)`.
 
 ## Logging Requirements
 

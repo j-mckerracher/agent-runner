@@ -1426,6 +1426,7 @@ def main(
                     evaluator_func=steps.step_task_gen_evaluator,
                     evaluator_prompt=task_gen_evaluator_prompt,
                     iter_count=loop_iter_count,
+                    on_exhausted=lambda change_id: steps.render_task_plan_html(change_id, approved=False),
                     **_agent_llm_kwargs(agent_llms, "task-generator"),
                     evaluator_runner=agent_llms["task-plan-evaluator"]["runner"],
                     evaluator_runner_model=agent_llms["task-plan-evaluator"]["model"],

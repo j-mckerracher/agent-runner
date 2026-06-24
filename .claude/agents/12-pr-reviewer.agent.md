@@ -63,6 +63,16 @@ When any finding has `action: ask-user`, OR when the outcome is `failed`/`cancel
 - Mark the report outcome as ESCALATE.
 - Fail the stage (non-zero exit / raise).
 
+## Visual Recap
+
+After the PR is created (before you run the gate), the harness writes a self-contained
+**visual recap** page to `{change_id}/pr/recap.html` and opens it in the user's default
+browser.  Structure follows the **visual-recap** skill: PR banner (with a direct link to
+the pull request), changed-file map, implementation summaries, and QA summary.
+
+The `## PR / CI Links` section you write below feeds the recap — paste the links accurately
+so they are available to the recap generator and to reviewers.
+
 ## Output — `{no_mistakes_report_path}`
 
 Write a single markdown file to the path provided. Structure:
