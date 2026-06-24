@@ -71,6 +71,7 @@ The current platform is intentionally local-first and workflow-centric. The next
 | Dependency | Required | What it does |
 |---|---|---|
 | `rtk` | No | When `rtk` is available on `PATH`, the workflow routes terminal work through RTK-aware tooling to reduce token usage. Falls back to normal execution when absent. `rtk` means “rust token killer.” Install from the internal [mayo-rtk-ai](https://dev.azure.com/mclm/Mayo%20Open%20Developer%20Network/_git/mayo-rtk-ai) repo — see `requirements.txt` for instructions. |
+| `ponytail` | No | Claude Code skill (not a CLI binary). When active, agents apply a laziest-solution-first discipline: YAGNI first, stdlib before custom code, native platform features before new dependencies. Referenced in agent prompts to suppress over-engineering. Loaded automatically from `.claude/skills/` — no install required. |
 
 ### Fastest local setup on macOS / Linux
 

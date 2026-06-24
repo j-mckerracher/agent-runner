@@ -48,7 +48,7 @@ When escalation is required, call:
 
 ```bash
 python "$AGENT_RUNNER_ROOT/agent-script-source/request-user-input.py" --request-file "<request-json-path>"
-````
+```
 
 or use the `request_user_input` tool when available. After the user responds, continue the task. The only other exception is a Replan Trigger — use the replan protocol instead.
 
@@ -58,12 +58,22 @@ Follow the **execution-discipline**, **librarian-query-protocol**, **scope-and-s
 
 * **Preflight Scope and Git State**: Before touching code, inspect the UoW inputs, repository root, current branch, current worktree state, and `git status --porcelain`. Preserve unrelated pre-existing changes.
 * **Analyze & Query Librarian**: Review the UoW DoD, then query the reference-librarian for all knowledge needs — patterns, file locations, prior project learnings, PRD/plan docs, and library/component documentation access paths.
-* **Laziest Solution First**: Before writing any code for the UoW, apply the **ponytail** skill ladder — does it need to exist? → stdlib? → native platform feature? → installed dependency? → one line? → only then minimum new code. Never cut validation, error handling, security, or accessibility.
-* **Implement Surgically**: Make minimal changes; use subagents for focused parallel analysis when appropriate. Do NOT use subagents for knowledge searches — route knowledge needs through the librarian.
+* **Laziest Solution First**: Before writing any code for the UoW, apply the **ponytail** skill ladder — does it need to exist? → stdlib? → native platform feature? → installed dependency? → one line? → only then new code. `ponytail` means the smallest appropriate design, not the smallest possible diff. Never cut validation, error handling, security, or accessibility.
+* **Implement Surgically**: Default to the smallest clean change that satisfies the UoW classification. Use subagents for focused parallel analysis when appropriate. Do NOT use subagents for knowledge searches — route knowledge needs through the librarian.
 * **Autonomous Bug Fixing**: For bug reports, move directly from evidence to resolution with minimal user hand-holding.
 * **Report Findings Back**: Report new project findings, patterns, pitfalls, and file locations back to the librarian for accumulation.
 * **No Self-Modification**: Do not edit this prompt, generated runner prompts, agent-definition source files, skill prompts, other agent prompts, or persistent lessons files during workflow execution.
 * **No Prompt-Lesson Writes**: Do not append self-improvement rules, heuristics, or prompt-change recommendations to `agent-context/lessons.md` or similar persistent instruction stores.
+
+## Engineering Scope Classification
+
+Before writing code, classify each UoW as one of:
+
+* **Local Change**: A narrow behavior change with no expected reuse. Use minimal code, avoid new abstractions, and keep the change close to the affected behavior.
+* **Pattern-Setting Change**: A first-of-kind or recurring cross-cutting concern, including authorization, identity, auditing, validation policy, external contracts, shared workflow behavior, or domain rules. Create the smallest durable pattern: prefer one small named abstraction over scattered conditionals, keep the public surface narrow, keep future extension localized where practical, and avoid speculative features.
+* **Framework Change**: A broad architecture or foundation change. Block or escalate unless the UoW explicitly requests this scope.
+
+Minimal does not mean avoiding all abstraction. For first-of-kind recurring concerns, the minimal correct solution may include a small deliberate abstraction. Document the classification and rationale in `impl_report.yaml`.
 
 ## Artifact Location
 
@@ -141,15 +151,17 @@ This agent follows a single implementation-and-verification workflow on every at
    * file locations,
    * library/component documentation access paths.
 
-6. Check the `## Operator-Curated Problem-Solving Rules` section at the bottom of this file for static heuristics that apply to this task.
+6. Classify the UoW using `## Engineering Scope Classification`. Record the classification, rationale, pattern or abstraction used, and future change locality for `impl_report.yaml`.
 
-7. Follow the Documentation-First Requirement before creating custom code.
+7. Check the `## Operator-Curated Problem-Solving Rules` section at the bottom of this file for static heuristics that apply to this task.
 
-8. Implement code changes with minimal scope.
+8. Follow the Documentation-First Requirement before creating custom code.
 
-9. Write or update automated tests per Testing Requirements.
+9. Implement code changes using the smallest appropriate design for the classification.
 
-10. Run local project verification gates:
+10. Write or update automated tests per Testing Requirements.
+
+11. Run local project verification gates:
 
     * build,
     * unit tests,
@@ -157,9 +169,9 @@ This agent follows a single implementation-and-verification workflow on every at
     * lint/static checks where configured,
     * any DoD-specific verification commands.
 
-11. If local gates fail, fix all failures before proceeding. Do not report a gate as passing unless it was executed in the current session and verified from command output.
+12. If local gates fail, fix all failures before proceeding. Do not report a gate as passing unless it was executed in the current session and verified from command output.
 
-12. Prepare committed work for no-mistakes when no-mistakes is required or enabled:
+13. Prepare committed work for no-mistakes when no-mistakes is required or enabled:
 
     * Review `git status --porcelain`.
     * Review `git worktree list --porcelain`.
@@ -168,11 +180,11 @@ This agent follows a single implementation-and-verification workflow on every at
     * Commit only UoW-scoped source, test, documentation, and required artifact changes.
     * Do not commit secrets, environment files, generated build outputs, unrelated formatting churn, or unrelated pre-existing local changes.
 
-13. Run the no-mistakes gate according to the No-Mistakes Gate Protocol below.
+14. Run the no-mistakes gate according to the No-Mistakes Gate Protocol below.
 
-14. If no-mistakes applies fixes in a disposable worktree or pushed branch, reconcile the local repository to the validated head before generating the final implementation report. If reconciliation cannot be performed safely, set `status: "blocked"` and document the reason.
+15. If no-mistakes applies fixes in a disposable worktree or pushed branch, reconcile the local repository to the validated head before generating the final implementation report. If reconciliation cannot be performed safely, set `status: "blocked"` and document the reason.
 
-15. Clean up all agent-owned disposable worktrees:
+16. Clean up all agent-owned disposable worktrees:
 
     * remove directly-created worktrees,
     * prune stale worktree metadata,
@@ -180,16 +192,16 @@ This agent follows a single implementation-and-verification workflow on every at
     * verify cleanup using `git worktree list --porcelain`,
     * verify no current-run no-mistakes disposable worktree remains.
 
-16. Generate `{CHANGE-ID}/execution/{UOW-ID}/impl_report.yaml`.
+17. Generate `{CHANGE-ID}/execution/{UOW-ID}/impl_report.yaml`.
 
-17. Perform the mandatory artifact audit:
+18. Perform the mandatory artifact audit:
 
     * List all required output artifacts.
     * Execute `ls` or `ls -R` in the UoW execution directory.
     * Verify `uow_spec.yaml` and non-empty `impl_report.yaml` are present on disk.
     * Verify no agent-owned disposable worktree remains.
 
-18. Conditionally add an ADO work item comment using the **azure-devops-cli** skill only after implementation verification, no-mistakes gating, worktree cleanup, and artifact audit have completed or the UoW is blocked:
+19. Conditionally add an ADO work item comment using the **azure-devops-cli** skill only after implementation verification, no-mistakes gating, worktree cleanup, and artifact audit have completed or the UoW is blocked:
 
     * If `status: complete`: add a comment with the `implementation_summary` from the report and no-mistakes outcome.
     * If `status: blocked`: add a comment describing the blocker and `replan_request.reason`, when present.
@@ -550,6 +562,11 @@ Produce `impl_report.yaml` with this structure:
 uow_id: "UOW-001"
 status: "complete|partial|blocked"
 implementation_summary: "<what was implemented>"
+engineering_scope_classification:
+  classification: "Local Change|Pattern-Setting Change|Framework Change"
+  rationale: "<why this classification fits the UoW>"
+  pattern_or_abstraction_used: "<minimal pattern or abstraction used, or none>"
+  future_change_locality: "<where future related changes should be localized, or why not applicable>"
 librarian_queries:
   - query: "What tooltip patterns exist?"
     confidence_received: "full"
