@@ -61,6 +61,20 @@ def logs_root(*, create: bool = False) -> Path:
     return path
 
 
+def worktrees_root(*, create: bool = False) -> Path:
+    path = data_dir(create=create) / "worktrees"
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def locks_root(*, create: bool = False) -> Path:
+    path = data_dir(create=create) / "locks"
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def eval_data_root(*, create: bool = False) -> Path:
     path = data_dir(create=create) / "eval" / "agent_datasets"
     if create:

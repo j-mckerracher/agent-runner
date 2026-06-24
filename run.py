@@ -28,7 +28,8 @@ from core.runner_models import (
     resolve_runner_llm_config,
 )
 from core.runner_failover import RunnerFailoverPolicy, discover_prior_runner_candidates
-from core.repo_prep import ensure_graphify_index, prepare_repo_branch
+from core.repo_prep import ensure_graphify_index, prepare_repo_branch, prepare_repo_worktree, remove_worktree
+from core.repo_lock import change_run_lock, git_admin_lock, working_tree_lock
 from core.story_inputs import count_acceptance_criteria
 from core.workflow_constants import *  # noqa: F403
 from core.workflow_inputs import DEFAULT_TEST_STORY_FILE, resolve_workflow_input
@@ -1172,6 +1173,12 @@ def main(
     last_completed_stage: str | None = None
     feature_branch: str | None = None
     tracer = None
+    base_repo: str = resolved_repo
+    working_lock = None
+    change_lock = None
+    worktree_path = None
+    in_place = True
+    prev_agent_repo: str | None = os.environ.get("AGENT_RUNNER_REPO")
 
     try:
         workflow_input = resolve_workflow_input(
@@ -1185,6 +1192,7 @@ def main(
         use_runner_root()
         resolved_repo = workflow_input.repo
         resolved_change_id = workflow_input.change_id
+        base_repo = resolved_repo
         intake_mode = workflow_input.intake_mode
         intake_source = workflow_input.intake_source
 
@@ -1267,21 +1275,43 @@ def main(
             resolved_change_id,
             workflow_input.branch_description_source,
         )
-        feature_branch = prepare_repo_branch(
-            repo=resolved_repo,
-            change_id=resolved_change_id,
-            description_source=workflow_input.branch_description_source,
-        )
-        logger.info("main: prepared working branch %s", feature_branch)
-        try:
-            ensure_graphify_index(resolved_repo)
-        except Exception as exc:  # best-effort: never block the workflow on indexing
-            logger.warning("main: graphify index launch failed: %s", exc)
+        change_lock = change_run_lock(resolved_change_id)
+        if not change_lock.acquire(blocking=False):
+            raise RuntimeError(
+                f"A run for change_id '{resolved_change_id}' is already active. "
+                "Two simultaneous runs with the same change_id are not supported."
+            )
+        working_lock = working_tree_lock(resolved_repo)
+        in_place = working_lock.acquire(blocking=False)
+        with git_admin_lock(resolved_repo):
+            if in_place:
+                feature_branch = prepare_repo_branch(
+                    repo=resolved_repo,
+                    change_id=resolved_change_id,
+                    description_source=workflow_input.branch_description_source,
+                )
+            else:
+                working_lock = None
+                worktree_path, feature_branch = prepare_repo_worktree(
+                    repo=resolved_repo,
+                    change_id=resolved_change_id,
+                    description_source=workflow_input.branch_description_source,
+                )
+                resolved_repo = str(worktree_path)
+                os.environ["AGENT_RUNNER_REPO"] = resolved_repo
+                logger.info("main: repo busy — running in isolated worktree %s", resolved_repo)
+                print(f"Repo busy; running in isolated worktree: {resolved_repo}")
+        logger.info("main: prepared working branch %s (in_place=%s)", feature_branch, in_place)
+        if in_place:
+            try:
+                ensure_graphify_index(base_repo)
+            except Exception as exc:  # best-effort: never block the workflow on indexing
+                logger.warning("main: graphify index launch failed: %s", exc)
 
         _emit(
             EVENT_TYPE_JOB_START,
             change_id=resolved_change_id,
-            repo=resolved_repo,
+            repo=base_repo,
             runner=runner,
             model=resolved_model,
             intake_mode=intake_mode,
@@ -1310,7 +1340,7 @@ def main(
                     status=STATUS_CANCELLED,
                     runner=runner,
                     model=resolved_model,
-                    repo=resolved_repo,
+                    repo=base_repo,
                     exit_code=143,
                     failed_stage=failed_stage,
                     last_completed_stage=last_completed_stage,
@@ -1337,7 +1367,7 @@ def main(
             name="workflow:run",
             input={
                 "change_id": resolved_change_id,
-                "repo": resolved_repo,
+                "repo": base_repo,
                 "runner": runner,
                 "model": resolved_model,
                 "intake_mode": intake_mode,
@@ -1634,7 +1664,7 @@ def main(
                 status=final_status,
                 runner=runner,
                 model=resolved_model,
-                repo=resolved_repo,
+                repo=base_repo,
                 exit_code=final_exit,
                 failed_stage=failed_stage,
                 last_completed_stage=last_completed_stage,
@@ -1653,7 +1683,7 @@ def main(
                 status=final_status,
                 runner=runner,
                 model=resolved_model,
-                repo=resolved_repo,
+                repo=base_repo,
                 exit_code=final_exit,
                 failed_stage=failed_stage,
                 last_completed_stage=last_completed_stage,
@@ -1661,6 +1691,27 @@ def main(
         _emit(EVENT_TYPE_JOB_END, status=final_status, exit_code=final_exit)
     finally:
         set_runner_failover_policy(None)
+        if worktree_path is not None:
+            try:
+                with git_admin_lock(base_repo):
+                    remove_worktree(repo=base_repo, worktree_path=worktree_path)
+                logger.info("main: removed worktree %s", worktree_path)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("main: worktree cleanup failed: %s", exc)
+        if working_lock is not None:
+            try:
+                working_lock.release()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("main: working lock release failed: %s", exc)
+        if change_lock is not None:
+            try:
+                change_lock.release()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("main: change lock release failed: %s", exc)
+        if prev_agent_repo is None:
+            os.environ.pop("AGENT_RUNNER_REPO", None)
+        else:
+            os.environ["AGENT_RUNNER_REPO"] = prev_agent_repo
 
     return intake_source
 
