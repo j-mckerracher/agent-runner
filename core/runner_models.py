@@ -58,15 +58,18 @@ CODEX_MODEL_CHOICES = (
 DEFAULT_CODEX_MODEL = "gpt-5.5"
 
 # Suggested presets for the openai-compat runner. Any model name is accepted;
-# these appear as suggestions in the UI and are not an allowlist.
+# these appear as suggestions in the UI and are not an allowlist. Names must
+# match omp's model identifiers exactly (see `omp models`); most cloud models
+# are named without a `:cloud` suffix.
 OPENAI_COMPAT_MODEL_CHOICES = (
-    "gemma4:31b-cloud",
+    "gemma4:31b",
     "deepseek-v4-pro:cloud",
-    "deepseek-v4-flash:cloud",
-    "qwen3.5:397b-cloud",
-    "glm-5.1:cloud",
-    "minimax-m2.7:cloud",
-    "kimi-k2.6:cloud"
+    "deepseek-v4-flash",
+    "qwen3.5:397b",
+    "glm-5.1",
+    "glm-5.2",
+    "minimax-m2.7",
+    "kimi-k2.6"
 )
 
 DEFAULT_OPENAI_COMPAT_MODEL = "deepseek-v4-pro:cloud"

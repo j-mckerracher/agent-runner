@@ -242,6 +242,120 @@ class OpenaiCompatRunnerTests(unittest.TestCase):
         self.assertEqual(run_openai_compat.call_args.kwargs["repo"], "/tmp/repo")
         self.assertEqual(run_openai_compat.call_args.kwargs["change_id"], "CHANGE-1")
 
+    def test_easy__run_agent_cmd_routes_builtin_openai_compat_to_omp(self):
+        with patch("core.run_cmds.run_omp_cmd", return_value="ok") as run_omp:
+            result = run_cmds.run_agent_cmd(
+                runner="openai-compat",
+                prompt="Create intake artifacts.",
+                agent="intake",
+                runner_model=None,
+                repo="/tmp/repo",
+                change_id="CHANGE-1",
+            )
+
+        self.assertEqual(result, "ok")
+        run_omp.assert_called_once()
+        self.assertIsNone(run_omp.call_args.kwargs["model"])
+        self.assertEqual(run_omp.call_args.kwargs["repo"], "/tmp/repo")
+        self.assertEqual(run_omp.call_args.kwargs["change_id"], "CHANGE-1")
+
+    def test_easy__run_omp_cmd_omits_model_when_none(self):
+        from core.omp_rpc import OmpRpcResult
+
+        class _FakeSession:
+            last_init = None
+
+            def __init__(self, **kwargs):
+                _FakeSession.last_init = kwargs
+
+            def start(self):
+                pass
+
+            def run_prompt(self, message):
+                return OmpRpcResult(text="done", tool_calls=[], turns=1)
+
+            def close(self):
+                pass
+
+        with patch("core.omp_rpc.OmpRpcSession", _FakeSession):
+            result = run_cmds.run_omp_cmd(
+                prompt="Say OK",
+                agent="qa-evaluator",
+                model=None,
+                repo="/tmp/repo",
+            )
+        self.assertEqual(result, "done")
+        self.assertIsNone(_FakeSession.last_init["model"])
+        self.assertEqual(_FakeSession.last_init["repo"], "/tmp/repo")
+
+    def test_easy__run_omp_cmd_includes_model_when_specified(self):
+        from core.omp_rpc import OmpRpcResult
+
+        class _FakeSession:
+            last_init = None
+
+            def __init__(self, **kwargs):
+                _FakeSession.last_init = kwargs
+
+            def start(self):
+                pass
+
+            def run_prompt(self, message):
+                return OmpRpcResult(text="done", tool_calls=[], turns=1)
+
+            def close(self):
+                pass
+
+        with patch("core.omp_rpc.OmpRpcSession", _FakeSession):
+            run_cmds.run_omp_cmd(
+                prompt="Say OK",
+                agent="qa-evaluator",
+                model="sonnet",
+                repo="/tmp/repo",
+            )
+        self.assertEqual(_FakeSession.last_init["model"], "sonnet")
+
+    def test_easy__run_omp_cmd_error_surfaces_stderr_and_hides_prompt(self):
+        from core.omp_rpc import OmpRpcError
+
+        stderr = 'Model "glm-5.2:cloud" not found. Run "omp models" to see available models.\n'
+
+        class _FailingSession:
+            def __init__(self, **kwargs):
+                pass
+
+            def start(self):
+                pass
+
+            def run_prompt(self, message):
+                raise OmpRpcError(
+                    'Model "glm-5.2:cloud" not found', returncode=1, stderr=stderr
+                )
+
+            def close(self):
+                pass
+
+        with patch("core.omp_rpc.OmpRpcSession", _FailingSession):
+            with self.assertRaises(subprocess.CalledProcessError) as ctx:
+                run_cmds.run_omp_cmd(
+                    prompt="THE_HUGE_EMBEDDED_PROMPT_TEXT",
+                    agent="intake",
+                    model="glm-5.2:cloud",
+                    repo="/tmp/repo",
+                )
+        exc = ctx.exception
+        # Failover relies on the CalledProcessError contract remaining intact.
+        self.assertIsInstance(exc, subprocess.CalledProcessError)
+        self.assertEqual(exc.returncode, 1)
+        self.assertEqual(exc.stderr, stderr)
+        # The rendered message must surface omp's reason, not dump the prompt.
+        message = str(exc)
+        self.assertIn('Model "glm-5.2:cloud" not found', message)
+        self.assertIn("model=glm-5.2:cloud", message)
+        self.assertNotIn("THE_HUGE_EMBEDDED_PROMPT_TEXT", message)
+        # Usage-exhaustion detection still reads stderr off the exception.
+        self.assertFalse(run_cmds.is_usage_exhaustion_exception(exc))
+
     def test_medium__openai_compat_tool_loop_writes_file_and_returns_final_text(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             repo = Path(tmpdir)
@@ -839,7 +953,7 @@ class RunAgentCmdDispatchMatrixTests(unittest.TestCase):
     def test_medium__openai_compat_dispatch_passes_model(self):
         for model in self._choices["openai-compat"]:
             with self.subTest(model=model):
-                with patch("core.run_cmds.run_openai_compat_cmd", return_value="OK") as run_fn:
+                with patch("core.run_cmds.run_omp_cmd", return_value="OK") as run_fn:
                     result = run_cmds.run_agent_cmd(
                         runner="openai-compat",
                         prompt="Say OK",
@@ -851,7 +965,6 @@ class RunAgentCmdDispatchMatrixTests(unittest.TestCase):
                 self.assertEqual(result, "OK")
                 run_fn.assert_called_once()
                 self.assertEqual(run_fn.call_args.kwargs.get("model"), model)
-                self.assertEqual(run_fn.call_args.kwargs.get("runner"), "openai-compat")
                 self.assertEqual(run_fn.call_args.kwargs.get("repo"), "/tmp/repo")
                 self.assertEqual(run_fn.call_args.kwargs.get("change_id"), "CHANGE-1")
 

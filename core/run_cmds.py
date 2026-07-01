@@ -26,7 +26,6 @@ from .runner_models import (
     DEFAULT_CODEX_MODEL,
     DEFAULT_GEMINI_MODEL,
     DEFAULT_COPILOT_MODEL,
-    DEFAULT_OPENAI_COMPAT_MODEL,
     OPENAI_COMPAT_RETRY_DEFAULTS,
     is_copilot_runner,
     _provider_for_runner,
@@ -44,6 +43,38 @@ from .ui_trace_bridge import track_with_ui
 
 logger = logging.getLogger(__name__)
 _RUNNER_FAILOVER_POLICY: RunnerFailoverPolicy | None = None
+
+
+class RunnerCommandError(subprocess.CalledProcessError):
+    """A CalledProcessError with a readable message that surfaces the runner's stderr.
+
+    ``subprocess.CalledProcessError`` renders only the command and exit status, so a
+    failing runner (e.g. omp rejecting an unknown ``--model``) produces a message that
+    dumps the full multi-kilobyte prompt argument and hides the actual reason. This
+    subclass keeps ``cmd``/``output``/``stderr`` intact — so runner failover detection
+    still works — while overriding ``__str__`` to show a concise header plus the stderr
+    tail instead of the giant command.
+    """
+
+    _REASON_LIMIT = 2000
+
+    def __init__(self, returncode, cmd, output=None, stderr=None, *, runner=None, agent=None, model=None):
+        super().__init__(returncode, cmd, output=output, stderr=stderr)
+        self.runner = runner
+        self.agent = agent
+        self.model = model
+
+    def __str__(self) -> str:
+        header = (
+            f"{self.runner or 'runner'} command failed "
+            f"(agent={self.agent}, model={self.model}, exit={self.returncode})"
+        )
+        reason = (self.stderr or self.output or "").strip()
+        if not reason:
+            return f"{header} with no captured output"
+        if len(reason) > self._REASON_LIMIT:
+            reason = reason[: self._REASON_LIMIT] + "… [truncated]"
+        return f"{header}: {reason}"
 
 # Shared escalation protocol text injected into every runner's agent instructions.
 _ESCALATION_PROTOCOL = (
@@ -2131,6 +2162,201 @@ def run_codex_cmd(
     return output_text
 
 
+def _build_omp_prompt(prompt: str, agent: str, extra_skills: list[str] | None = None) -> str:
+    """Build a combined prompt for the omp (oh-my-pi) CLI one-shot mode.
+
+    omp has no native activate_skill mechanism, so the openai-compat runner's
+    materialized agent prompt and its required skills are embedded directly.
+    """
+    logger.debug("_build_omp_prompt: agent=%s extra_skills=%s", agent, extra_skills)
+    combined = _build_embedded_agent_prompt(
+        prompt=prompt,
+        agent=agent,
+        runner="openai-compat",
+        extra_skills=extra_skills,
+    )
+    combined = f"{combined}\n\n{_ESCALATION_PROTOCOL}"
+    logger.debug("_build_omp_prompt: combined prompt length=%d chars for agent=%s", len(combined), agent)
+    return combined
+
+
+def _build_omp_ui_request_handler(*, agent: str, change_id: str | None):
+    """Build an ``extension_ui_request`` handler for the omp RPC session.
+
+    Only interactive methods (``open_url`` and selector/confirm/input prompts)
+    reach this handler; status/widget pushes are dropped inside the session.
+    Interactive requests are routed to the human-escalation channel; when no
+    ``change_id`` is available or the run is headless, they are cancelled.
+    """
+
+    def _handler(frame: dict):
+        method = frame.get("method")
+        if not change_id or os.environ.get("AGENT_RUNNER_EVALUATION_RUN"):
+            logger.warning(
+                "run_omp_cmd: cancelling interactive omp ui request method=%s (headless / no change_id)",
+                method,
+            )
+            return None
+        try:
+            from .user_escalation import request_user_input
+
+            detail = frame.get("url") or frame.get("prompt") or frame.get("message") or ""
+            question = frame.get("prompt") or frame.get("message") or f"Provide a value for '{method}'."
+            response = request_user_input(
+                change_id=change_id,
+                stage=os.environ.get("AGENT_RUNNER_CURRENT_STAGE") or "openai-compat",
+                agent=agent,
+                title=f"omp requested input ({method})",
+                message=f"The omp runner needs a response for '{method}'. {detail}".strip(),
+                questions=[question],
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("run_omp_cmd: escalation for omp ui request failed: %s", exc)
+            return None
+        answers = response.get("answers") if isinstance(response, dict) else None
+        if isinstance(answers, list) and answers:
+            first = answers[0]
+            if isinstance(first, dict):
+                return first.get("answer") or first.get("value") or "confirmed"
+            return first
+        return "confirmed"
+
+    return _handler
+
+
+def run_omp_cmd(
+    prompt: str,
+    agent: str,
+    model: str | None = None,
+    skip_permissions: bool = True,
+    stream_output: bool = False,
+    extra_flags: list[str] | None = None,
+    extra_skills: list[str] | None = None,
+    repo: str | None = None,
+    change_id: str | None = None,
+) -> str:
+    """Drive the omp (oh-my-pi) CLI in headless RPC mode and return its answer.
+
+    This backs the built-in ``openai-compat`` runner. omp runs as a persistent
+    ``--mode rpc`` subprocess: the combined agent prompt is sent as one ``prompt``
+    command and frames are consumed until ``agent_end``. ``model`` is passed
+    through to ``omp --model`` only when explicitly provided; otherwise omp
+    resolves its own configured default model.
+    """
+    if not prompt:
+        raise ValueError(f"prompt must not be empty (agent={agent})")
+    logger.info("run_omp_cmd: agent=%s model=%s prompt_len=%d repo=%s change_id=%s",
+                agent, model, len(prompt), repo, change_id)
+    combined_prompt = _build_omp_prompt(prompt=prompt, agent=agent, extra_skills=extra_skills)
+    print(f"Starting omp CLI (rpc) via {agent}...")
+    print(f"Prompt: {prompt}")
+    print(f"Model: {model if model else '(omp default)'}")
+    # Register escalation MCP server (idempotent) — omp auto-loads ~/.omp/agent/mcp.json every run.
+    try:
+        from .mcp_configs import ensure_omp_mcp_registered
+        ensure_omp_mcp_registered()
+    except Exception as _exc:  # noqa: BLE001
+        logger.warning("run_omp_cmd: could not register escalation MCP server: %s", _exc)
+
+    from .omp_rpc import OmpRpcError, OmpRpcSession
+
+    def _on_event(event_type: str, payload: dict) -> None:
+        if event_type == "omp.tool_start":
+            _emit_event(
+                "tool.start",
+                runner="openai-compat",
+                agent=agent,
+                tool_name=payload.get("tool_name"),
+                tool_call_id=payload.get("tool_call_id"),
+                intent=payload.get("intent"),
+            )
+        elif event_type == "omp.tool_end":
+            _emit_event(
+                "tool.end",
+                runner="openai-compat",
+                agent=agent,
+                tool_name=payload.get("tool_name"),
+                tool_call_id=payload.get("tool_call_id"),
+                is_error=payload.get("is_error"),
+            )
+
+    ti = _estimate_tokens(combined_prompt)
+    started = time.monotonic()
+    session = OmpRpcSession(
+        repo=repo,
+        model=model,
+        extra_flags=extra_flags,
+        on_event=_on_event,
+        ui_request_handler=_build_omp_ui_request_handler(agent=agent, change_id=change_id),
+    )
+    try:
+        session.start()
+        result = session.run_prompt(combined_prompt)
+    except OmpRpcError as exc:
+        duration_ms = int((time.monotonic() - started) * 1000)
+        combined_error = f"{exc}\n{exc.stderr}".strip()
+        _emit_llm_call_event(
+            runner="openai-compat",
+            agent=agent,
+            model=model,
+            status="error",
+            duration_ms=duration_ms,
+            prompt_text=combined_prompt,
+            response_text=combined_error,
+            prompt_tokens=ti,
+            completion_tokens=_estimate_tokens(exc.stderr),
+            cost_usd=0.0,
+            attempt=1,
+            max_attempts=1,
+            exit_code=exc.returncode,
+            error_category=_classify_error(combined_error, runner="openai-compat"),
+            retryable=False,
+            cache_static_prefix_chars=0,
+            cache_static_prefix_est_tokens=0,
+        )
+        raise RunnerCommandError(
+            exc.returncode if exc.returncode is not None else 1,
+            ["omp", "--mode", "rpc"],
+            output=str(exc),
+            stderr=exc.stderr,
+            runner="openai-compat",
+            agent=agent,
+            model=model,
+        ) from exc
+    finally:
+        session.close()
+
+    output_text = result.text or ""
+    if output_text:
+        logger.debug("run_omp_cmd: output length=%d for agent=%s", len(output_text), agent)
+        print(output_text)
+    duration_ms = int((time.monotonic() - started) * 1000)
+    to = _estimate_tokens(output_text)
+    if ti > 0 or to > 0:
+        _emit_event("metrics", tokens_in=ti, tokens_out=to, cost_usd=0.0)
+    _emit_llm_call_event(
+        runner="openai-compat",
+        agent=agent,
+        model=model,
+        status="ok",
+        duration_ms=duration_ms,
+        prompt_text=combined_prompt,
+        response_text=output_text,
+        prompt_tokens=ti,
+        completion_tokens=to,
+        cost_usd=0.0,
+        attempt=1,
+        max_attempts=1,
+        exit_code=0,
+        tool_call_count=len(result.tool_calls),
+        cache_static_prefix_chars=0,
+        cache_static_prefix_est_tokens=0,
+    )
+    logger.info("run_omp_cmd: agent=%s completed OK (turns=%d tool_calls=%d)",
+                agent, result.turns, len(result.tool_calls))
+    return output_text
+
+
 def run_openai_compat_cmd(
     prompt: str,
     agent: str,
@@ -2654,14 +2880,12 @@ def _dispatch_agent_cmd(
         model_kwarg = {"model": runner_model} if runner_model is not None else {}
         return run_gemini_cmd(prompt=prompt, agent=agent, extra_skills=extra_skills, **model_kwarg, **kwargs)
     elif runner_lower == "openai-compat":
-        effective_model = runner_model or DEFAULT_OPENAI_COMPAT_MODEL
-        logger.info("run_agent_cmd: dispatching to run_openai_compat_cmd runner=%s model=%s agent=%s",
-                    runner, effective_model, agent)
-        return run_openai_compat_cmd(
+        logger.info("run_agent_cmd: dispatching built-in openai-compat to run_omp_cmd runner=%s model=%s agent=%s",
+                    runner, runner_model, agent)
+        return run_omp_cmd(
             prompt=prompt,
             agent=agent,
-            model=effective_model,
-            runner=runner,
+            model=runner_model,
             extra_skills=extra_skills,
             repo=repo,
             change_id=change_id,

@@ -25,7 +25,7 @@ is to add them to `.env` at the workspace root (git-ignored):
 ```bash
 EVAL_TARGET_REPO=/absolute/path/to/target/repo   # local path or remote URL
 EVAL_TARGET_SHA=<gold-master-commit-sha>
-EVAL_RUNNER=claude                                # or: codex, copilot, gemini
+EVAL_RUNNER=claude                                # or: codex, copilot, gemini, openai-compat
 ```
 
 These can also be passed directly as flags (see [All flags](#all-flags)).
@@ -192,7 +192,7 @@ separately by the hidden tests in step 3.
 | `--repo PATH` | `EVAL_TARGET_REPO` env / `.env` | Target Git repo path or URL to clone and test against. Required; falls back to the `EVAL_TARGET_REPO` environment variable or `.env` file. |
 | `--sha SHA` | `EVAL_TARGET_SHA` env / `.env` | Gold-master commit SHA to check out before running the workflow. Required; falls back to `EVAL_TARGET_SHA`. |
 | `--runner NAME` | `EVAL_RUNNER` env / `claude` | Agent runner backend: `claude`, `codex`, `copilot`, `gemini`, or `openai-compat`. Falls back to the `EVAL_RUNNER` environment variable or `.env`, then `claude`. |
-| `--model NAME` | runner default | Override the model for the selected runner. Falls back to `EVAL_MODEL` in `.env` when compatible with the runner's model choices (for `codex` and `openai-compat`, any model name is accepted); otherwise uses the runner default. |
+| `--model NAME` | runner default | Override the model for the selected runner. Falls back to `EVAL_MODEL` in `.env` when compatible with the runner's model choices. For built-in `openai-compat`, omitting the model lets omp use its configured default; when set, any model name is passed through to `omp --model`. For `codex` and `openai-compat` aliases, any model name is accepted; `claude`/`copilot`/`gemini` require known models. |
 | `--difficulty LEVEL [LEVEL …]` | all benchmarks | One or more difficulty levels to run: `easy`, `medium`, `hard`. When omitted, all benchmarks in `--benchmarks-dir` are run. |
 | `--benchmark NAME` | all benchmarks | Exact benchmark folder name(s) to run (e.g. `easy`). Repeat the flag for multiple names. Takes precedence over `--difficulty` when both are given. |
 | `--benchmarks-dir PATH` | `<data-dir>/eval/benchmarks` | Root directory that contains benchmark sub-folders. Override to point at a custom benchmark tree. |
@@ -515,7 +515,7 @@ python3 eval/agent_runner.py \
   --agent task-generator \
   --dataset "$AGENT_RUNNER_DATA_DIR/eval/agent_datasets/task-generator/smoke.jsonl" \
   --runner openai-compat \
-  --model minimax-m2.7:cloud \
+  --model minimax-m2.7 \
   --context-pack schema-examples-v1 \
   --runs 3
 ```
@@ -530,7 +530,7 @@ python3 eval/agent_runner.py \
   --agent task-generator \
   --dataset "$AGENT_RUNNER_DATA_DIR/eval/agent_datasets/task-generator/regression.jsonl" \
   --runner openai-compat \
-  --model minimax-m2.7:cloud \
+  --model minimax-m2.7 \
   --context-pack ac-checklist-v1 \
   --prompt-path agent-definition-source/task-generator/v3-candidate/prompt.md \
   --compare-to "$AGENT_RUNNER_DATA_DIR/eval/agent_reports/task-generator/baseline.json" \
@@ -552,7 +552,7 @@ python3 eval/agent_runner.py \
   --agent task-generator \
   --dataset "$AGENT_RUNNER_DATA_DIR/eval/agent_datasets/task-generator/smoke.jsonl" \
   --runner openai-compat \
-  --model minimax-m2.7:cloud \
+  --model minimax-m2.7 \
   --context-pack baseline \
   --opik
 ```
