@@ -220,6 +220,37 @@ class RunPromptTests(unittest.TestCase):
         with self.assertRaises(OmpRpcError):
             _run(lines, stderr_lines=["boom: provider error"])
 
+    def test_medium__failed_prompt_response_raises_without_agent_end(self):
+        # Reproduces the live glm-5.2 hang: omp accepts the command (success
+        # ack) then rejects it (no API key) and never emits agent_end. Without
+        # handling the failure response the client blocks until turn_timeout.
+        err = (
+            "No API key found for zai.\n\nUse /login, set an API key environment "
+            "variable, or create ~/.omp/agent/agent.db"
+        )
+        lines = [
+            json.dumps({"type": "ready"}),
+            json.dumps({"type": "extension_ui_request", "id": "w1", "method": "setWidget", "widgetKey": "x"}),
+            json.dumps({"type": "response", "command": "prompt", "success": True}),
+            json.dumps({"type": "response", "command": "prompt", "success": False, "error": err}),
+        ]
+        with self.assertRaises(OmpRpcError) as ctx:
+            _run(lines)
+        self.assertIn("No API key found for zai", str(ctx.exception))
+
+    def test_medium__success_response_ack_does_not_end_turn(self):
+        # A success:true response is only a command ack; the turn still ends on
+        # agent_end and its text must be returned normally.
+        lines = [
+            json.dumps({"type": "ready"}),
+            json.dumps({"type": "response", "command": "prompt", "success": True}),
+            json.dumps({"type": "turn_start"}),
+            json.dumps({"type": "message_update", "assistantMessageEvent": {"type": "text_delta", "delta": "hi"}}),
+            json.dumps({"type": "agent_end", "messages": [{"role": "assistant", "content": "hi"}]}),
+        ]
+        result, _ = _run(lines)
+        self.assertEqual(result.text, "hi")
+
 
 class HelperTests(unittest.TestCase):
     def test_easy__extract_text_prefers_last_assistant_message(self):

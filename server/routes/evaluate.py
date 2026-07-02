@@ -2,10 +2,11 @@ import logging
 import json
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .. import evaluate
+from .. import db
 from ..jobs import manager
 from core.runner_models import KNOWN_RUNNERS, resolve_runner_model
 
@@ -47,6 +48,39 @@ async def get_benchmark_stories() -> dict:
 async def get_eval_reports() -> dict:
     reports = evaluate.list_eval_reports()
     return {"count": len(reports), "items": reports}
+
+
+@router.get("/runs")
+async def list_eval_runs(
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+) -> dict:
+    """List evaluation jobs for the Evaluate UI history panel.
+
+    Includes both legacy `evaluation` runs and benchmark harness
+    `benchmark_evaluation` runs, newest first.
+    """
+    with db.cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM jobs
+            WHERE run_kind IN ('evaluation', 'benchmark_evaluation')
+            ORDER BY submitted_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            (limit, offset),
+        )
+        rows = [dict(row) for row in cur.fetchall()]
+        cur.execute(
+            """
+            SELECT COUNT(*)
+            FROM jobs
+            WHERE run_kind IN ('evaluation', 'benchmark_evaluation')
+            """
+        )
+        (count,) = cur.fetchone()
+    return {"items": rows, "count": int(count or 0)}
 
 
 @router.post("/benchmark-runs")

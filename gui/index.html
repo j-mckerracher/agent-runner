@@ -17,7 +17,7 @@
         <script src="/static/vendor/echarts.min.js"></script>
         <link
             rel="stylesheet"
-            href="/static/assets/css/app.css?v=telemetry-delete-20260601"
+            href="/static/assets/css/app.css?v=eval-run-history-20260625"
         />
     </head>
     <body>
@@ -1598,6 +1598,22 @@
                         <div class="simple-list" id="eval-list"></div>
                         <div class="eval-detail" id="eval-detail"></div>
                         <div class="eval-run-panel">
+                            <div
+                                style="display: flex; gap: 8px; align-items: center; margin-bottom: 10px"
+                            >
+                                <select
+                                    id="eval-run-history"
+                                    style="flex: 1"
+                                    aria-label="Evaluation run history"
+                                >
+                                    <option value="">
+                                        Loading evaluation run history...
+                                    </option>
+                                </select>
+                                <button class="btn" id="eval-run-history-refresh">
+                                    Refresh history
+                                </button>
+                            </div>
                             <div class="term-header">
                                 <span id="eval-term-title"
                                     >No evaluation run selected</span
@@ -2232,8 +2248,8 @@
         <!-- GUI behavior is split by concern. Load order matters because these
              plain scripts share top-level browser state, matching the previous
              single-inline-script behavior while making the code navigable. -->
-        <script src="/static/assets/js/app-core.js?v=telemetry-delete-20260601"></script>
-        <script src="/static/assets/js/telemetry.js?v=telemetry-delete-20260601"></script>
+        <script src="/static/assets/js/app-core.js?v=eval-run-history-20260625"></script>
+        <script src="/static/assets/js/telemetry.js?v=eval-run-history-20260625"></script>
         <script>
             (() => {
                 const button = document.getElementById(
@@ -2286,9 +2302,9 @@
                 });
             })();
         </script>
-        <script src="/static/assets/js/app-shell.js?v=telemetry-delete-20260601"></script>
-        <script src="/static/assets/js/runs.js?v=telemetry-delete-20260601"></script>
-        <script src="/static/assets/js/content-views.js?v=telemetry-delete-20260601"></script>
+        <script src="/static/assets/js/app-shell.js?v=eval-run-history-20260625"></script>
+        <script src="/static/assets/js/runs.js?v=eval-run-history-20260625"></script>
+        <script src="/static/assets/js/content-views.js?v=eval-run-history-20260625"></script>
 
         <script type="importmap">
             {
@@ -2299,7 +2315,7 @@
         </script>
         <script
             type="module"
-            src="/static/assets/js/background.js?v=telemetry-delete-20260601"
+            src="/static/assets/js/background.js?v=eval-run-history-20260625"
         ></script>
     </body>
 </html>

@@ -2224,6 +2224,32 @@ def _build_omp_ui_request_handler(*, agent: str, change_id: str | None):
     return _handler
 
 
+def _omp_model_not_found(text: str) -> bool:
+    """True when omp stderr/output indicates the requested model is unknown."""
+    if not text:
+        return False
+    lowered = text.lower()
+    return "not found" in lowered and "omp models" in lowered
+
+
+def _omp_model_candidates(model: str | None) -> list[str | None]:
+    """Ordered model names to try.
+
+    omp's model identifiers are inconsistent: some cloud models keep a provider
+    suffix (e.g. ``deepseek-v4-pro:cloud``) while others use the bare name
+    (e.g. ``glm-5.2`` — there is no ``glm-5.2:cloud``). When a run is submitted
+    with a suffix that omp does not recognize, fall back to the base name.
+    """
+    if not model:
+        return [None]
+    candidates: list[str | None] = [model]
+    if ":" in model:
+        base = model.split(":", 1)[0]
+        if base and base != model:
+            candidates.append(base)
+    return candidates
+
+
 def run_omp_cmd(
     prompt: str,
     agent: str,
@@ -2282,49 +2308,62 @@ def run_omp_cmd(
 
     ti = _estimate_tokens(combined_prompt)
     started = time.monotonic()
-    session = OmpRpcSession(
-        repo=repo,
-        model=model,
-        extra_flags=extra_flags,
-        on_event=_on_event,
-        ui_request_handler=_build_omp_ui_request_handler(agent=agent, change_id=change_id),
-    )
-    try:
-        session.start()
-        result = session.run_prompt(combined_prompt)
-    except OmpRpcError as exc:
-        duration_ms = int((time.monotonic() - started) * 1000)
-        combined_error = f"{exc}\n{exc.stderr}".strip()
-        _emit_llm_call_event(
-            runner="openai-compat",
-            agent=agent,
-            model=model,
-            status="error",
-            duration_ms=duration_ms,
-            prompt_text=combined_prompt,
-            response_text=combined_error,
-            prompt_tokens=ti,
-            completion_tokens=_estimate_tokens(exc.stderr),
-            cost_usd=0.0,
-            attempt=1,
-            max_attempts=1,
-            exit_code=exc.returncode,
-            error_category=_classify_error(combined_error, runner="openai-compat"),
-            retryable=False,
-            cache_static_prefix_chars=0,
-            cache_static_prefix_est_tokens=0,
+    candidates = _omp_model_candidates(model)
+    effective_model = model
+    result = None
+    for idx, candidate in enumerate(candidates):
+        effective_model = candidate
+        session = OmpRpcSession(
+            repo=repo,
+            model=candidate,
+            extra_flags=extra_flags,
+            on_event=_on_event,
+            ui_request_handler=_build_omp_ui_request_handler(agent=agent, change_id=change_id),
         )
-        raise RunnerCommandError(
-            exc.returncode if exc.returncode is not None else 1,
-            ["omp", "--mode", "rpc"],
-            output=str(exc),
-            stderr=exc.stderr,
-            runner="openai-compat",
-            agent=agent,
-            model=model,
-        ) from exc
-    finally:
-        session.close()
+        try:
+            session.start()
+            result = session.run_prompt(combined_prompt)
+            break
+        except OmpRpcError as exc:
+            combined_error = f"{exc}\n{exc.stderr}".strip()
+            has_next = idx + 1 < len(candidates)
+            if has_next and _omp_model_not_found(combined_error):
+                logger.warning(
+                    "run_omp_cmd: model %r not recognized by omp; retrying with %r",
+                    candidate, candidates[idx + 1],
+                )
+                continue
+            duration_ms = int((time.monotonic() - started) * 1000)
+            _emit_llm_call_event(
+                runner="openai-compat",
+                agent=agent,
+                model=candidate,
+                status="error",
+                duration_ms=duration_ms,
+                prompt_text=combined_prompt,
+                response_text=combined_error,
+                prompt_tokens=ti,
+                completion_tokens=_estimate_tokens(exc.stderr),
+                cost_usd=0.0,
+                attempt=1,
+                max_attempts=1,
+                exit_code=exc.returncode,
+                error_category=_classify_error(combined_error, runner="openai-compat"),
+                retryable=False,
+                cache_static_prefix_chars=0,
+                cache_static_prefix_est_tokens=0,
+            )
+            raise RunnerCommandError(
+                exc.returncode if exc.returncode is not None else 1,
+                ["omp", "--mode", "rpc"],
+                output=str(exc),
+                stderr=exc.stderr,
+                runner="openai-compat",
+                agent=agent,
+                model=candidate,
+            ) from exc
+        finally:
+            session.close()
 
     output_text = result.text or ""
     if output_text:
@@ -2337,7 +2376,7 @@ def run_omp_cmd(
     _emit_llm_call_event(
         runner="openai-compat",
         agent=agent,
-        model=model,
+        model=effective_model,
         status="ok",
         duration_ms=duration_ms,
         prompt_text=combined_prompt,

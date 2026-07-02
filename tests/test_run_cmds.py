@@ -351,10 +351,50 @@ class OpenaiCompatRunnerTests(unittest.TestCase):
         # The rendered message must surface omp's reason, not dump the prompt.
         message = str(exc)
         self.assertIn('Model "glm-5.2:cloud" not found', message)
-        self.assertIn("model=glm-5.2:cloud", message)
+        # After the :cloud suffix fallback also fails, the final model is the base name.
+        self.assertIn("model=glm-5.2", message)
         self.assertNotIn("THE_HUGE_EMBEDDED_PROMPT_TEXT", message)
         # Usage-exhaustion detection still reads stderr off the exception.
         self.assertFalse(run_cmds.is_usage_exhaustion_exception(exc))
+
+    def test_easy__run_omp_cmd_retries_without_cloud_suffix_when_model_not_found(self):
+        from core.omp_rpc import OmpRpcError
+
+        stderr = 'Model "glm-5.2:cloud" not found. Run "omp models" to see available models.\n'
+        models_seen: list[str | None] = []
+
+        class _Result:
+            text = "OK"
+            tool_calls: list = []
+            turns = 1
+
+        class _RetrySession:
+            def __init__(self, **kwargs):
+                self._model = kwargs.get("model")
+                models_seen.append(self._model)
+
+            def start(self):
+                if self._model and ":" in self._model:
+                    raise OmpRpcError(
+                        'Model "glm-5.2:cloud" not found', returncode=1, stderr=stderr
+                    )
+
+            def run_prompt(self, message):
+                return _Result()
+
+            def close(self):
+                pass
+
+        with patch("core.omp_rpc.OmpRpcSession", _RetrySession):
+            out = run_cmds.run_omp_cmd(
+                prompt="Say OK",
+                agent="intake",
+                model="glm-5.2:cloud",
+                repo="/tmp/repo",
+            )
+        self.assertEqual(out, "OK")
+        # First tried the submitted name, then fell back to the bare model.
+        self.assertEqual(models_seen, ["glm-5.2:cloud", "glm-5.2"])
 
     def test_medium__openai_compat_tool_loop_writes_file_and_returns_final_text(self):
         with tempfile.TemporaryDirectory() as tmpdir:

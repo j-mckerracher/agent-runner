@@ -20,6 +20,11 @@ session spikes). Notable points that differ from the published docs:
 * ``extension_ui_request`` is polymorphic. ``setStatus`` / ``setWidget`` are
   fire-and-forget UI pushes that need no response; only genuinely interactive
   methods (``open_url`` and selector/confirm/input prompts) must be answered.
+* ``response`` frames acknowledge a submitted command. ``success: true`` is a
+  bare accept-ack and is ignored, but ``success: false`` means omp rejected the
+  prompt (unknown model, missing provider API key, etc.) and no ``agent_end``
+  will follow — the client must fail fast on it rather than wait for the turn
+  timeout.
 * stdin must stay open until ``agent_end`` — closing it early makes omp ack the
   prompt and exit before running the turn.
 """
@@ -302,7 +307,7 @@ class OmpRpcSession:
             raise ValueError("message must not be empty")
         command_id = uuid.uuid4().hex[:16]
         self._send({"id": command_id, "type": "prompt", "message": message})
-        return self._consume_turn()
+        return self._consume_turn(command_id=command_id)
 
     def steer(self, message: str) -> None:
         """Inject a message into the running turn (no completion wait)."""
@@ -316,7 +321,7 @@ class OmpRpcSession:
         """Abort the active turn."""
         self._send({"id": uuid.uuid4().hex[:16], "type": "abort"})
 
-    def _consume_turn(self) -> OmpRpcResult:
+    def _consume_turn(self, command_id: Optional[str] = None) -> OmpRpcResult:
         text_all: list[str] = []
         last_turn_text: list[str] = []
         tool_calls: list[OmpToolCall] = []
@@ -397,6 +402,24 @@ class OmpRpcSession:
                 )
             elif ftype == "extension_ui_request":
                 self._handle_ui_request(frame)
+            elif ftype == "response":
+                # Ack/failure for a submitted command. ``success: true`` is just
+                # the command-accepted ack and is ignored; a ``success: false``
+                # response means omp rejected the prompt outright (e.g. unknown
+                # model, missing provider API key) and NO ``agent_end`` will
+                # follow — fail fast instead of blocking until ``turn_timeout``.
+                if (
+                    frame.get("command") == "prompt"
+                    and frame.get("success") is False
+                    and frame.get("id") in (None, command_id)
+                ):
+                    reason = frame.get("error") or "omp rejected the prompt command"
+                    self._emit("omp.error", {"message": reason})
+                    raise OmpRpcError(
+                        f"omp prompt command failed: {reason}",
+                        returncode=self._proc.poll() if self._proc else None,
+                        stderr=self._stderr_tail(),
+                    )
             elif ftype == "error":
                 error = frame.get("message") or json.dumps(frame)[:500]
                 self._emit("omp.error", {"message": error})
@@ -404,7 +427,8 @@ class OmpRpcSession:
                 messages = frame.get("messages") if isinstance(frame.get("messages"), list) else None
                 break
             # All other frames (agent_start, message_start/end, turn_end,
-            # available_commands_update, response) are intentionally ignored.
+            # available_commands_update, and ``response`` success acks) are
+            # intentionally ignored.
 
         text = _extract_text_from_messages(messages)
         if not text:

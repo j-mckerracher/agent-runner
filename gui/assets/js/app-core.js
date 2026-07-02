@@ -6,6 +6,12 @@
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+function escapeHtml(s) {
+    return String(s).replace(
+        /[&<>]/g,
+        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c],
+    );
+}
 let RUNNER_MODELS = {
     claude: [],
     codex: [

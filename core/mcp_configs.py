@@ -5,8 +5,10 @@ Per-runner strategy:
   gemini   — idempotently add to ~/.gemini/settings.json mcpServers; pass
              --allowed-mcp-server-names agent-workbench-escalation per run
   codex    — idempotently add via `codex mcp add`; automatically available in all runs
-  openai-  — native function-tool in _OpenaiCompatToolRuntime (no MCP needed)
-  compat
+  openai-  — built-in runner shells out to `omp`; idempotently add to
+  compat     ~/.omp/agent/mcp.json (auto-loaded every run). Custom
+             provider=openai-compat aliases use the native function-tool in
+             _OpenaiCompatToolRuntime (no MCP needed).
 """
 from __future__ import annotations
 
@@ -23,6 +25,11 @@ logger = logging.getLogger(__name__)
 MCP_SERVER_NAME = "agent-workbench-escalation"
 _RUNNER_ROOT = Path(__file__).resolve().parent.parent
 _GEMINI_SETTINGS = Path.home() / ".gemini" / "settings.json"
+_OMP_MCP_CONFIG = Path.home() / ".omp" / "agent" / "mcp.json"
+_OMP_MCP_SCHEMA = (
+    "https://raw.githubusercontent.com/can1357/oh-my-pi/main/"
+    "packages/coding-agent/src/config/mcp-schema.json"
+)
 
 
 def _runner_python() -> str:
@@ -125,6 +132,59 @@ def ensure_gemini_mcp_registered() -> bool:
         raise
 
     logger.info("ensure_gemini_mcp_registered: registered %s in %s", MCP_SERVER_NAME, _GEMINI_SETTINGS)
+    return True
+
+
+def ensure_omp_mcp_registered() -> bool:
+    """Idempotently add the escalation server to ~/.omp/agent/mcp.json.
+
+    omp auto-loads this user-scoped config on every run, so the escalation
+    tool surfaces as `mcp__agent-workbench-escalation_*`. The file and its
+    parent dirs are created if absent. change_id is inherited from the runner
+    process env (AGENT_RUNNER_CHANGE_ID) at omp spawn time.
+
+    Returns True if newly registered, False if already present (no-op).
+    Raises on IO errors.
+    """
+    if _OMP_MCP_CONFIG.exists():
+        with open(_OMP_MCP_CONFIG, "r", encoding="utf-8") as fh:
+            try:
+                config: dict = json.load(fh)
+            except json.JSONDecodeError:
+                config = {}
+    else:
+        config = {}
+
+    config.setdefault("$schema", _OMP_MCP_SCHEMA)
+    mcp_servers: dict = config.setdefault("mcpServers", {})
+    if MCP_SERVER_NAME in mcp_servers:
+        logger.debug("ensure_omp_mcp_registered: %s already registered", MCP_SERVER_NAME)
+        return False
+
+    mcp_servers[MCP_SERVER_NAME] = {
+        "type": "stdio",
+        "command": _runner_python(),
+        "args": ["-m", "core.escalation_mcp_server"],
+        "env": {
+            "AGENT_RUNNER_ROOT": str(_RUNNER_ROOT),
+            "PYTHONPATH": str(_RUNNER_ROOT),
+        },
+    }
+
+    _OMP_MCP_CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = _OMP_MCP_CONFIG.with_suffix(".json.mcp-tmp")
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as fh:
+            json.dump(config, fh, indent=2)
+        tmp_path.replace(_OMP_MCP_CONFIG)
+    except Exception:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+    logger.info("ensure_omp_mcp_registered: registered %s in %s", MCP_SERVER_NAME, _OMP_MCP_CONFIG)
     return True
 
 

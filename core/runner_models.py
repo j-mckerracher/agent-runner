@@ -59,20 +59,25 @@ DEFAULT_CODEX_MODEL = "gpt-5.5"
 
 # Suggested presets for the openai-compat runner. Any model name is accepted;
 # these appear as suggestions in the UI and are not an allowlist. Names must
-# match omp's model identifiers exactly (see `omp models`); most cloud models
-# are named without a `:cloud` suffix.
+# match omp's model identifiers exactly (see `omp models`). Prefer the
+# provider-qualified `<provider>/<model>` form: a bare name (e.g. `glm-5.2`)
+# lets omp pick the provider, which can resolve to a cloud vendor that requires
+# its own API key (e.g. `zai`). Qualifying with `ollama-cloud/` pins routing to
+# Ollama Cloud, matching omp's own configured modelRoles.
 OPENAI_COMPAT_MODEL_CHOICES = (
-    "gemma4:31b",
-    "deepseek-v4-pro:cloud",
-    "deepseek-v4-flash",
-    "qwen3.5:397b",
-    "glm-5.1",
-    "glm-5.2",
-    "minimax-m2.7",
-    "kimi-k2.6"
+    "ollama-cloud/glm-5.2",
+    "ollama-cloud/glm-5.2:high",
+    "ollama-cloud/glm-5.2:xhigh",
+    "ollama-cloud/glm-5.1",
+    "ollama-cloud/deepseek-v4-pro",
+    "ollama-cloud/deepseek-v4-flash",
+    "ollama-cloud/qwen3.5:397b",
+    "ollama-cloud/minimax-m2.7",
+    "ollama-cloud/kimi-k2.6",
+    "ollama-cloud/gemma4:31b",
 )
 
-DEFAULT_OPENAI_COMPAT_MODEL = "deepseek-v4-pro:cloud"
+DEFAULT_OPENAI_COMPAT_MODEL = "ollama-cloud/glm-5.2"
 
 RUNNER_MODEL_CHOICES: dict[str, tuple[str, ...]] = {
     "claude": CLAUDE_MODEL_CHOICES,

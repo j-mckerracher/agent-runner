@@ -33,12 +33,14 @@ credentials and default model from its normal configuration, including
 
 Agent Workbench only passes `--model` to omp when you explicitly provide a model through `--model` or a per-agent model override. When no model is specified, Agent Workbench omits the flag and omp uses its currently configured default model.
 
+Prefer the provider-qualified `<provider>/<model>` form (e.g. `ollama-cloud/glm-5.2`). A bare model name (e.g. `glm-5.2`) lets omp choose the provider, which may resolve to a cloud vendor that needs its own API key (such as `zai`) and fail with `No API key found for <provider>`. Qualifying the name pins routing — for example `ollama-cloud/...` keeps everything on Ollama Cloud.
+
 ```bash
 # Uses omp's configured default model.
 python3 run.py --runner openai-compat --repo /absolute/path/to/repo
 
-# Overrides the model for this run.
-python3 run.py --runner openai-compat --model qwen3:32b --repo /absolute/path/to/repo
+# Overrides the model for this run (provider-qualified).
+python3 run.py --runner openai-compat --model ollama-cloud/glm-5.2 --repo /absolute/path/to/repo
 ```
 
 ### Escalation MCP

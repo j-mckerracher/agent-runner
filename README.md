@@ -63,7 +63,7 @@ The current platform is intentionally local-first and workflow-centric. The next
 | `git` | Yes      | bootstrap and normal repo workflows | Used for the repo itself and for syncing the local Opik checkout. |
 | Docker Desktop | No       | bundled local Opik stack | Required only if you opt in to the bundled local Opik stack at bootstrap time (the bootstrap script will prompt you). Skip-able by default or via `--no-opik`. |
 | `graphify` CLI | No       | code knowledge graph | Install via `uv tool install graphifyy` or accept the bootstrap prompt. `run.py` indexes new repos in the background. Skip-able via `--no-graphify`. |
-| One AI backend | Yes      | actual workflow execution | Install and authenticate at least one CLI backend (`claude`, `codex`, `copilot`, or `gemini`) or configure `openai-compat` for a local `/api/chat` endpoint. |
+| One AI backend | Yes      | actual workflow execution | Install and authenticate at least one CLI backend (`claude`, `codex`, `copilot`, `gemini`, or `omp` for the built-in `openai-compat` runner), or configure an `openai-compat` alias for a local `/api/chat` endpoint. |
 | Azure CLI + `azure-devops` extension | No       | optional live ADO intake mode | Manual story entry and local synthetic stories do not require Azure DevOps tooling. |
 
 ### Optional tooling
@@ -207,9 +207,9 @@ Current built-in default models are:
 - `codex` → `gpt-5.5` (any model name accepted; presets are suggestions only)
 - `copilot` → `gpt-5-mini`
 - `gemini` → `gemini-2.5-flash`
-- `openai-compat` → `deepseek-v4-pro:cloud` (any model name accepted; presets are suggestions only)
+- `openai-compat` → omp's configured default model unless `--model` or `--agent-model` is set explicitly
 
-Want to create a custom alias for a local or third-party LLM endpoint (for example, LM Studio, OpenRouter, or a LiteLLM proxy)? See [`docs/openai-compat-setup.md`](docs/openai-compat-setup.md).
+Want to use the built-in omp runner or create a custom alias for a local or third-party LLM endpoint (for example, LM Studio, OpenRouter, or a LiteLLM proxy)? See [`docs/openai-compat-setup.md`](docs/openai-compat-setup.md).
 
 Pass extra context into intake:
 
@@ -229,8 +229,8 @@ python3 run.py \
 | `--ado-url URL` | none | Azure DevOps work item URL (`https://dev.azure.com/<org>/<project>/_workitems/edit/<id>`). Triggers live ADO intake mode. Mutually exclusive with `--story-file` and `--manual-story-file`. |
 | `--story-file PATH` | `workflow-fixtures/synthetic_story.json` | Path to a local synthetic story fixture JSON file. Used for offline / test runs. Falls back to the bundled `TEST-AC-001` fixture when no explicit story source is provided. |
 | `--manual-story-file PATH` | none | Path to a JSON file containing manually pasted story fields (`title`, `description`, `acceptance_criteria`, optional work item reference fields, optional extra context). Treats work item IDs and URLs as reference-only metadata unless explicit write-back is enabled later. |
-| `--runner NAME` | `claude` | LLM backend to use: `claude` (Anthropic), `codex` (OpenAI Codex CLI), `copilot` (OpenAI/GitHub), `gemini` (Google), `openai-compat` (any OpenAI-compatible endpoint), or a custom alias defined in the per-user config file under `runner_aliases`. |
-| `--model NAME` | runner default | Model name to pass to the selected runner. Defaults to the runner's built-in default when omitted. For `codex` and `openai-compat`, any model name is accepted; `claude`/`copilot`/`gemini` require a known model from their allowlists. |
+| `--runner NAME` | `claude` | LLM backend to use: `claude` (Anthropic), `codex` (OpenAI Codex CLI), `copilot` (OpenAI/GitHub), `gemini` (Google), built-in `openai-compat` (omp CLI), or a custom alias defined in the per-user config file under `runner_aliases`. |
+| `--model NAME` | runner default | Model name to pass to the selected runner. For built-in `openai-compat`, the flag is omitted when unset so omp uses its configured default; if set, the value is passed through to `omp --model`. For `codex` and `openai-compat` aliases, any model name is accepted; `claude`/`copilot`/`gemini` require a known model from their allowlists. |
 | `--agent-runner AGENT=RUNNER` | none | Per-agent runner override. Repeatable. `AGENT` must be one of the 10 valid agent names (see [Agent names](#agent-names)). Example: `--agent-runner qa-engineer=gemini`. |
 | `--agent-model AGENT=MODEL` | none | Per-agent model override. Repeatable. Same valid agent names as `--agent-runner`. Example: `--agent-model qa-engineer=gemini-2.5-flash`. |
 | `--extra-context TEXT` | none | Free-form text appended verbatim to the intake agent's prompt. Useful for passing a reference PR URL, design notes, or other supplemental context. |

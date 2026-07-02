@@ -1250,6 +1250,7 @@ def _fetch_ado_work_item(ado_url: str) -> str | None:
             ],
             text=True,
             capture_output=True,
+            timeout=10,
         )
         if result.returncode == 0 and result.stdout.strip():
             raw = json.loads(result.stdout.strip())
@@ -1258,9 +1259,51 @@ def _fetch_ado_work_item(ado_url: str) -> str | None:
             return json.dumps(trimmed, indent=2)
         logger.warning("_fetch_ado_work_item: az CLI returned exit_code=%d for item_id=%s", result.returncode, item_id)
         return None
+    except subprocess.TimeoutExpired:
+        logger.warning("_fetch_ado_work_item: az timed out after 10s for %s", ado_url)
+        return None
     except Exception as exc:
         logger.error("_fetch_ado_work_item: unexpected error for %s: %s", ado_url, exc)
         return None
+
+
+def _write_ado_intake_source_artifact(
+    *,
+    intake_source: str,
+    repo: str,
+    change_id: str,
+    ado_work_item_json: str | None,
+    extra_context: str | None = None,
+    feature_branch: str | None = None,
+) -> Path:
+    payload: dict[str, object] = {
+        "source_type": "ado_work_item",
+        "change_id": change_id,
+        "work_item_url": intake_source,
+        "target_repo": repo,
+        "prefetch_status": "unavailable",
+        "work_item": None,
+        "extra_context": extra_context,
+        "feature_branch": feature_branch,
+        "instructions": [
+            "Use this local seed artifact as the raw ADO input for intake normalization.",
+            "Do not run shell or network commands to fetch Azure DevOps data from openai-compat runners.",
+            "When details are missing, record conservative defaults and open questions in constraints.md.",
+        ],
+    }
+    if ado_work_item_json:
+        try:
+            payload["work_item"] = json.loads(ado_work_item_json)
+            payload["prefetch_status"] = "available"
+        except json.JSONDecodeError:
+            payload["work_item"] = ado_work_item_json
+            payload["prefetch_status"] = "available_unparsed"
+
+    source_path = _intake_dir(change_id) / "source.json"
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    source_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    logger.info("_write_ado_intake_source_artifact: wrote %s", source_path)
+    return source_path
 
 
 _INTAKE_PROMPT_TRAILER = """\
@@ -1309,6 +1352,7 @@ def build_intake_prompt(
     ado_work_item_json: str | None = None,
     extra_context: str | None = None,
     feature_branch: str | None = None,
+    source_artifact_path: str | None = None,
 ) -> str:
     if not intake_source:
         raise ValueError("intake_source cannot be empty.")
@@ -1322,14 +1366,21 @@ def build_intake_prompt(
         if feature_branch:
             prompt += f"Prepared feature branch: {feature_branch}\n"
             prompt += "Set run_metadata.feature_branch in config.yaml exactly to the prepared feature branch.\n"
-        if runner == "gemini" and ado_work_item_json:
+        if source_artifact_path:
+            prompt += (
+                f"A local intake seed artifact has already been written at: {source_artifact_path}\n"
+                "Read that file as the raw input before writing canonical artifacts.\n"
+            )
+        if runner in {"gemini", "openai-compat"} and ado_work_item_json:
             prompt += (
                 "The work item data has already been fetched for you. "
                 "Use the JSON below as the raw input; do NOT run any shell commands to re-fetch it.\n\n"
                 f"```json\n{ado_work_item_json}\n```\n\n"
             )
-        elif runner != "gemini":
+        elif runner not in {"gemini", "openai-compat"}:
             prompt += "Use the azure-devops-cli skill (already loaded) to interact with ADO.\n"
+        elif runner == "openai-compat":
+            prompt += "Do not use shell or network commands to fetch ADO; proceed from the supplied URL and record missing details as open questions.\n"
         prompt += (
             f"Normalize the result into canonical intake artifacts under {AGENT_CONTEXT_ROOT}/{change_id}/intake/."
         )
@@ -1408,19 +1459,34 @@ def step_intake(
         _confirm_acceptance_criteria(change_id, intake_mode)
         return result
 
+    ado_work_item_json = (
+        _fetch_ado_work_item(intake_source)
+        if runner in {"gemini", "openai-compat"} and intake_mode == "ado"
+        else None
+    )
+    source_artifact_path = None
+    if intake_mode == "ado":
+        source_artifact_path = str(
+            _write_ado_intake_source_artifact(
+                intake_source=intake_source,
+                repo=repo,
+                change_id=change_id,
+                ado_work_item_json=ado_work_item_json,
+                extra_context=extra_context,
+                feature_branch=feature_branch,
+            )
+        )
+
     prompt = build_intake_prompt(
         intake_source=intake_source,
         repo=repo,
         change_id=change_id,
         intake_mode=intake_mode,
         runner=runner,
-        ado_work_item_json=(
-            _fetch_ado_work_item(intake_source)
-            if runner == "gemini" and intake_mode == "ado"
-            else None
-        ),
+        ado_work_item_json=ado_work_item_json,
         extra_context=extra_context,
         feature_branch=feature_branch,
+        source_artifact_path=source_artifact_path,
     )
     logger.debug("step_intake: prompt length=%d for change_id=%s", len(prompt), change_id)
     extra_skills = None

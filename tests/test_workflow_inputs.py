@@ -6,6 +6,7 @@
 #   hard   = (none in this file)
 
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,7 @@ from unittest.mock import patch
 
 from core.workflow_inputs import (
     DEFAULT_TEST_STORY_FILE,
+    _fetch_ado_branch_description,
     infer_change_id_from_ado_url,
     load_story_fixture,
     resolve_workflow_input,
@@ -359,6 +361,13 @@ class ResolveWorkflowInputAdoModeTests(unittest.TestCase):
             workflow_input.branch_description_source,
             "Fix branch naming behavior from work item",
         )
+
+    def test_medium__ado_branch_description_timeout_returns_none(self):
+        with patch(
+            "core.workflow_inputs.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd=["az"], timeout=5),
+        ):
+            self.assertIsNone(_fetch_ado_branch_description(self._ado_url))
 
 
 class ResolveWorkflowInputManualModeTests(unittest.TestCase):
