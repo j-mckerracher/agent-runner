@@ -20,6 +20,34 @@ import yaml
 import core.run_cmds as run_cmds
 
 
+class ClaudeAuthEnvStrippingTests(unittest.TestCase):
+    def test_easy__without_claude_auth_env_strips_all_claude_auth_vars(self):
+        overrides = {
+            "ANTHROPIC_API_KEY": "sk-test-key",
+            "CLAUDE_CODE_API_KEY": "cc-test-key",
+            "ANTHROPIC_BASE_URL": "https://outer-session-gateway.example.com",
+            "ANTHROPIC_AUTH_TOKEN": "outer-session-token",
+            "UNRELATED_VAR": "keep-me",
+        }
+        with patch.dict(os.environ, overrides):
+            env = run_cmds._without_claude_auth_env()
+
+        for key in run_cmds.CLAUDE_AUTH_ENV_VARS:
+            self.assertNotIn(key, env, f"{key} should be stripped from the nested claude env")
+        self.assertEqual(env.get("UNRELATED_VAR"), "keep-me")
+        self.assertIn("AGENT_RUNNER_ROOT", env)
+
+    def test_easy__without_claude_auth_env_tolerates_missing_vars(self):
+        with patch.dict(os.environ, {}, clear=False):
+            for key in run_cmds.CLAUDE_AUTH_ENV_VARS:
+                os.environ.pop(key, None)
+            env = run_cmds._without_claude_auth_env()
+
+        for key in run_cmds.CLAUDE_AUTH_ENV_VARS:
+            self.assertNotIn(key, env)
+        self.assertIn("AGENT_RUNNER_ROOT", env)
+
+
 class CopilotEmbeddedAgentFallbackTests(unittest.TestCase):
     def test_medium__custom_agent_refusal_retries_with_embedded_agent_prompt(self):
         with (
@@ -155,7 +183,7 @@ class LlmCallOpikTelemetryTests(unittest.TestCase):
             events._default = None
             Path(path).unlink(missing_ok=True)
 
-    def test_medium__llm_call_event_updates_opik_with_usage_metadata_without_raw_prompt(self):
+    def test_medium__llm_call_event_updates_opik_with_usage_metadata_and_raw_content(self):
         with (
             patch("core.run_cmds._emit_event") as emit_event,
             patch("core.run_cmds.opik_context.get_current_span_data", return_value=object()),
@@ -169,8 +197,8 @@ class LlmCallOpikTelemetryTests(unittest.TestCase):
                 model="claude-sonnet",
                 status="ok",
                 duration_ms=1234,
-                prompt_text="secret prompt body",
-                response_text="private response body",
+                prompt_text="visible prompt body",
+                response_text="visible response body",
                 prompt_tokens=10,
                 completion_tokens=5,
                 cost_usd=0.02,
@@ -183,10 +211,14 @@ class LlmCallOpikTelemetryTests(unittest.TestCase):
         self.assertEqual(span_kwargs["metadata"]["llm_agent"], "task-generator")
         self.assertEqual(span_kwargs["metadata"]["llm_duration_ms"], 1234)
         self.assertEqual(span_kwargs["total_cost"], 0.02)
-        self.assertNotIn("secret prompt body", json.dumps(span_kwargs, default=str))
-        self.assertNotIn("private response body", json.dumps(span_kwargs, default=str))
-        self.assertEqual(span_kwargs["input"]["prompt_chars"], len("secret prompt body"))
-        self.assertEqual(span_kwargs["output"]["response_chars"], len("private response body"))
+        # Raw prompt/response are now carried on the span input/output.
+        self.assertEqual(span_kwargs["input"]["prompt"], "visible prompt body")
+        self.assertEqual(span_kwargs["output"]["response"], "visible response body")
+        self.assertEqual(span_kwargs["input"]["prompt_chars"], len("visible prompt body"))
+        self.assertEqual(span_kwargs["output"]["response_chars"], len("visible response body"))
+        # The raw text lives in input/output, not duplicated into metadata.
+        self.assertNotIn("llm_prompt_text", span_kwargs["metadata"])
+        self.assertNotIn("llm_response_text", span_kwargs["metadata"])
         self.assertEqual(span_kwargs["feedback_scores"][0]["name"], "llm_call_success")
 
         update_trace.assert_called_once()
@@ -194,6 +226,53 @@ class LlmCallOpikTelemetryTests(unittest.TestCase):
         emit_event.assert_called_once()
         self.assertEqual(emit_event.call_args.args[0], "llm.call")
         self.assertEqual(emit_event.call_args.kwargs["tokens_in"], 10)
+        self.assertEqual(emit_event.call_args.kwargs["prompt_text"], "visible prompt body")
+        self.assertEqual(emit_event.call_args.kwargs["response_text"], "visible response body")
+
+    def test_medium__scrub_secrets_redacts_values_only(self):
+        redacted = "<REDACTED>"
+        cases = {
+            "api_key=sk-ABCDEF0123456789XYZ": "api_key",
+            "password: hunter2swordfish": "password",
+            "Authorization: Bearer eyJhbGciOiJIUzI1Ni2xyz": "Authorization",
+            "use token=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345": "token",
+        }
+        for text, label in cases.items():
+            out = run_cmds._scrub_secrets(text)
+            self.assertIn(redacted, out, text)
+            self.assertIn(label, out, text)  # label preserved
+        # Bare provider tokens redacted even without a label.
+        self.assertEqual(run_cmds._scrub_secrets("saw sk-ABCDEF0123456789XYZ here"),
+                         f"saw {redacted} here")
+        # Ordinary prose is never touched (including the bare word "token").
+        prose = "Implement the token bucket rate limiter and count tokens."
+        self.assertEqual(run_cmds._scrub_secrets(prose), prose)
+
+    def test_medium__llm_call_event_scrubs_secrets_before_emit(self):
+        with (
+            patch("core.run_cmds._emit_event") as emit_event,
+            patch("core.run_cmds.opik_context.get_current_span_data", return_value=object()),
+            patch("core.run_cmds.opik_context.get_current_trace_data", return_value=None),
+            patch("core.run_cmds.opik_context.update_current_span") as update_span,
+        ):
+            run_cmds._emit_llm_call_event(
+                runner="claude",
+                agent="software-engineer",
+                model="claude-sonnet",
+                status="ok",
+                duration_ms=10,
+                prompt_text="deploy with api_key=sk-ABCDEF0123456789XYZ now",
+                response_text="ok, used password: hunter2swordfish",
+            )
+
+        emitted = emit_event.call_args.kwargs
+        self.assertNotIn("sk-ABCDEF0123456789XYZ", emitted["prompt_text"])
+        self.assertNotIn("hunter2swordfish", emitted["response_text"])
+        self.assertIn("<REDACTED>", emitted["prompt_text"])
+        self.assertIn("<REDACTED>", emitted["response_text"])
+        span_kwargs = update_span.call_args.kwargs
+        self.assertNotIn("sk-ABCDEF0123456789XYZ", json.dumps(span_kwargs, default=str))
+        self.assertNotIn("hunter2swordfish", json.dumps(span_kwargs, default=str))
 
     def test_medium__llm_call_event_skips_opik_when_no_active_context(self):
         with (

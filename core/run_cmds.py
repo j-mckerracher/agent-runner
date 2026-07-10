@@ -195,6 +195,36 @@ def _sha256_text(text: str | None) -> str | None:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+# Secret-only scrubbing. Applied to raw prompt/response text before it is written
+# to event logs / Opik / telemetry. Redacts secret *values* only; all other text
+# (prose, code, diffs) is left untouched.
+_SECRET_KV_RE = re.compile(
+    r"(?i)\b(password|passwd|pwd|secret|secret[_-]?key|token|access[_-]?token|"
+    r"api[_-]?key|access[_-]?key|client[_-]?secret|private[_-]?key|"
+    r"authorization|auth[_-]?token)\b(\s*[:=]+\s*)([^\s,'\";]+)"
+)
+_SECRET_BEARER_RE = re.compile(r"(?i)\b(bearer)\s+([A-Za-z0-9._\-]+)")
+_SECRET_TOKEN_RE = re.compile(
+    r"\b(?:sk-[A-Za-z0-9]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|"
+    r"AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,})\b"
+)
+_SECRET_REDACTION = "<REDACTED>"
+
+
+def _scrub_secrets(text: str | None) -> str | None:
+    """Redact secret values (API keys, tokens, passwords) from *text*.
+
+    Only the secret value is replaced; the surrounding label and all other
+    content is preserved so the text stays useful for trace analysis.
+    """
+    if not text:
+        return text
+    scrubbed = _SECRET_KV_RE.sub(lambda m: f"{m.group(1)}{m.group(2)}{_SECRET_REDACTION}", text)
+    scrubbed = _SECRET_BEARER_RE.sub(lambda m: f"{m.group(1)} {_SECRET_REDACTION}", scrubbed)
+    scrubbed = _SECRET_TOKEN_RE.sub(_SECRET_REDACTION, scrubbed)
+    return scrubbed
+
+
 def _runner_duration_ms(result: subprocess.CompletedProcess) -> int | None:
     value = getattr(result, "_agent_runner_duration_ms", None)
     return value if isinstance(value, int) else None
@@ -250,6 +280,8 @@ def _emit_llm_call_event(
     temperature: float | None = None,
 ) -> None:
     response = response_text or ""
+    prompt_text = _scrub_secrets(prompt_text) or ""
+    response = _scrub_secrets(response) or ""
     fields = {
         "runner": runner,
         "agent": agent,
@@ -263,6 +295,8 @@ def _emit_llm_call_event(
         "retryable": retryable,
         "prompt_chars": len(prompt_text),
         "response_chars": len(response),
+        "prompt_text": prompt_text,
+        "response_text": response,
         "prompt_sha256": _sha256_text(prompt_text),
         "response_sha256": _sha256_text(response),
         "prompt_est_tokens": _estimate_tokens(prompt_text),
@@ -280,13 +314,12 @@ def _emit_llm_call_event(
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
-    clean_fields = {key: value for key, value in fields.items() if value is not None}
     usage = {
-        "prompt_tokens": prompt_tokens if prompt_tokens is not None else clean_fields["prompt_est_tokens"],
-        "completion_tokens": completion_tokens if completion_tokens is not None else clean_fields["response_est_tokens"],
+        "prompt_tokens": prompt_tokens if prompt_tokens is not None else fields["prompt_est_tokens"],
+        "completion_tokens": completion_tokens if completion_tokens is not None else fields["response_est_tokens"],
         "total_tokens": (
-            (prompt_tokens if prompt_tokens is not None else clean_fields["prompt_est_tokens"])
-            + (completion_tokens if completion_tokens is not None else clean_fields["response_est_tokens"])
+            (prompt_tokens if prompt_tokens is not None else fields["prompt_est_tokens"])
+            + (completion_tokens if completion_tokens is not None else fields["response_est_tokens"])
         ),
     }
     feedback_scores = [
@@ -301,18 +334,22 @@ def _emit_llm_call_event(
         feedback_scores.append({"name": "llm_call_parse_ok", "value": 1.0 if response_parse_ok else 0.0})
     if opik_context.get_current_span_data() is not None:
         opik_context.update_current_span(
-            metadata={f"llm_{key}": value for key, value in clean_fields.items()},
+            metadata={
+                f"llm_{key}": value
+                for key, value in fields.items()
+                if key not in ("prompt_text", "response_text")
+            },
             input={
-                "prompt_sha256": clean_fields["prompt_sha256"],
-                "prompt_chars": clean_fields["prompt_chars"],
-                "prompt_est_tokens": clean_fields["prompt_est_tokens"],
+                "prompt": prompt_text,
+                "prompt_chars": fields["prompt_chars"],
+                "prompt_est_tokens": fields["prompt_est_tokens"],
                 "system_prompt_chars": system_prompt_chars,
                 "cache_static_prefix_est_tokens": cache_static_prefix_est_tokens,
             },
             output={
-                "response_sha256": clean_fields["response_sha256"],
-                "response_chars": clean_fields["response_chars"],
-                "response_est_tokens": clean_fields["response_est_tokens"],
+                "response": response,
+                "response_chars": fields["response_chars"],
+                "response_est_tokens": fields["response_est_tokens"],
                 "status": status,
                 "error_category": error_category,
                 "tool_call_count": tool_call_count,
@@ -331,11 +368,11 @@ def _emit_llm_call_event(
                 "last_llm_model": model,
                 "last_llm_status": status,
                 "last_llm_duration_ms": duration_ms,
-                "last_llm_prompt_sha256": clean_fields["prompt_sha256"],
-                "last_llm_response_sha256": clean_fields["response_sha256"],
+                "last_llm_prompt_sha256": fields["prompt_sha256"],
+                "last_llm_response_sha256": fields["response_sha256"],
             },
         )
-    _emit_event("llm.call", **clean_fields)
+    _emit_event("llm.call", **fields)
 
 
 def _record_cassette(**fields) -> None:
@@ -1347,6 +1384,13 @@ def _run_cli_live(cmd: list[str], *, env: dict | None = None) -> subprocess.Comp
 CLAUDE_AUTH_ENV_VARS = frozenset({
     "ANTHROPIC_API_KEY",
     "CLAUDE_CODE_API_KEY",
+    # When run.py itself is launched from inside a Claude Code session, these
+    # two are exported for that *outer* session's own gateway credentials.
+    # If left in the env, the nested `claude` CLI spawned below inherits the
+    # outer session's base URL/token instead of falling back to its own
+    # stored login, and the gateway rejects the nested call with HTTP 401.
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_AUTH_TOKEN",
 })
 
 
