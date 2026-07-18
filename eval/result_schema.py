@@ -41,6 +41,11 @@ class BenchmarkResult:
     metrics: EvalMetrics
     story: dict[str, Any] = field(default_factory=dict)
     artifacts: dict[str, str] = field(default_factory=dict)
+    benchmark_id: str = ""
+    difficulty: str = "unknown"
+    evidence: dict[str, Any] = field(default_factory=dict)
+    started_at: str = ""
+    completed_at: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

@@ -1,0 +1,16 @@
+{
+  "id": "manifest-case",
+  "difficulty": "easy",
+  "description": "Fixture: manifest-backed benchmark used by v0.2 CLI/E2E tests to exercise manifest.json loading through the same command path as the legacy-shape fixture.",
+  "domain": "fixture",
+  "tags": ["v0.2", "fixture"],
+  "acceptance_criteria": [
+    {"id": "AC1", "text": "A file marker exists in the workspace.", "critical": true},
+    {"id": "AC2", "text": "The marker file contains the expected text.", "critical": false}
+  ],
+  "oracle": {"type": "hidden_tests", "path": "hidden_tests.py"},
+  "expected_baseline_band": {"min_ac_pass_rate": 0.5, "max_ac_pass_rate": 1.0},
+  "metadata": {
+    "critical_acceptance_criteria": ["AC1"]
+  }
+}

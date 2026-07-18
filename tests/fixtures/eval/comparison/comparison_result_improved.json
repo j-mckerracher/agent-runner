@@ -1,0 +1,518 @@
+{
+  "comparison_schema_version": "1.0",
+  "baseline_identity": {
+    "label": "tests/fixtures/eval/comparison/baseline_report.json",
+    "eval_run_id": "run-baseline-001",
+    "created_at": "2026-07-01T09:00:00Z",
+    "candidate_version": "base0001",
+    "baseline_version": null,
+    "benchmark_suite_id": "seed-v1",
+    "report_schema_version": "0.2",
+    "trial_total": 3,
+    "metadata": {
+      "runner": "claude",
+      "model": "modelA",
+      "config_hash": "cfg-aaa111"
+    }
+  },
+  "candidate_identity": {
+    "label": "tests/fixtures/eval/comparison/candidate_improved.json",
+    "eval_run_id": "run-candidate-improved-001",
+    "created_at": "2026-07-02T09:00:00Z",
+    "candidate_version": "cand0002",
+    "baseline_version": "base0001",
+    "benchmark_suite_id": "seed-v1",
+    "report_schema_version": "0.2",
+    "trial_total": 3,
+    "metadata": {
+      "runner": "claude",
+      "model": "modelA",
+      "config_hash": "cfg-aaa111"
+    }
+  },
+  "comparability": "comparable",
+  "comparability_reasons": [],
+  "drift": [],
+  "ac_deltas": [
+    {
+      "benchmark_id": "easy-1",
+      "ac_id": "AC1",
+      "critical": true,
+      "baseline_status": "pass",
+      "candidate_status": "pass",
+      "baseline_difficulty": "easy",
+      "candidate_difficulty": "easy",
+      "category": "unchanged",
+      "incomparable_reason": null
+    },
+    {
+      "benchmark_id": "easy-1",
+      "ac_id": "AC2",
+      "critical": false,
+      "baseline_status": "pass",
+      "candidate_status": "pass",
+      "baseline_difficulty": "easy",
+      "candidate_difficulty": "easy",
+      "category": "unchanged",
+      "incomparable_reason": null
+    },
+    {
+      "benchmark_id": "medium-1",
+      "ac_id": "AC1",
+      "critical": true,
+      "baseline_status": "pass",
+      "candidate_status": "pass",
+      "baseline_difficulty": "medium",
+      "candidate_difficulty": "medium",
+      "category": "unchanged",
+      "incomparable_reason": null
+    },
+    {
+      "benchmark_id": "medium-1",
+      "ac_id": "AC2",
+      "critical": false,
+      "baseline_status": "fail",
+      "candidate_status": "pass",
+      "baseline_difficulty": "medium",
+      "candidate_difficulty": "medium",
+      "category": "improved",
+      "incomparable_reason": null
+    }
+  ],
+  "improved_acs": [
+    {
+      "benchmark_id": "medium-1",
+      "ac_id": "AC2",
+      "critical": false,
+      "baseline_status": "fail",
+      "candidate_status": "pass",
+      "baseline_difficulty": "medium",
+      "candidate_difficulty": "medium",
+      "category": "improved",
+      "incomparable_reason": null
+    }
+  ],
+  "regressed_acs": [],
+  "unchanged_acs": [
+    {
+      "benchmark_id": "easy-1",
+      "ac_id": "AC1",
+      "critical": true,
+      "baseline_status": "pass",
+      "candidate_status": "pass",
+      "baseline_difficulty": "easy",
+      "candidate_difficulty": "easy",
+      "category": "unchanged",
+      "incomparable_reason": null
+    },
+    {
+      "benchmark_id": "easy-1",
+      "ac_id": "AC2",
+      "critical": false,
+      "baseline_status": "pass",
+      "candidate_status": "pass",
+      "baseline_difficulty": "easy",
+      "candidate_difficulty": "easy",
+      "category": "unchanged",
+      "incomparable_reason": null
+    },
+    {
+      "benchmark_id": "medium-1",
+      "ac_id": "AC1",
+      "critical": true,
+      "baseline_status": "pass",
+      "candidate_status": "pass",
+      "baseline_difficulty": "medium",
+      "candidate_difficulty": "medium",
+      "category": "unchanged",
+      "incomparable_reason": null
+    }
+  ],
+  "added_acs": [],
+  "removed_acs": [],
+  "incomparable_acs": [],
+  "critical_ac_regressions": [],
+  "critical_ac_improvements": [],
+  "benchmark_deltas": [
+    {
+      "benchmark_id": "easy-1",
+      "baseline_difficulty": "easy",
+      "candidate_difficulty": "easy",
+      "baseline_status": "passed",
+      "candidate_status": "passed",
+      "baseline_ac_pass_rate": 1.0,
+      "candidate_ac_pass_rate": 1.0,
+      "baseline_trial_count": 2,
+      "candidate_trial_count": 2,
+      "trial_count_comparable": true,
+      "category": "unchanged",
+      "newly_failing": false,
+      "resolved_failure": false,
+      "easy_regression": false,
+      "incomparable_reason": null
+    },
+    {
+      "benchmark_id": "medium-1",
+      "baseline_difficulty": "medium",
+      "candidate_difficulty": "medium",
+      "baseline_status": "failed",
+      "candidate_status": "passed",
+      "baseline_ac_pass_rate": 0.5,
+      "candidate_ac_pass_rate": 1.0,
+      "baseline_trial_count": 1,
+      "candidate_trial_count": 1,
+      "trial_count_comparable": true,
+      "category": "improved",
+      "newly_failing": false,
+      "resolved_failure": true,
+      "easy_regression": false,
+      "incomparable_reason": null
+    }
+  ],
+  "improved_benchmarks": [
+    {
+      "benchmark_id": "medium-1",
+      "baseline_difficulty": "medium",
+      "candidate_difficulty": "medium",
+      "baseline_status": "failed",
+      "candidate_status": "passed",
+      "baseline_ac_pass_rate": 0.5,
+      "candidate_ac_pass_rate": 1.0,
+      "baseline_trial_count": 1,
+      "candidate_trial_count": 1,
+      "trial_count_comparable": true,
+      "category": "improved",
+      "newly_failing": false,
+      "resolved_failure": true,
+      "easy_regression": false,
+      "incomparable_reason": null
+    }
+  ],
+  "regressed_benchmarks": [],
+  "unchanged_benchmarks": [
+    {
+      "benchmark_id": "easy-1",
+      "baseline_difficulty": "easy",
+      "candidate_difficulty": "easy",
+      "baseline_status": "passed",
+      "candidate_status": "passed",
+      "baseline_ac_pass_rate": 1.0,
+      "candidate_ac_pass_rate": 1.0,
+      "baseline_trial_count": 2,
+      "candidate_trial_count": 2,
+      "trial_count_comparable": true,
+      "category": "unchanged",
+      "newly_failing": false,
+      "resolved_failure": false,
+      "easy_regression": false,
+      "incomparable_reason": null
+    }
+  ],
+  "added_benchmarks": [],
+  "removed_benchmarks": [],
+  "incomparable_benchmarks": [],
+  "easy_regressions": [],
+  "new_failures": [],
+  "resolved_failures": [
+    {
+      "benchmark_id": "medium-1",
+      "baseline_difficulty": "medium",
+      "candidate_difficulty": "medium",
+      "baseline_status": "failed",
+      "candidate_status": "passed",
+      "baseline_ac_pass_rate": 0.5,
+      "candidate_ac_pass_rate": 1.0,
+      "baseline_trial_count": 1,
+      "candidate_trial_count": 1,
+      "trial_count_comparable": true,
+      "category": "improved",
+      "newly_failing": false,
+      "resolved_failure": true,
+      "easy_regression": false,
+      "incomparable_reason": null
+    }
+  ],
+  "scorecard_deltas": {
+    "capability": {
+      "ac_pass_rate": {
+        "name": "ac_pass_rate",
+        "baseline_status": "known",
+        "baseline_value": 0.75,
+        "candidate_status": "known",
+        "candidate_value": 1.0,
+        "absolute_delta": 0.25,
+        "relative_delta": 0.3333333333333333,
+        "availability": "computed",
+        "reason": null
+      },
+      "critical_ac_pass_rate": {
+        "name": "critical_ac_pass_rate",
+        "baseline_status": "known",
+        "baseline_value": 1.0,
+        "candidate_status": "known",
+        "candidate_value": 1.0,
+        "absolute_delta": 0.0,
+        "relative_delta": 0.0,
+        "availability": "computed",
+        "reason": null
+      },
+      "full_benchmark_pass_rate": {
+        "name": "full_benchmark_pass_rate",
+        "baseline_status": "known",
+        "baseline_value": 0.5,
+        "candidate_status": "known",
+        "candidate_value": 1.0,
+        "absolute_delta": 0.5,
+        "relative_delta": 1.0,
+        "availability": "computed",
+        "reason": null
+      },
+      "hidden_test_pass_rate": {
+        "name": "hidden_test_pass_rate",
+        "baseline_status": "known",
+        "baseline_value": 0.75,
+        "candidate_status": "known",
+        "candidate_value": 1.0,
+        "absolute_delta": 0.25,
+        "relative_delta": 0.3333333333333333,
+        "availability": "computed",
+        "reason": null
+      }
+    },
+    "reliability": {
+      "flaky_case_count": {
+        "name": "flaky_case_count",
+        "baseline_status": "known",
+        "baseline_value": 0,
+        "candidate_status": "known",
+        "candidate_value": 0,
+        "absolute_delta": 0,
+        "relative_delta": null,
+        "availability": "computed",
+        "reason": "relative delta undefined: baseline value is 0 (absolute delta still computed)"
+      },
+      "trial_pass_rate": {
+        "name": "trial_pass_rate",
+        "baseline_status": "known",
+        "baseline_value": 0.667,
+        "candidate_status": "known",
+        "candidate_value": 1.0,
+        "absolute_delta": 0.33299999999999996,
+        "relative_delta": 0.4992503748125936,
+        "availability": "computed",
+        "reason": null
+      },
+      "variance": {
+        "name": "variance",
+        "baseline_status": "known",
+        "baseline_value": 0.02,
+        "candidate_status": "known",
+        "candidate_value": 0.01,
+        "absolute_delta": -0.01,
+        "relative_delta": -0.5,
+        "availability": "computed",
+        "reason": null
+      },
+      "workflow_failure_rate": {
+        "name": "workflow_failure_rate",
+        "baseline_status": "known",
+        "baseline_value": 0.0,
+        "candidate_status": "known",
+        "candidate_value": 0.0,
+        "absolute_delta": 0.0,
+        "relative_delta": null,
+        "availability": "computed",
+        "reason": "relative delta undefined: baseline value is 0 (absolute delta still computed)"
+      }
+    },
+    "efficiency": {
+      "agent_invocation_count": {
+        "name": "agent_invocation_count",
+        "baseline_status": "known",
+        "baseline_value": 12,
+        "candidate_status": "known",
+        "candidate_value": 10,
+        "absolute_delta": -2,
+        "relative_delta": -0.16666666666666666,
+        "availability": "computed",
+        "reason": null
+      },
+      "estimated_cost": {
+        "name": "estimated_cost",
+        "baseline_status": "known",
+        "baseline_value": 1.2,
+        "candidate_status": "known",
+        "candidate_value": 1.1,
+        "absolute_delta": -0.09999999999999987,
+        "relative_delta": -0.08333333333333323,
+        "availability": "computed",
+        "reason": null
+      },
+      "loop_iteration_count": {
+        "name": "loop_iteration_count",
+        "baseline_status": "known",
+        "baseline_value": 4,
+        "candidate_status": "known",
+        "candidate_value": 3,
+        "absolute_delta": -1,
+        "relative_delta": -0.25,
+        "availability": "computed",
+        "reason": null
+      },
+      "token_usage": {
+        "name": "token_usage",
+        "baseline_status": "known",
+        "baseline_value": 50000,
+        "candidate_status": "known",
+        "candidate_value": 47000,
+        "absolute_delta": -3000,
+        "relative_delta": -0.06,
+        "availability": "computed",
+        "reason": null
+      },
+      "wall_clock_duration_ms": {
+        "name": "wall_clock_duration_ms",
+        "baseline_status": "known",
+        "baseline_value": 358000,
+        "candidate_status": "known",
+        "candidate_value": 326000,
+        "absolute_delta": -32000,
+        "relative_delta": -0.0893854748603352,
+        "availability": "computed",
+        "reason": null
+      }
+    }
+  },
+  "evidence_deltas": [
+    {
+      "field": "trace_present",
+      "requirement": "required",
+      "baseline_status": "known",
+      "baseline_value": true,
+      "candidate_status": "known",
+      "candidate_value": true,
+      "regressed": false,
+      "degraded": false,
+      "gained": false
+    },
+    {
+      "field": "test_output_present",
+      "requirement": "conditional",
+      "baseline_status": "known",
+      "baseline_value": true,
+      "candidate_status": "known",
+      "candidate_value": true,
+      "regressed": false,
+      "degraded": false,
+      "gained": false
+    },
+    {
+      "field": "final_artifact_refs_present",
+      "requirement": "conditional",
+      "baseline_status": "known",
+      "baseline_value": true,
+      "candidate_status": "known",
+      "candidate_value": true,
+      "regressed": false,
+      "degraded": false,
+      "gained": false
+    },
+    {
+      "field": "final_diff_ref_present",
+      "requirement": "conditional",
+      "baseline_status": "known",
+      "baseline_value": true,
+      "candidate_status": "known",
+      "candidate_value": true,
+      "regressed": false,
+      "degraded": false,
+      "gained": false
+    },
+    {
+      "field": "prompt_hashes_present",
+      "requirement": "optional",
+      "baseline_status": "not_collected",
+      "baseline_value": null,
+      "candidate_status": "not_collected",
+      "candidate_value": null,
+      "regressed": false,
+      "degraded": false,
+      "gained": false
+    }
+  ],
+  "evidence_regressions": [],
+  "classification": "improved",
+  "reasons": [
+    {
+      "code": "ac_pass_rate_gain",
+      "severity": "info",
+      "summary": "overall AC pass rate changed by +25.0%",
+      "benchmark_ids": [],
+      "ac_ids": [],
+      "metric_refs": [
+        "capability.ac_pass_rate"
+      ]
+    },
+    {
+      "code": "clean_improvement",
+      "severity": "info",
+      "summary": "1 previously-failing benchmark case(s) now pass",
+      "benchmark_ids": [
+        "medium-1"
+      ],
+      "ac_ids": [],
+      "metric_refs": []
+    },
+    {
+      "code": "reliability_improvement",
+      "severity": "info",
+      "summary": "trial pass rate changed by +33.3%",
+      "benchmark_ids": [],
+      "ac_ids": [],
+      "metric_refs": [
+        "reliability.trial_pass_rate"
+      ]
+    }
+  ],
+  "policy": {
+    "ac_pass_rate_materiality": 0.05,
+    "workflow_failure_rate_materiality": 0.05,
+    "runtime_increase_soft_budget_pct": 15.0,
+    "runtime_increase_hard_budget_pct": 50.0,
+    "cost_increase_soft_budget_pct": 15.0,
+    "cost_increase_hard_budget_pct": 50.0,
+    "trial_pass_rate_materiality": 0.1,
+    "min_trials": 1,
+    "max_trial_count_ratio": 2.0,
+    "required_evidence_fields": [
+      "trace_present"
+    ],
+    "conditional_evidence_fields": [
+      "test_output_present",
+      "final_artifact_refs_present",
+      "final_diff_ref_present"
+    ],
+    "optional_evidence_fields": [
+      "prompt_hashes_present"
+    ],
+    "identity_metadata_keys": [
+      "runner",
+      "model",
+      "workflow_config",
+      "prompt_hash",
+      "config_hash",
+      "loop_limit",
+      "target_repo_version"
+    ],
+    "material_drift_metadata_keys": [
+      "runner",
+      "model",
+      "workflow_config",
+      "prompt_hash",
+      "config_hash",
+      "loop_limit",
+      "target_repo_version"
+    ]
+  },
+  "warnings": []
+}

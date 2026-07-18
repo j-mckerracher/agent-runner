@@ -1,0 +1,49 @@
+========================================================================
+COMPARISON RESULT  (schema v1.0)
+========================================================================
+Classification: IMPROVED
+Comparability:  comparable
+
+Baseline:
+  tests/fixtures/eval/comparison/baseline_report.json
+    eval_run_id: run-baseline-001
+    candidate_version: base0001
+    benchmark_suite_id: seed-v1
+    trial_total: 3
+    metadata: config_hash=cfg-aaa111, model=modelA, runner=claude
+Candidate:
+  tests/fixtures/eval/comparison/candidate_improved.json
+    eval_run_id: run-candidate-improved-001
+    candidate_version: cand0002
+    benchmark_suite_id: seed-v1
+    trial_total: 3
+    metadata: config_hash=cfg-aaa111, model=modelA, runner=claude
+
+Classification reasons:
+  [info] ac_pass_rate_gain: overall AC pass rate changed by +25.0% (metrics=['capability.ac_pass_rate'])
+  [info] clean_improvement: 1 previously-failing benchmark case(s) now pass (benchmarks=['medium-1'])
+  [info] reliability_improvement: trial pass rate changed by +33.3% (metrics=['reliability.trial_pass_rate'])
+
+Improved benchmarks:
+  - medium-1 (difficulty=medium): failed -> passed
+
+Improved acceptance criteria:
+  - medium-1/AC2 (critical=False): fail -> pass
+
+Scorecard deltas:
+  capability:
+    ac_pass_rate: 0.75 -> 1.0 (Δ +0.25, +33.3%)
+    critical_ac_pass_rate: 1.0 -> 1.0 (Δ +0, +0.0%)
+    full_benchmark_pass_rate: 0.5 -> 1.0 (Δ +0.5, +100.0%)
+    hidden_test_pass_rate: 0.75 -> 1.0 (Δ +0.25, +33.3%)
+  reliability:
+    flaky_case_count: 0 -> 0 (Δ +0, relative unavailable: relative delta undefined: baseline value is 0 (absolute delta still computed))
+    trial_pass_rate: 0.667 -> 1.0 (Δ +0.333, +49.9%)
+    variance: 0.02 -> 0.01 (Δ -0.01, -50.0%)
+    workflow_failure_rate: 0.0 -> 0.0 (Δ +0, relative unavailable: relative delta undefined: baseline value is 0 (absolute delta still computed))
+  efficiency:
+    agent_invocation_count: 12 -> 10 (Δ -2, -16.7%)
+    estimated_cost: 1.2 -> 1.1 (Δ -0.1, -8.3%)
+    loop_iteration_count: 4 -> 3 (Δ -1, -25.0%)
+    token_usage: 50000 -> 47000 (Δ -3000, -6.0%)
+    wall_clock_duration_ms: 358000 -> 326000 (Δ -32000, -8.9%)

@@ -1,0 +1,149 @@
+{
+  "artifact_inventory": {
+    "exists": true,
+    "file_count": 24,
+    "files": [
+      "agent-context/5034224/execution/UOW-001/eval_impl_1.json",
+      "agent-context/5034224/execution/UOW-001/eval_impl_2.json",
+      "agent-context/5034224/execution/UOW-001/eval_impl_3.json",
+      "agent-context/5034224/execution/UOW-002/eval_impl_1.json",
+      "agent-context/5034224/execution/UOW-002/eval_impl_2.json",
+      "agent-context/5034224/execution/UOW-002/eval_impl_3.json",
+      "agent-context/5034224/execution/UOW-003/eval_impl_1.json",
+      "agent-context/5034224/execution/UOW-003/eval_impl_2.json",
+      "agent-context/5034224/execution/UOW-003/eval_impl_3.json",
+      "agent-context/5034224/execution/UOW-003/eval_impl_4.json",
+      "agent-context/5034224/execution/UOW-004/eval_impl_1.json",
+      "agent-context/5034224/logs/implementation_evaluator/20260602_094750_evaluation.json",
+      "agent-context/5034224/logs/implementation_evaluator/20260602_125310_evaluation.json",
+      "agent-context/5034224/logs/implementation_evaluator/20260602_153957_evaluation.json",
+      "agent-context/5034224/logs/implementation_evaluator/20260602_155349_evaluation.json",
+      "agent-context/5034224/logs/implementation_evaluator/20260602_174935_evaluation.json",
+      "agent-context/5034224/logs/implementation_evaluator/20260602_231317_evaluation.json",
+      "agent-context/5034224/logs/implementation_evaluator/20260602_234840_evaluation.json",
+      "agent-context/5034224/logs/implementation_evaluator/20260603_003454_evaluation.json",
+      "agent-context/5034224/logs/implementation_evaluator/20260603_050029_evaluation.json",
+      "agent-context/5034224/logs/implementation_evaluator/20260603_062518_evaluation.json",
+      "agent-context/lessons.md",
+      "agent-context/mistake-rate-tracker.json",
+      "agent-context/rule-recommendations.md"
+    ],
+    "path": "agent-context",
+    "truncated": false
+  },
+  "baseline_id": "v0.1-70c89eac8b65d414fd29333674391a32f91bedb3",
+  "benchmark_inventory": [
+    {
+      "benchmark_id": "easy",
+      "benchmark_path": "eval/benchmarks/easy",
+      "difficulty": "easy",
+      "file_hashes": {
+        "hidden_tests.py": "1d2eabd7440f5e2b761006e7ed0fea719022d5f24a088209358e8b986b31f1f4",
+        "story.json": "7797e83944e0b803b35807bde41c2889c050ed166e5fbb1adf3e094f92c38619"
+      },
+      "hidden_tests_present": true,
+      "story_json_present": true
+    },
+    {
+      "benchmark_id": "hard",
+      "benchmark_path": "eval/benchmarks/hard",
+      "difficulty": "hard",
+      "file_hashes": {
+        "hidden_tests.py": "e54746b23a98e6b3f8aa76db6e753e6d8db52a1a6fcdfacd18e12a7d760a2d94",
+        "story.json": "d22b14671ceb4eb3252ea34c816ddc5f924e5354116636ab8874cf0b21b53474"
+      },
+      "hidden_tests_present": true,
+      "story_json_present": true
+    },
+    {
+      "benchmark_id": "medium",
+      "benchmark_path": "eval/benchmarks/medium",
+      "difficulty": "medium",
+      "file_hashes": {
+        "hidden_tests.py": "a7cac8b993e2930787cd316ba3b26bf014af5fd51583571ef3601bb09ef57cc7",
+        "story.json": "0d990359e0dda7c3d231a4a789c0b4637fcb0fc30156a42cd326baef5b50f5c5"
+      },
+      "hidden_tests_present": true,
+      "story_json_present": true
+    }
+  ],
+  "code_version": {
+    "git_commit": "70c89eac8b65d414fd29333674391a32f91bedb3",
+    "git_dirty": true,
+    "note": null
+  },
+  "created_at": "2026-07-17T22:59:50.547558+00:00",
+  "environment": {
+    "machine": "arm64",
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python_version": "3.14.6",
+    "system": "Darwin"
+  },
+  "eval_report_inventory": {
+    "exists": true,
+    "file_count": 10,
+    "files": [
+      "eval/reports/.gitkeep",
+      "eval/reports/2026-05-31-062650-all.json",
+      "eval/reports/2026-05-31-180541-hard+medium.json",
+      "eval/reports/2026-05-31-182216-all.json",
+      "eval/reports/2026-05-31-191521-hard+medium.json",
+      "eval/reports/2026-05-31-201656-hard.json",
+      "eval/reports/2026-06-01-024444-hard.json",
+      "eval/reports/2026-06-01-043122-hard.json",
+      "eval/reports/2026-06-01-091822-hard+medium.json",
+      "eval/reports/latest.json"
+    ],
+    "path": "eval/reports",
+    "truncated": false
+  },
+  "notes": [
+    "eval/reports, logs, and agent-context are gitignored local runtime directories; a fresh clone reports exists=false rather than an empty/zero inventory.",
+    "Unavailable git/file metadata is reported as the literal string 'unavailable' (or 'unavailable:missing-file' for hashes), never as 0 or an empty value, so absence is never mistaken for a known zero."
+  ],
+  "prompt_config_hashes": {
+    ".claude/settings.json": "ba5906cce7c1a958787fc376b897ec7008406675f4d6daf5dd87818390665cdc",
+    ".gemini/settings.json": "c119946778375d28ffe50b3846023b64f9c92883890d728cfcec0d5a1fecb34e",
+    ".serena/project.yml": "9f1f64442883fce81aef87c82e9a6d7a5651221f36d90af65dedfb08eb9d1340",
+    "core/agent_prompts.py": "d968172c53de8c2472727c945b473512fc174b236bb0657bd9a7bdcf6239e0be",
+    "requirements.txt": "c56c49c3bfa0e966d5901b12ffdce9d70f81869373ca9f550f52cf0d160af504"
+  },
+  "runner_workflow_config_hashes": {
+    "core/run_cmds.py": "d0a741f544d66d3688fe3f1c6635b9145d43734bcd0108f2b86ec920337a24e1",
+    "core/steps.py": "58115b57fbb3e57e0edea9c3cc773e77b2e79c64c07b8f829a118486f139fd1f",
+    "eval/result_schema.py": "ecfceac6176e2a2eff9fef571fe3a4434d108f2c4dd5aa2fe1a79c597456b7ce",
+    "eval/runner.py": "e03009ceb45737570ad052aea036da06d83aef76978e360e1b96e3bfc282614d",
+    "eval/seed_benchmarks.py": "58c48ce541a911d577f347cc9210b62edd9f44cdd1c54d1a7b11f9bd4fd14987"
+  },
+  "schema_version": 1,
+  "trace_log_inventory": {
+    "exists": true,
+    "file_count": 22,
+    "files": [
+      "logs/5001029/implementation_evaluator/20260622_223709_evaluation.json",
+      "logs/5001029/implementation_evaluator/20260622_224739_evaluation.json",
+      "logs/5001029/implementation_evaluator/20260622_225736_evaluation.json",
+      "logs/5001029/implementation_evaluator/20260622_235957_evaluation.json",
+      "logs/5001029/implementation_evaluator/20260623_000618_evaluation.json",
+      "logs/5001029/implementation_evaluator/20260623_001612_evaluation.json",
+      "logs/5001029/implementation_evaluator/eval_impl_1.json",
+      "logs/5034224/implementation_evaluator/20260602_131053_evaluation.json",
+      "logs/5034224/implementation_evaluator/20260602_230610_evaluation.json",
+      "logs/5034224/implementation_evaluator/20260602_234840_evaluation.json",
+      "logs/assignment_evaluator/20260615_193904_evaluation.json",
+      "logs/implementation_evaluator/20260611_230433_evaluation.json",
+      "logs/implementation_evaluator/20260612_003026_evaluation.json",
+      "logs/implementation_evaluator/20260612_065241_evaluation.json",
+      "logs/implementation_evaluator/20260622_141535_evaluation.json",
+      "logs/implementation_evaluator/20260623_003324_evaluation.json",
+      "logs/implementation_evaluator/20260623_064646_evaluation.json",
+      "logs/qa/20260603_063630_session.json",
+      "logs/reference_librarian/20260605_114800_query.json",
+      "logs/reference_librarian/20260605_114900_query.json",
+      "logs/reference_librarian/20260605_115000_query.json",
+      "logs/task_plan_evaluator/20260615_190751_evaluation.json"
+    ],
+    "path": "logs",
+    "truncated": false
+  }
+}

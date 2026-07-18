@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from argparse import Namespace
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import json
 
 from eval import runner as eval_runner
@@ -452,9 +452,243 @@ class EvalRunnerStructuredResultTests(unittest.TestCase):
             eval_runner.write_report(results, args)
             payload = json.loads((report_root / "latest.json").read_text(encoding="utf-8"))
 
-        self.assertIn("Current runner/model differs from baseline.", payload["summary"]["warnings"])
-        self.assertIn("Current target SHA differs from baseline.", payload["summary"]["warnings"])
-        self.assertIn("Current benchmark set differs from baseline.", payload["summary"]["warnings"])
+        warnings = payload["summary"]["comparison_context"]["warnings"]
+        self.assertIn("Current runner/model differs from baseline.", warnings)
+        self.assertIn("Current target SHA differs from baseline.", warnings)
+        self.assertIn("Current benchmark set differs from baseline.", warnings)
+
+
+class NormalizeWorkflowResultTests(unittest.TestCase):
+    def test_normalizes_completed_process(self):
+        cp = subprocess.CompletedProcess(args=["x"], returncode=0, stdout="out", stderr="err")
+        normalized = eval_runner._normalize_workflow_result(cp)
+        self.assertEqual(normalized, {"stdout": "out", "stderr": "err", "returncode": 0})
+
+    def test_normalizes_dict(self):
+        normalized = eval_runner._normalize_workflow_result({"stdout": "a", "stderr": "b", "returncode": 1})
+        self.assertEqual(normalized, {"stdout": "a", "stderr": "b", "returncode": 1})
+
+    def test_normalizes_arbitrary_object_via_getattr(self):
+        class Fake:
+            stdout = "obj-out"
+            stderr = "obj-err"
+            returncode = 2
+
+        normalized = eval_runner._normalize_workflow_result(Fake())
+        self.assertEqual(normalized, {"stdout": "obj-out", "stderr": "obj-err", "returncode": 2})
+
+    def test_normalizes_none(self):
+        normalized = eval_runner._normalize_workflow_result(None)
+        self.assertEqual(normalized, {"stdout": "", "stderr": "", "returncode": None})
+
+
+class EvidenceCaptureTests(unittest.TestCase):
+    def test_capture_workflow_evidence_writes_logs_even_on_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence_dir = Path(tmp)
+            evidence: dict = {}
+            workflow = subprocess.CompletedProcess(args=["x"], returncode=1, stdout="boom-out", stderr="boom-err")
+            eval_runner._capture_workflow_evidence(evidence_dir, workflow, evidence)
+            self.assertEqual((evidence_dir / "workflow.stdout.log").read_text(encoding="utf-8"), "boom-out")
+            self.assertEqual((evidence_dir / "workflow.stderr.log").read_text(encoding="utf-8"), "boom-err")
+            self.assertIn("workflow_stdout_ref", evidence)
+            self.assertIn("workflow_result_ref", evidence)
+
+    def test_capture_workflow_evidence_noop_without_evidence_dir(self):
+        evidence: dict = {}
+        eval_runner._capture_workflow_evidence(None, subprocess.CompletedProcess([], 0, "", ""), evidence)
+        self.assertEqual(evidence, {})
+
+    def test_capture_hidden_test_evidence_tolerates_missing_junit_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence_dir = Path(tmp) / "evidence"
+            evidence_dir.mkdir()
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            evidence: dict = {}
+            eval_runner._capture_hidden_test_evidence(evidence_dir, workspace, evidence)
+            self.assertNotIn("hidden_tests_xml_ref", evidence)
+
+    def test_capture_hidden_test_evidence_copies_junit_when_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence_dir = Path(tmp) / "evidence"
+            evidence_dir.mkdir()
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            (workspace / ".awb-hidden-tests.xml").write_text("<testsuite></testsuite>", encoding="utf-8")
+            evidence: dict = {}
+            eval_runner._capture_hidden_test_evidence(evidence_dir, workspace, evidence)
+            self.assertTrue(Path(evidence["hidden_tests_xml_ref"]).exists())
+
+    def test_capture_final_diff_tolerates_nonexistent_workspace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence_dir = Path(tmp) / "evidence"
+            evidence_dir.mkdir()
+            evidence: dict = {}
+            # workspace path does not exist; helper must not raise.
+            eval_runner._capture_final_diff(evidence_dir, Path(tmp) / "nope", evidence)
+            self.assertNotIn("diff_ref", evidence)
+
+
+class RunOneEndToEndTests(unittest.TestCase):
+    """End-to-end `run_one` under the standard patched seam (no real LLM/git
+    clone/network): `invoke_workflow`/`run_hidden_tests`/`prepare_workspace`
+    are the only pieces stubbed out, exercising the real evidence-capture and
+    trace-emission wiring around them."""
+
+    def _hidden_test_summary(self, *, all_pass: bool):
+        from eval.result_schema import TestSummary
+
+        ac_tests = {
+            "test_ac1_renders_final_recap_fields": "AC1",
+            "test_ac2_omits_verbose_and_sensitive_content_when_final_recap_exists": "AC2",
+            "test_ac3_empty_final_recap_lists_render_clear_none_placeholder": "AC3",
+            "test_ac4_preserves_legacy_session_summary_decisions_and_issues": "AC4",
+        }
+        cases = []
+        for name, ac_id in ac_tests.items():
+            failing = not all_pass and ac_id == "AC2"
+            cases.append({"classname": "hidden_tests", "name": name, "time": 0.01, "status": "failed" if failing else "passed", "message": "boom" if failing else ""})
+        failed = sum(1 for c in cases if c["status"] == "failed")
+        return TestSummary(total=len(cases), passed=len(cases) - failed, failed=failed, skipped=0, errors=0, cases=cases)
+
+    def _base_args(self, tmp: Path) -> Namespace:
+        return Namespace(
+            keep_sandbox=False,
+            repo="/repo",
+            sha="deadbeef",
+            no_verify_gold_fails=True,
+            allow_hidden_skips=False,
+            test_timeout=60,
+            project_test_command=None,
+            workflow_timeout=900,
+            include_lessons=False,
+            reports_dir=tmp,
+            eval_run_id="run-e2e-test",
+        )
+
+    def test_passing_run_populates_evidence_and_emits_terminal_run_completed(self):
+        path = eval_runner.LEGACY_BENCHMARKS / "easy"
+        with tempfile.TemporaryDirectory() as tmp:
+            args = self._base_args(Path(tmp))
+            with patch.object(eval_runner, "prepare_workspace", return_value=None), \
+                 patch.object(eval_runner, "invoke_workflow", return_value=subprocess.CompletedProcess([], 0, "ok", "")), \
+                 patch.object(eval_runner, "run_hidden_tests", return_value=(
+                     subprocess.CompletedProcess([], 0, "", ""), self._hidden_test_summary(all_pass=True),
+                 )):
+                result = eval_runner.run_one(path, args, trial_index=1)
+
+            self.assertEqual(result["status"], "PASS")
+            evidence = result["evidence"]
+            self.assertTrue(Path(evidence["dir"]).is_dir())
+            self.assertTrue(Path(evidence["story_ref"]).exists())
+            self.assertTrue(Path(evidence["workflow_stdout_ref"]).exists())
+            trace_lines = Path(evidence["trace_ref"]).read_text(encoding="utf-8").strip().splitlines()
+            self.assertGreaterEqual(len(trace_lines), 2)
+            events = [json.loads(line) for line in trace_lines]
+            self.assertEqual(events[0]["event_type"], "run.started")
+            self.assertEqual(events[-1]["event_type"], "run.completed")
+
+            # The trial slots straight into the v0.2 builder without further
+            # massaging — proving `run_one`'s output shape matches what
+            # `eval/live_report.py::build_eval_report` expects.
+            report = eval_runner.build_eval_report(
+                [result],
+                Namespace(sha="deadbeef", runner="claude", model="unit-model", repo="/repo", difficulty="easy", compare_to=None),
+                created_at="2026-05-22T12:00:00.000Z",
+                eval_run_id="run-e2e-test",
+            )
+            self.assertEqual(eval_runner.validate_report_payload(report.to_dict()) if hasattr(eval_runner, "validate_report_payload") else [], [])
+
+    def test_hidden_test_failure_leaves_unresolved_acs_unknown_not_pass(self):
+        path = eval_runner.LEGACY_BENCHMARKS / "easy"
+        with tempfile.TemporaryDirectory() as tmp:
+            args = self._base_args(Path(tmp))
+            with patch.object(eval_runner, "prepare_workspace", return_value=None), \
+                 patch.object(eval_runner, "invoke_workflow", return_value=subprocess.CompletedProcess([], 0, "ok", "")), \
+                 patch.object(eval_runner, "run_hidden_tests", return_value=(
+                     subprocess.CompletedProcess([], 1, "", ""), self._hidden_test_summary(all_pass=False),
+                 )):
+                result = eval_runner.run_one(path, args, trial_index=1)
+
+            self.assertEqual(result["status"], "FAIL")
+            self.assertEqual(result["error"], "hidden tests failed")
+            trace_lines = Path(result["evidence"]["trace_ref"]).read_text(encoding="utf-8").strip().splitlines()
+            events = [json.loads(line) for line in trace_lines]
+            self.assertEqual(events[-1]["event_type"], "run.failed")
+
+            report = eval_runner.build_eval_report(
+                [result],
+                Namespace(sha="deadbeef", runner="claude", model="unit-model", repo="/repo", difficulty="easy", compare_to=None),
+                created_at="2026-05-22T12:00:00.000Z",
+                eval_run_id="run-e2e-test",
+            )
+            acs = {ac.ac_id: ac.status for ac in report.benchmark_case_results[0].acceptance_criteria_results}
+            # AC2 positively failed; AC1/3/4 positively passed (real hidden-test
+            # evidence exists for them) — none is inferred-pass from a workflow
+            # that never ran, because it did run here.
+            from eval.report_schema import AcStatus
+
+            self.assertEqual(acs["AC2"], AcStatus.FAIL)
+            self.assertIn(acs["AC1"], (AcStatus.PASS,))
+
+    def test_workflow_failure_never_reaches_hidden_tests_leaves_all_acs_unknown(self):
+        """Workflow itself fails (nonzero exit) -> hidden tests never invoked.
+        Every AC must come back `unknown`, never `pass` — proving ACs are
+        never inferred-pass from evidence that doesn't exist."""
+        path = eval_runner.LEGACY_BENCHMARKS / "easy"
+        with tempfile.TemporaryDirectory() as tmp:
+            args = self._base_args(Path(tmp))
+            hidden_tests_mock = MagicMock()
+            with patch.object(eval_runner, "prepare_workspace", return_value=None), \
+                 patch.object(eval_runner, "invoke_workflow", return_value=subprocess.CompletedProcess([], 1, "", "boom")), \
+                 patch.object(eval_runner, "run_hidden_tests", hidden_tests_mock):
+                result = eval_runner.run_one(path, args, trial_index=1)
+
+            self.assertEqual(result["status"], "FAIL")
+            hidden_tests_mock.assert_not_called()
+            trace_lines = Path(result["evidence"]["trace_ref"]).read_text(encoding="utf-8").strip().splitlines()
+            events = [json.loads(line) for line in trace_lines]
+            self.assertEqual(events[-1]["event_type"], "run.failed")
+
+            report = eval_runner.build_eval_report(
+                [result],
+                Namespace(sha="deadbeef", runner="claude", model="unit-model", repo="/repo", difficulty="easy", compare_to=None),
+                created_at="2026-05-22T12:00:00.000Z",
+                eval_run_id="run-e2e-test",
+            )
+            from eval.report_schema import AcStatus
+
+            acs = {ac.ac_id: ac.status for ac in report.benchmark_case_results[0].acceptance_criteria_results}
+            self.assertTrue(acs)
+            for ac_id, status in acs.items():
+                self.assertEqual(status, AcStatus.UNKNOWN, f"{ac_id} should be unknown, not inferred-pass")
+
+    def test_two_trials_of_same_benchmark_group_into_one_case(self):
+        """Two `run_one` calls (trial_index=1, 2) against the same benchmark
+        must land in a single `BenchmarkCaseResult` with 2 `trial_results` —
+        multi-trial grouping exercised against `run_one`'s real output shape,
+        not a hand-built stand-in."""
+        path = eval_runner.LEGACY_BENCHMARKS / "easy"
+        with tempfile.TemporaryDirectory() as tmp:
+            args = self._base_args(Path(tmp))
+            results = []
+            for trial_index in (1, 2):
+                with patch.object(eval_runner, "prepare_workspace", return_value=None), \
+                     patch.object(eval_runner, "invoke_workflow", return_value=subprocess.CompletedProcess([], 0, "ok", "")), \
+                     patch.object(eval_runner, "run_hidden_tests", return_value=(
+                         subprocess.CompletedProcess([], 0, "", ""), self._hidden_test_summary(all_pass=True),
+                     )):
+                    results.append(eval_runner.run_one(path, args, trial_index=trial_index))
+
+            report = eval_runner.build_eval_report(
+                results,
+                Namespace(sha="deadbeef", runner="claude", model="unit-model", repo="/repo", difficulty="easy", compare_to=None),
+                created_at="2026-05-22T12:00:00.000Z",
+                eval_run_id="run-e2e-test",
+            )
+            self.assertEqual(len(report.benchmark_case_results), 1)
+            self.assertEqual(len(report.benchmark_case_results[0].trial_results), 2)
 
 
 if __name__ == "__main__":
