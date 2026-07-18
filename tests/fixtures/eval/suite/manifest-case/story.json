@@ -1,0 +1,12 @@
+{
+  "change_id": "EVAL-FIXTURE-MANIFEST-001",
+  "title": "Fixture: manifest-backed benchmark (legacy shape kept for discovery)",
+  "description": "eval.runner's discover_benchmarks/validate_benchmark path unconditionally requires story.json + hidden_tests.py, so this legacy pair stays alongside manifest.json purely to satisfy discovery. run_one's later load_manifest call prefers manifest.json over deriving from these files.",
+  "acceptance_criteria": [
+    "AC1: A file marker exists in the workspace.",
+    "AC2: The marker file contains the expected text."
+  ],
+  "metadata": {
+    "critical_acceptance_criteria": ["AC1"]
+  }
+}
