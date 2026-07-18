@@ -446,7 +446,7 @@ def invoke_llm(
         cmd.append(prompt)
     elif runner == "openai-compat":
         from core.run_cmds import run_openai_compat_text
-        effective_model = model or "gemma4:31b-cloud"
+        effective_model = model or "gemma4:31b"
         print(f"[openai-compat] Invoking benchmark generation with model={effective_model}")
         openai_result = run_openai_compat_text(
             prompt=prompt,

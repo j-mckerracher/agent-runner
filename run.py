@@ -578,7 +578,7 @@ def _answerability_matrix() -> dict[str, dict[str, object]]:
         "latency_internal_breakdown_network_tokenization_prompt_postprocessing": {
             "status": limit,
             "data": ["llm_calls.duration_ms", "llm_calls.connection_reuse_observable"],
-            "limit": "External CLI runners expose wall-clock only; OpenAI-compatible API calls expose per-request wall-clock but not provider-side tokenization/network subspans.",
+            "limit": "External CLI runners, including built-in openai-compat via omp, expose wall-clock only; OpenAI-compatible HTTP aliases expose per-request wall-clock but not provider-side tokenization/network subspans.",
         },
         "sequential_vs_parallel_calls": {
             "status": direct,
@@ -591,7 +591,7 @@ def _answerability_matrix() -> dict[str, dict[str, object]]:
         "connection_keep_alive": {
             "status": limit,
             "data": ["llm_calls.connection_reuse_observable"],
-            "limit": "Only local OpenAI-compatible HTTP calls are observable; hosted CLI connection reuse is hidden behind the provider CLI.",
+            "limit": "Only local OpenAI-compatible HTTP alias calls are observable; hosted CLI connection reuse is hidden behind the provider CLI.",
         },
         "token_budget_and_context_utilization": {
             "status": direct,
@@ -1456,6 +1456,7 @@ def main(
                     evaluator_func=steps.step_task_gen_evaluator,
                     evaluator_prompt=task_gen_evaluator_prompt,
                     iter_count=loop_iter_count,
+                    producer_artifact=_artifact_path(resolved_change_id, ARTIFACT_DIR_PLANNING, ARTIFACT_FILE_TASKS),
                     on_exhausted=lambda change_id: steps.render_task_plan_html(change_id, approved=False),
                     **_agent_llm_kwargs(agent_llms, "task-generator"),
                     evaluator_runner=agent_llms["task-plan-evaluator"]["runner"],
@@ -1478,6 +1479,7 @@ def main(
                     evaluator_func=steps.step_assignment_evaluator,
                     evaluator_prompt=assignment_evaluator_prompt,
                     iter_count=loop_iter_count,
+                    producer_artifact=_artifact_path(resolved_change_id, ARTIFACT_DIR_PLANNING, ARTIFACT_FILE_ASSIGNMENTS),
                     **_agent_llm_kwargs(agent_llms, "task-assigner"),
                     evaluator_runner=agent_llms["assignment-evaluator"]["runner"],
                     evaluator_runner_model=agent_llms["assignment-evaluator"]["model"],
@@ -1601,6 +1603,7 @@ def main(
                     evaluator_func=steps.step_qa_evaluator,
                     evaluator_prompt=qa_evaluator_prompt,
                     iter_count=loop_iter_count,
+                    producer_artifact=_artifact_path(resolved_change_id, ARTIFACT_DIR_QA, ARTIFACT_FILE_QA_REPORT),
                     **_agent_llm_kwargs(agent_llms, "qa-engineer"),
                     evaluator_runner=agent_llms["qa-evaluator"]["runner"],
                     evaluator_runner_model=agent_llms["qa-evaluator"]["model"],

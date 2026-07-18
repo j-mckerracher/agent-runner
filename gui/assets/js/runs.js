@@ -903,12 +903,6 @@ function appendEvent(ev, surface = "runs", mode = "live") {
     enforceTermLogLimit(term, surface);
     term.scrollTop = term.scrollHeight;
 }
-function escapeHtml(s) {
-    return String(s).replace(
-        /[&<>]/g,
-        (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c],
-    );
-}
 function buildUserPromptForm(ev) {
     return buildUserEscalationCard(ev);
 }

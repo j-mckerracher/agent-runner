@@ -1,0 +1,98 @@
+{
+  "report_schema_version": "0.2",
+  "eval_run_id": "run-20260717-001",
+  "created_at": "2026-07-17T12:00:00Z",
+  "candidate_version": "abc1234",
+  "baseline_version": "v0.1-def5678",
+  "benchmark_suite_id": "medium",
+  "benchmark_case_results": [
+    {
+      "benchmark_id": "medium",
+      "difficulty": "medium",
+      "domain": "orders",
+      "status": "failed",
+      "trial_results": [
+        {
+          "trial_id": "medium-t1",
+          "benchmark_id": "medium",
+          "status": "failed",
+          "started_at": "2026-07-17T12:00:01Z",
+          "completed_at": "2026-07-17T12:04:31Z",
+          "duration_ms": {"status": "known", "value": 270000},
+          "workflow_result_ref": "agent-context/medium-t1/workflow_result.json",
+          "trace_ref": null,
+          "artifact_refs": [
+            {"ref_id": "story", "uri": "agent-context/medium-t1/story.json", "kind": "artifact", "description": "sandbox story input"}
+          ],
+          "test_result_ref": "agent-context/medium-t1/.awb-hidden-tests.xml",
+          "failure_category": "hidden_tests_failed",
+          "error_summary": "hidden tests failed"
+        }
+      ],
+      "aggregate_result": {"weighted_score": 0.5},
+      "acceptance_criteria_results": [
+        {
+          "ac_id": "AC1",
+          "description": "Endpoint returns 200 for a valid order id",
+          "status": "pass",
+          "critical": true,
+          "evidence": [
+            {"ref_id": "AC1-test", "uri": "agent-context/medium-t1/.awb-hidden-tests.xml#test_ac1", "kind": "test", "description": "hidden test for AC1"}
+          ]
+        },
+        {
+          "ac_id": "AC2",
+          "description": "Endpoint returns 404 for an unknown order id",
+          "status": "fail",
+          "critical": false,
+          "evidence": [
+            {"ref_id": "AC2-test", "uri": "agent-context/medium-t1/.awb-hidden-tests.xml#test_ac2", "kind": "test", "description": "hidden test for AC2"}
+          ],
+          "failure_reason": "assertion error: expected 404, got 500"
+        }
+      ],
+      "evidence_references": [
+        {"ref_id": "hidden-tests-xml", "uri": "agent-context/medium-t1/.awb-hidden-tests.xml", "kind": "test-report"}
+      ]
+    }
+  ],
+  "scorecard": {
+    "capability": {
+      "ac_pass_rate": {"status": "known", "value": 0.5},
+      "critical_ac_pass_rate": {"status": "known", "value": 1.0},
+      "hidden_test_pass_rate": {"status": "known", "value": 0.5},
+      "full_benchmark_pass_rate": {"status": "known", "value": 0.0}
+    },
+    "reliability": {
+      "trial_pass_rate": {"status": "known", "value": 0.0},
+      "variance": {"status": "not_applicable", "unavailable_reason": "only one trial was run"},
+      "flaky_case_count": {"status": "known", "value": 0},
+      "workflow_failure_rate": {"status": "known", "value": 0.0}
+    },
+    "efficiency": {
+      "wall_clock_duration_ms": {"status": "known", "value": 270000},
+      "agent_invocation_count": {"status": "unknown", "unavailable_reason": "workflow event log was not retained for this run"},
+      "loop_iteration_count": {"status": "unknown", "unavailable_reason": "workflow event log was not retained for this run"},
+      "token_usage": {"status": "not_collected", "unavailable_reason": "session metrics collection was not enabled"},
+      "estimated_cost": {"status": "not_collected", "unavailable_reason": "session metrics collection was not enabled"}
+    },
+    "traceability": {
+      "trace_present": {"status": "known", "value": false},
+      "test_output_present": {"status": "known", "value": true},
+      "final_artifact_refs_present": {"status": "known", "value": true},
+      "final_diff_ref_present": {"status": "known", "value": false},
+      "prompt_hashes_present": {"status": "not_collected", "unavailable_reason": "prompt hashing is not implemented yet"}
+    }
+  },
+  "trace_references": [],
+  "artifact_references": [
+    {"ref_id": "story", "uri": "agent-context/medium-t1/story.json", "kind": "artifact"}
+  ],
+  "summary": {
+    "notes": "fixture report for v0.2 schema tests; not a real eval run"
+  },
+  "metadata": {
+    "runner": "claude",
+    "model": "fixture-model"
+  }
+}

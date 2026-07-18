@@ -33,7 +33,7 @@ python3 eval/agent_runner.py \
   --agent task-generator \
   --dataset "$AGENT_RUNNER_DATA_DIR/eval/agent_datasets/task-generator/regression.jsonl" \
   --runner openai-compat \
-  --model minimax-m2.7:cloud \
+  --model minimax-m2.7 \
   --context-pack schema-examples-v1 \
   --runs 3
 ```
@@ -89,7 +89,7 @@ python3 eval/agent_runner.py \
   --agent task-generator \
   --dataset "$AGENT_RUNNER_DATA_DIR/eval/agent_datasets/task-generator/regression.jsonl" \
   --runner openai-compat \
-  --model minimax-m2.7:cloud \
+  --model minimax-m2.7 \
   --context-pack ac-checklist-v1 \
   --compare-to "$AGENT_RUNNER_DATA_DIR/eval/agent_reports/task-generator/baseline.json" \
   --fail-under 0.80

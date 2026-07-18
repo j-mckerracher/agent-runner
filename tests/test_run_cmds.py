@@ -20,6 +20,34 @@ import yaml
 import core.run_cmds as run_cmds
 
 
+class ClaudeAuthEnvStrippingTests(unittest.TestCase):
+    def test_easy__without_claude_auth_env_strips_all_claude_auth_vars(self):
+        overrides = {
+            "ANTHROPIC_API_KEY": "sk-test-key",
+            "CLAUDE_CODE_API_KEY": "cc-test-key",
+            "ANTHROPIC_BASE_URL": "https://outer-session-gateway.example.com",
+            "ANTHROPIC_AUTH_TOKEN": "outer-session-token",
+            "UNRELATED_VAR": "keep-me",
+        }
+        with patch.dict(os.environ, overrides):
+            env = run_cmds._without_claude_auth_env()
+
+        for key in run_cmds.CLAUDE_AUTH_ENV_VARS:
+            self.assertNotIn(key, env, f"{key} should be stripped from the nested claude env")
+        self.assertEqual(env.get("UNRELATED_VAR"), "keep-me")
+        self.assertIn("AGENT_RUNNER_ROOT", env)
+
+    def test_easy__without_claude_auth_env_tolerates_missing_vars(self):
+        with patch.dict(os.environ, {}, clear=False):
+            for key in run_cmds.CLAUDE_AUTH_ENV_VARS:
+                os.environ.pop(key, None)
+            env = run_cmds._without_claude_auth_env()
+
+        for key in run_cmds.CLAUDE_AUTH_ENV_VARS:
+            self.assertNotIn(key, env)
+        self.assertIn("AGENT_RUNNER_ROOT", env)
+
+
 class CopilotEmbeddedAgentFallbackTests(unittest.TestCase):
     def test_medium__custom_agent_refusal_retries_with_embedded_agent_prompt(self):
         with (
@@ -155,7 +183,7 @@ class LlmCallOpikTelemetryTests(unittest.TestCase):
             events._default = None
             Path(path).unlink(missing_ok=True)
 
-    def test_medium__llm_call_event_updates_opik_with_usage_metadata_without_raw_prompt(self):
+    def test_medium__llm_call_event_updates_opik_with_usage_metadata_and_raw_content(self):
         with (
             patch("core.run_cmds._emit_event") as emit_event,
             patch("core.run_cmds.opik_context.get_current_span_data", return_value=object()),
@@ -169,8 +197,8 @@ class LlmCallOpikTelemetryTests(unittest.TestCase):
                 model="claude-sonnet",
                 status="ok",
                 duration_ms=1234,
-                prompt_text="secret prompt body",
-                response_text="private response body",
+                prompt_text="visible prompt body",
+                response_text="visible response body",
                 prompt_tokens=10,
                 completion_tokens=5,
                 cost_usd=0.02,
@@ -183,10 +211,14 @@ class LlmCallOpikTelemetryTests(unittest.TestCase):
         self.assertEqual(span_kwargs["metadata"]["llm_agent"], "task-generator")
         self.assertEqual(span_kwargs["metadata"]["llm_duration_ms"], 1234)
         self.assertEqual(span_kwargs["total_cost"], 0.02)
-        self.assertNotIn("secret prompt body", json.dumps(span_kwargs, default=str))
-        self.assertNotIn("private response body", json.dumps(span_kwargs, default=str))
-        self.assertEqual(span_kwargs["input"]["prompt_chars"], len("secret prompt body"))
-        self.assertEqual(span_kwargs["output"]["response_chars"], len("private response body"))
+        # Raw prompt/response are now carried on the span input/output.
+        self.assertEqual(span_kwargs["input"]["prompt"], "visible prompt body")
+        self.assertEqual(span_kwargs["output"]["response"], "visible response body")
+        self.assertEqual(span_kwargs["input"]["prompt_chars"], len("visible prompt body"))
+        self.assertEqual(span_kwargs["output"]["response_chars"], len("visible response body"))
+        # The raw text lives in input/output, not duplicated into metadata.
+        self.assertNotIn("llm_prompt_text", span_kwargs["metadata"])
+        self.assertNotIn("llm_response_text", span_kwargs["metadata"])
         self.assertEqual(span_kwargs["feedback_scores"][0]["name"], "llm_call_success")
 
         update_trace.assert_called_once()
@@ -194,6 +226,53 @@ class LlmCallOpikTelemetryTests(unittest.TestCase):
         emit_event.assert_called_once()
         self.assertEqual(emit_event.call_args.args[0], "llm.call")
         self.assertEqual(emit_event.call_args.kwargs["tokens_in"], 10)
+        self.assertEqual(emit_event.call_args.kwargs["prompt_text"], "visible prompt body")
+        self.assertEqual(emit_event.call_args.kwargs["response_text"], "visible response body")
+
+    def test_medium__scrub_secrets_redacts_values_only(self):
+        redacted = "<REDACTED>"
+        cases = {
+            "api_key=sk-ABCDEF0123456789XYZ": "api_key",
+            "password: hunter2swordfish": "password",
+            "Authorization: Bearer eyJhbGciOiJIUzI1Ni2xyz": "Authorization",
+            "use token=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345": "token",
+        }
+        for text, label in cases.items():
+            out = run_cmds._scrub_secrets(text)
+            self.assertIn(redacted, out, text)
+            self.assertIn(label, out, text)  # label preserved
+        # Bare provider tokens redacted even without a label.
+        self.assertEqual(run_cmds._scrub_secrets("saw sk-ABCDEF0123456789XYZ here"),
+                         f"saw {redacted} here")
+        # Ordinary prose is never touched (including the bare word "token").
+        prose = "Implement the token bucket rate limiter and count tokens."
+        self.assertEqual(run_cmds._scrub_secrets(prose), prose)
+
+    def test_medium__llm_call_event_scrubs_secrets_before_emit(self):
+        with (
+            patch("core.run_cmds._emit_event") as emit_event,
+            patch("core.run_cmds.opik_context.get_current_span_data", return_value=object()),
+            patch("core.run_cmds.opik_context.get_current_trace_data", return_value=None),
+            patch("core.run_cmds.opik_context.update_current_span") as update_span,
+        ):
+            run_cmds._emit_llm_call_event(
+                runner="claude",
+                agent="software-engineer",
+                model="claude-sonnet",
+                status="ok",
+                duration_ms=10,
+                prompt_text="deploy with api_key=sk-ABCDEF0123456789XYZ now",
+                response_text="ok, used password: hunter2swordfish",
+            )
+
+        emitted = emit_event.call_args.kwargs
+        self.assertNotIn("sk-ABCDEF0123456789XYZ", emitted["prompt_text"])
+        self.assertNotIn("hunter2swordfish", emitted["response_text"])
+        self.assertIn("<REDACTED>", emitted["prompt_text"])
+        self.assertIn("<REDACTED>", emitted["response_text"])
+        span_kwargs = update_span.call_args.kwargs
+        self.assertNotIn("sk-ABCDEF0123456789XYZ", json.dumps(span_kwargs, default=str))
+        self.assertNotIn("hunter2swordfish", json.dumps(span_kwargs, default=str))
 
     def test_medium__llm_call_event_skips_opik_when_no_active_context(self):
         with (
@@ -241,6 +320,160 @@ class OpenaiCompatRunnerTests(unittest.TestCase):
         self.assertEqual(run_openai_compat.call_args.kwargs["runner"], "ds4")
         self.assertEqual(run_openai_compat.call_args.kwargs["repo"], "/tmp/repo")
         self.assertEqual(run_openai_compat.call_args.kwargs["change_id"], "CHANGE-1")
+
+    def test_easy__run_agent_cmd_routes_builtin_openai_compat_to_omp(self):
+        with patch("core.run_cmds.run_omp_cmd", return_value="ok") as run_omp:
+            result = run_cmds.run_agent_cmd(
+                runner="openai-compat",
+                prompt="Create intake artifacts.",
+                agent="intake",
+                runner_model=None,
+                repo="/tmp/repo",
+                change_id="CHANGE-1",
+            )
+
+        self.assertEqual(result, "ok")
+        run_omp.assert_called_once()
+        self.assertIsNone(run_omp.call_args.kwargs["model"])
+        self.assertEqual(run_omp.call_args.kwargs["repo"], "/tmp/repo")
+        self.assertEqual(run_omp.call_args.kwargs["change_id"], "CHANGE-1")
+
+    def test_easy__run_omp_cmd_omits_model_when_none(self):
+        from core.omp_rpc import OmpRpcResult
+
+        class _FakeSession:
+            last_init = None
+
+            def __init__(self, **kwargs):
+                _FakeSession.last_init = kwargs
+
+            def start(self):
+                pass
+
+            def run_prompt(self, message):
+                return OmpRpcResult(text="done", tool_calls=[], turns=1)
+
+            def close(self):
+                pass
+
+        with patch("core.omp_rpc.OmpRpcSession", _FakeSession):
+            result = run_cmds.run_omp_cmd(
+                prompt="Say OK",
+                agent="qa-evaluator",
+                model=None,
+                repo="/tmp/repo",
+            )
+        self.assertEqual(result, "done")
+        self.assertIsNone(_FakeSession.last_init["model"])
+        self.assertEqual(_FakeSession.last_init["repo"], "/tmp/repo")
+
+    def test_easy__run_omp_cmd_includes_model_when_specified(self):
+        from core.omp_rpc import OmpRpcResult
+
+        class _FakeSession:
+            last_init = None
+
+            def __init__(self, **kwargs):
+                _FakeSession.last_init = kwargs
+
+            def start(self):
+                pass
+
+            def run_prompt(self, message):
+                return OmpRpcResult(text="done", tool_calls=[], turns=1)
+
+            def close(self):
+                pass
+
+        with patch("core.omp_rpc.OmpRpcSession", _FakeSession):
+            run_cmds.run_omp_cmd(
+                prompt="Say OK",
+                agent="qa-evaluator",
+                model="sonnet",
+                repo="/tmp/repo",
+            )
+        self.assertEqual(_FakeSession.last_init["model"], "sonnet")
+
+    def test_easy__run_omp_cmd_error_surfaces_stderr_and_hides_prompt(self):
+        from core.omp_rpc import OmpRpcError
+
+        stderr = 'Model "glm-5.2:cloud" not found. Run "omp models" to see available models.\n'
+
+        class _FailingSession:
+            def __init__(self, **kwargs):
+                pass
+
+            def start(self):
+                pass
+
+            def run_prompt(self, message):
+                raise OmpRpcError(
+                    'Model "glm-5.2:cloud" not found', returncode=1, stderr=stderr
+                )
+
+            def close(self):
+                pass
+
+        with patch("core.omp_rpc.OmpRpcSession", _FailingSession):
+            with self.assertRaises(subprocess.CalledProcessError) as ctx:
+                run_cmds.run_omp_cmd(
+                    prompt="THE_HUGE_EMBEDDED_PROMPT_TEXT",
+                    agent="intake",
+                    model="glm-5.2:cloud",
+                    repo="/tmp/repo",
+                )
+        exc = ctx.exception
+        # Failover relies on the CalledProcessError contract remaining intact.
+        self.assertIsInstance(exc, subprocess.CalledProcessError)
+        self.assertEqual(exc.returncode, 1)
+        self.assertEqual(exc.stderr, stderr)
+        # The rendered message must surface omp's reason, not dump the prompt.
+        message = str(exc)
+        self.assertIn('Model "glm-5.2:cloud" not found', message)
+        # After the :cloud suffix fallback also fails, the final model is the base name.
+        self.assertIn("model=glm-5.2", message)
+        self.assertNotIn("THE_HUGE_EMBEDDED_PROMPT_TEXT", message)
+        # Usage-exhaustion detection still reads stderr off the exception.
+        self.assertFalse(run_cmds.is_usage_exhaustion_exception(exc))
+
+    def test_easy__run_omp_cmd_retries_without_cloud_suffix_when_model_not_found(self):
+        from core.omp_rpc import OmpRpcError
+
+        stderr = 'Model "glm-5.2:cloud" not found. Run "omp models" to see available models.\n'
+        models_seen: list[str | None] = []
+
+        class _Result:
+            text = "OK"
+            tool_calls: list = []
+            turns = 1
+
+        class _RetrySession:
+            def __init__(self, **kwargs):
+                self._model = kwargs.get("model")
+                models_seen.append(self._model)
+
+            def start(self):
+                if self._model and ":" in self._model:
+                    raise OmpRpcError(
+                        'Model "glm-5.2:cloud" not found', returncode=1, stderr=stderr
+                    )
+
+            def run_prompt(self, message):
+                return _Result()
+
+            def close(self):
+                pass
+
+        with patch("core.omp_rpc.OmpRpcSession", _RetrySession):
+            out = run_cmds.run_omp_cmd(
+                prompt="Say OK",
+                agent="intake",
+                model="glm-5.2:cloud",
+                repo="/tmp/repo",
+            )
+        self.assertEqual(out, "OK")
+        # First tried the submitted name, then fell back to the bare model.
+        self.assertEqual(models_seen, ["glm-5.2:cloud", "glm-5.2"])
 
     def test_medium__openai_compat_tool_loop_writes_file_and_returns_final_text(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -839,7 +1072,7 @@ class RunAgentCmdDispatchMatrixTests(unittest.TestCase):
     def test_medium__openai_compat_dispatch_passes_model(self):
         for model in self._choices["openai-compat"]:
             with self.subTest(model=model):
-                with patch("core.run_cmds.run_openai_compat_cmd", return_value="OK") as run_fn:
+                with patch("core.run_cmds.run_omp_cmd", return_value="OK") as run_fn:
                     result = run_cmds.run_agent_cmd(
                         runner="openai-compat",
                         prompt="Say OK",
@@ -851,7 +1084,6 @@ class RunAgentCmdDispatchMatrixTests(unittest.TestCase):
                 self.assertEqual(result, "OK")
                 run_fn.assert_called_once()
                 self.assertEqual(run_fn.call_args.kwargs.get("model"), model)
-                self.assertEqual(run_fn.call_args.kwargs.get("runner"), "openai-compat")
                 self.assertEqual(run_fn.call_args.kwargs.get("repo"), "/tmp/repo")
                 self.assertEqual(run_fn.call_args.kwargs.get("change_id"), "CHANGE-1")
 

@@ -168,6 +168,130 @@ async function loadCorpusDetail(changeId) {
 }
 
 // Evaluate
+const EVAL_SELECTED_RUN_STORAGE_KEY = "evaluate.selectedRunId";
+let EVAL_RUN_HISTORY_ITEMS = [];
+
+function getStoredEvalRunId() {
+    try {
+        return localStorage.getItem(EVAL_SELECTED_RUN_STORAGE_KEY) || "";
+    } catch {
+        return "";
+    }
+}
+function storeEvalRunId(jobId) {
+    try {
+        if (jobId) {
+            localStorage.setItem(EVAL_SELECTED_RUN_STORAGE_KEY, jobId);
+        } else {
+            localStorage.removeItem(EVAL_SELECTED_RUN_STORAGE_KEY);
+        }
+    } catch {
+        // Ignore storage failures (private mode, quota, etc.).
+    }
+}
+function formatEvalRunHistoryLabel(job) {
+    if (!job) return "";
+    const when = fmtLocalTime(job.submitted_at || job.updated_at);
+    const status = job.status || "unknown";
+    const runnerModel = [job.runner, job.model]
+        .filter(Boolean)
+        .join("/");
+    const kind = job.run_kind || "evaluation";
+    const id = (job.id || "").slice(0, 12);
+    return `${id}… · ${status} · ${runnerModel || "—"} · ${kind} · ${when || "—"}`;
+}
+function renderEvalRunHistory(preferredJobId = "") {
+    const select = $("#eval-run-history");
+    if (!select) return "";
+    const items = EVAL_RUN_HISTORY_ITEMS || [];
+    select.innerHTML = "";
+    if (!items.length) {
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "No evaluation runs yet";
+        select.appendChild(option);
+        select.value = "";
+        return "";
+    }
+    items.forEach((job) => {
+        const option = document.createElement("option");
+        option.value = job.id;
+        option.textContent = formatEvalRunHistoryLabel(job);
+        select.appendChild(option);
+    });
+    const fallback = items[0]?.id || "";
+    const resolved =
+        preferredJobId && items.some((job) => job.id === preferredJobId)
+            ? preferredJobId
+            : fallback;
+    select.value = resolved;
+    return resolved;
+}
+async function loadEvaluateRunHistory(preferredJobId = "") {
+    const select = $("#eval-run-history");
+    if (!select) return;
+    try {
+        const res = await api("/evaluate/runs?limit=200");
+        EVAL_RUN_HISTORY_ITEMS = res.items || [];
+        const selected = renderEvalRunHistory(preferredJobId);
+        if (!selected) {
+            const current = getActiveSurfaceJob("evaluate");
+            if (!current) {
+                setTermEmpty(
+                    "Start an evaluation run to see logs here.",
+                    false,
+                    "evaluate",
+                );
+            }
+            return;
+        }
+        const activeEvalId = getActiveSurfaceJob("evaluate")?.id || "";
+        storeEvalRunId(selected);
+        if (activeEvalId !== selected) {
+            await selectJob(selected, "evaluate");
+        }
+    } catch (err) {
+        EVAL_RUN_HISTORY_ITEMS = [];
+        renderEvalRunHistory("");
+        toast(`Failed to load evaluation run history: ${err.message}`, true);
+    }
+}
+function bindEvaluateHistoryControls() {
+    const select = $("#eval-run-history");
+    if (select && !select.dataset.bound) {
+        select.dataset.bound = "true";
+        select.addEventListener("change", async () => {
+            const jobId = select.value || "";
+            storeEvalRunId(jobId);
+            if (!jobId) {
+                setTermEmpty(
+                    "Select an evaluation run to view logs.",
+                    false,
+                    "evaluate",
+                );
+                return;
+            }
+            await selectJob(jobId, "evaluate");
+        });
+    }
+    const refreshBtn = $("#eval-run-history-refresh");
+    if (refreshBtn && !refreshBtn.dataset.bound) {
+        refreshBtn.dataset.bound = "true";
+        refreshBtn.addEventListener("click", async () => {
+            refreshBtn.disabled = true;
+            try {
+                const preferred =
+                    $("#eval-run-history")?.value ||
+                    getActiveSurfaceJob("evaluate")?.id ||
+                    getStoredEvalRunId();
+                await loadEvaluateRunHistory(preferred || "");
+            } finally {
+                refreshBtn.disabled = false;
+            }
+        });
+    }
+}
+
 function updateEvaluationStorySelect(rows) {
     const sel = $("#eval-story");
     if (!sel) return;
@@ -277,6 +401,7 @@ function renderEvalStoryPreview() {
         .join("");
 }
 async function loadEvaluate() {
+    bindEvaluateHistoryControls();
     const [r, cfg] = await Promise.all([
         api("/evaluate/summary"),
         api("/settings"),
@@ -288,10 +413,11 @@ async function loadEvaluate() {
         _evalStories = [];
     }
     const diffSel = $("#eval-difficulty");
-    if (diffSel) {
+    if (diffSel && !diffSel.dataset.bound) {
+        diffSel.dataset.bound = "true";
         diffSel.addEventListener("change", renderEvalStoryPreview);
-        renderEvalStoryPreview();
     }
+    renderEvalStoryPreview();
     updateEvaluateOpikLink(cfg);
     updateEvalShaOptions(cfg.eval_bootstrap?.target_sha || "");
     updateEvalBaselineSelect(r.reports || []);
@@ -342,6 +468,10 @@ async function loadEvaluate() {
     });
     $("#eval-meta").textContent =
         `${rows.length} benchmark${rows.length === 1 ? "" : "s"}`;
+
+    const preferredRunId =
+        getActiveSurfaceJob("evaluate")?.id || getStoredEvalRunId();
+    await loadEvaluateRunHistory(preferredRunId);
 }
 function updateEvalBaselineSelect(reports) {
     const sel = $("#eval-baseline");

@@ -1,22 +1,69 @@
 # OpenAI-Compatible Provider Setup
 
-The `openai-compat` runner sends Agent Workbench prompts to a local or proxied HTTP endpoint that exposes the repository's expected `/api/chat` contract. It is a built-in runner, and you can also define runner aliases that use the same provider with different models or transport settings.
+Agent Workbench has two OpenAI-compatible paths:
 
-This runner is intentionally different from the `claude`, `codex`, `copilot`, and `gemini` CLI runners: it does not require a CLI, but it does require a reachable HTTP service.
+- The built-in `openai-compat` runner shells out to the [`omp`](https://omp.sh/docs) (oh-my-pi) CLI for each workflow step.
+- Custom aliases with `"provider": "openai-compat"` still use the local/proxied HTTP `/api/chat` compatibility layer.
 
-## Runtime endpoint behavior
+Use the built-in runner when you want omp to own provider selection, credentials, model defaults, and tool execution. Use aliases when you want Agent Workbench to call a specific HTTP gateway directly.
+
+## Built-in runner: omp
+
+The built-in runner name is `openai-compat`. It drives omp in headless RPC mode
+(a long-running `--mode rpc` subprocess that exchanges newline-delimited JSON
+over stdio):
+
+```bash
+omp --mode rpc --no-session --approval-mode yolo --no-extensions --cwd /absolute/path/to/repo [--model <id>]
+```
+
+The combined agent prompt is sent as a single `prompt` command and Agent
+Workbench consumes omp's event stream until `agent_end`, assembling the final
+answer from the returned assistant message (falling back to streamed
+`text_delta` events). Tool executions (`tool_execution_start`/`_end`) are mapped
+to `tool.start`/`tool.end` telemetry events, and interactive `extension_ui_request`
+frames (`open_url` and selector/confirm/input prompts) are routed to the
+human-escalation channel; status/widget UI pushes are ignored. `--approval-mode
+yolo` keeps tool execution fully headless, and `--no-extensions` keeps output
+deterministic (omp UI extensions such as status widgets do not alter the run).
+
+Install and configure omp before using this runner. omp reads its own provider
+credentials and default model from its normal configuration, including
+`~/.omp/agent/agent.db` and config files managed by the omp CLI.
+
+Agent Workbench only passes `--model` to omp when you explicitly provide a model through `--model` or a per-agent model override. When no model is specified, Agent Workbench omits the flag and omp uses its currently configured default model.
+
+Prefer the provider-qualified `<provider>/<model>` form (e.g. `ollama-cloud/glm-5.2`). A bare model name (e.g. `glm-5.2`) lets omp choose the provider, which may resolve to a cloud vendor that needs its own API key (such as `zai`) and fail with `No API key found for <provider>`. Qualifying the name pins routing — for example `ollama-cloud/...` keeps everything on Ollama Cloud.
+
+```bash
+# Uses omp's configured default model.
+python3 run.py --runner openai-compat --repo /absolute/path/to/repo
+
+# Overrides the model for this run (provider-qualified).
+python3 run.py --runner openai-compat --model ollama-cloud/glm-5.2 --repo /absolute/path/to/repo
+```
+
+### Escalation MCP
+
+Before launching omp, Agent Workbench idempotently registers its human-in-the-loop escalation MCP server in `~/.omp/agent/mcp.json`. omp auto-loads that user-scoped MCP config on each run, so escalation is available to the built-in `openai-compat` runner through omp's MCP tool surface. The registration preserves existing MCP servers.
+
+## HTTP alias runtime behavior
+
+The remaining sections apply only to aliases configured with `"provider": "openai-compat"`.
+
+### Runtime endpoint behavior
 
 At runtime, Agent Workbench chooses the API base URL in this order:
 
-1. `OPENAI_COMPAT_HOST`, when set. This overrides every alias and the built-in `openai-compat` runner.
+1. `OPENAI_COMPAT_HOST`, when set. This overrides every HTTP alias.
 2. A runner alias `base_url`, but only when it points at `http://localhost`, `http://127.0.0.1`, or the same hosts over HTTPS.
 3. The default local base URL: `http://127.0.0.1:11434`.
 
 Non-local alias `base_url` values are accepted by settings validation for portability, but the current runtime ignores them unless you set `OPENAI_COMPAT_HOST`. For remote providers, use `OPENAI_COMPAT_HOST` or expose the provider through a local gateway/reverse proxy.
 
-## API format
+### API format
 
-The runner sends `POST <base_url>/api/chat` requests. The endpoint must accept this shape:
+HTTP aliases send `POST <base_url>/api/chat` requests. The endpoint must accept this shape:
 
 ```json
 {
@@ -31,15 +78,6 @@ The runner sends `POST <base_url>/api/chat` requests. The endpoint must accept t
 ```
 
 Services that expose only `/v1/chat/completions` need a compatibility proxy that rewrites `/api/chat` and maps the request/response shape. Do not point `base_url` directly at a plain `/v1` OpenAI-compatible endpoint unless that service also implements `/api/chat`.
-
-## Built-in runner
-
-The built-in runner name is `openai-compat`. It uses the default model from `core/runner_models.py` unless you pass `--model` or configure an agent-specific default. Any model name is accepted for this runner; the listed presets are suggestions, not an allowlist.
-
-```bash
-export OPENAI_COMPAT_HOST="http://127.0.0.1:11434"
-python3 run.py --runner openai-compat --model qwen3:32b --repo /absolute/path/to/repo
-```
 
 ## Runner aliases
 
@@ -132,12 +170,31 @@ Use `agent_model_defaults` to pin an alias/model pair to one agent:
 
 ## Verification
 
-1. Start the local or proxied `/api/chat` service.
-2. Configure `OPENAI_COMPAT_HOST` or a local alias `base_url`.
-3. Run a smoke test:
+### Built-in omp runner
+
+1. Install and configure omp.
+2. Run a smoke test:
+
+   ```bash
+   python3 run.py --runner openai-compat --change-id TEST-001 --repo /tmp/test-repo
+   ```
+
+3. If needed, pass an explicit model:
 
    ```bash
    python3 run.py --runner openai-compat --model qwen3:32b --change-id TEST-001 --repo /tmp/test-repo
+   ```
+
+4. Check `~/.omp/agent/mcp.json` for the `agent-workbench-escalation` MCP server if escalation should be available.
+
+### HTTP alias
+
+1. Start the local or proxied `/api/chat` service.
+2. Configure `OPENAI_COMPAT_HOST` or a local alias `base_url`.
+3. Run a smoke test through the alias:
+
+   ```bash
+    python3 run.py --runner local-qwen --change-id TEST-001 --repo /tmp/test-repo
    ```
 
 4. Check the run log for `[openai-compat] API base URL: http://...`.

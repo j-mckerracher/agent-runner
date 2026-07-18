@@ -14,6 +14,8 @@ from .story_inputs import infer_manual_change_id, load_manual_story
 
 logger = logging.getLogger(__name__)
 
+ADO_BRANCH_DESCRIPTION_TIMEOUT_SECONDS = 5
+
 DEFAULT_TEST_STORY_FILE = (
     Path(__file__).resolve().parent.parent / "workflow-fixtures" / "synthetic_story.json"
 )
@@ -64,7 +66,15 @@ def _fetch_ado_branch_description(ado_url: str | None) -> str | None:
             check=False,
             capture_output=True,
             text=True,
+            timeout=ADO_BRANCH_DESCRIPTION_TIMEOUT_SECONDS,
         )
+    except subprocess.TimeoutExpired:
+        logger.warning(
+            "_fetch_ado_branch_description: az timed out after %ss for %s",
+            ADO_BRANCH_DESCRIPTION_TIMEOUT_SECONDS,
+            ado_url,
+        )
+        return None
     except OSError as exc:
         logger.warning(
             "_fetch_ado_branch_description: failed to run az for %s: %s",

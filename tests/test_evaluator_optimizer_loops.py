@@ -81,7 +81,71 @@ class EvaluatorOptimizerLoopTelemetryTests(unittest.TestCase):
             events._default = None
             Path(path).unlink(missing_ok=True)
 
-    def test_medium__uow_eval_loop_normalizes_impl_report_before_validation(self):
+    def test_medium__eval_optimizer_loop_retries_when_producer_artifact_missing(self):
+        from core.evaluator_optimizer_loops import run_eval_optimizer_loop
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            artifact = Path(tmpdir) / "planning" / "tasks.yaml"
+            producer_calls = []
+            evaluator_calls = []
+
+            def producer(prompt, **_kwargs):
+                producer_calls.append(prompt)
+                if len(producer_calls) >= 2:
+                    artifact.parent.mkdir(parents=True, exist_ok=True)
+                    artifact.write_text("tasks: []\n", encoding="utf-8")
+                return "produced"
+
+            def evaluator(_prompt, **_kwargs):
+                evaluator_calls.append(True)
+                return "PASS"
+
+            output, evaluation = run_eval_optimizer_loop(
+                producer,
+                "agent-context/LOOP-1/planning/task.yaml",
+                evaluator,
+                "agent-context/LOOP-1/planning/eval.yaml",
+                iter_count=3,
+                runner="claude",
+                runner_model="claude-sonnet",
+                producer_artifact=artifact,
+            )
+
+            # iter 1: artifact missing -> evaluator skipped, deterministic retry.
+            # iter 2: artifact written -> evaluator runs and passes.
+            self.assertEqual(len(producer_calls), 2)
+            self.assertEqual(len(evaluator_calls), 1)
+            self.assertEqual(evaluation, "PASS")
+            # The retry prompt carried the corrective missing-artifact feedback.
+            self.assertIn("was not produced", producer_calls[1])
+
+    def test_medium__eval_optimizer_loop_without_producer_artifact_runs_evaluator(self):
+        from core.evaluator_optimizer_loops import run_eval_optimizer_loop
+
+        evaluator_calls = []
+
+        def producer(prompt, **_kwargs):
+            return "produced"
+
+        def evaluator(_prompt, **_kwargs):
+            evaluator_calls.append(True)
+            return "PASS"
+
+        _output, evaluation = run_eval_optimizer_loop(
+            producer,
+            "agent-context/LOOP-1/planning/task.yaml",
+            evaluator,
+            "agent-context/LOOP-1/planning/eval.yaml",
+            iter_count=3,
+            runner="claude",
+            runner_model="claude-sonnet",
+        )
+
+        # producer_artifact defaults to None -> guard inactive, evaluator runs.
+        self.assertEqual(len(evaluator_calls), 1)
+        self.assertEqual(evaluation, "PASS")
+
+
         from core.evaluator_optimizer_loops import run_uow_eval_loop
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -225,6 +289,232 @@ class EvaluatorOptimizerLoopTelemetryTests(unittest.TestCase):
             self.assertEqual(software_engineer_calls[0]["evaluator_feedback_path"], "")
             self.assertIn("Missing alpha verification", software_engineer_calls[1]["evaluator_feedback"])
             self.assertEqual(software_engineer_calls[1]["evaluator_feedback_path"], str(eval_path))
+
+    def test_medium__uow_eval_loop_retries_when_impl_report_is_missing(self):
+        from core.evaluator_optimizer_loops import run_uow_eval_loop
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "agent-context"
+            uow_dir = root / "CHANGE-1" / "execution" / "UOW-001"
+            uow_dir.mkdir(parents=True)
+            (uow_dir / "uow_spec.yaml").write_text(
+                yaml.safe_dump(
+                    {
+                        "uow_id": "UOW-001",
+                        "title": "Implement alpha ordering helper",
+                        "implementation_hints": ["libs/orders/alpha-order/alpha-order-helper.ts"],
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+            software_engineer_calls = []
+            evaluator_calls = []
+
+            def software_engineer(**kwargs) -> str:
+                software_engineer_calls.append(kwargs)
+                if len(software_engineer_calls) == 2:
+                    (uow_dir / "impl_report.yaml").write_text(
+                        yaml.safe_dump(
+                            {
+                                "change_id": "CHANGE-1",
+                                "uow_id": "UOW-001",
+                                "status": "complete",
+                                "implementation_summary": "Alpha order helper verified",
+                                "definition_of_done_status": [
+                                    {"item": "Alpha order preserved", "met": True, "evidence": "alpha verified"}
+                                ],
+                            },
+                            sort_keys=False,
+                        ),
+                        encoding="utf-8",
+                    )
+                return "implemented"
+
+            def evaluator(**_kwargs) -> str:
+                evaluator_calls.append(True)
+                return "PASS"
+
+            with patch("core.evaluator_optimizer_loops.steps.AGENT_CONTEXT_ROOT", root), patch(
+                "core.evaluator_optimizer_loops.steps.step_software_engineer", side_effect=software_engineer
+            ), patch("core.evaluator_optimizer_loops.steps.step_software_engineer_evaluator", side_effect=evaluator):
+                producer_out, evaluator_out = run_uow_eval_loop(
+                    "UOW-001",
+                    "CHANGE-1",
+                    repo="/tmp/repo",
+                    iter_count=2,
+                    runner="claude",
+                    runner_model="claude-sonnet",
+                )
+
+            self.assertEqual(producer_out, "implemented")
+            self.assertEqual(evaluator_out, "PASS")
+            self.assertEqual(len(software_engineer_calls), 2)
+            self.assertEqual(evaluator_calls, [True])
+            eval_path = uow_dir / "eval_impl_1.json"
+            payload = json.loads(eval_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["status"], "FAIL")
+            self.assertIn("implementation report", payload["summary"])
+            self.assertIn("Write the required implementation report", software_engineer_calls[1]["evaluator_feedback"])
+            self.assertEqual(software_engineer_calls[1]["evaluator_feedback_path"], str(eval_path))
+
+    def test_medium__uow_eval_loop_raises_after_repeated_missing_impl_report(self):
+        from core.artifact_utils import ImplReportValidationError
+        from core.evaluator_optimizer_loops import run_uow_eval_loop
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "agent-context"
+            uow_dir = root / "CHANGE-1" / "execution" / "UOW-001"
+            uow_dir.mkdir(parents=True)
+            (uow_dir / "uow_spec.yaml").write_text(
+                yaml.safe_dump(
+                    {
+                        "uow_id": "UOW-001",
+                        "title": "Implement alpha ordering helper",
+                        "implementation_hints": ["libs/orders/alpha-order/alpha-order-helper.ts"],
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+            software_engineer_calls = []
+            evaluator_calls = []
+
+            def software_engineer(**kwargs) -> str:
+                software_engineer_calls.append(kwargs)
+                return "implemented"
+
+            def evaluator(**_kwargs) -> str:
+                evaluator_calls.append(True)
+                return "PASS"
+
+            with patch("core.evaluator_optimizer_loops.steps.AGENT_CONTEXT_ROOT", root), patch(
+                "core.evaluator_optimizer_loops.steps.step_software_engineer", side_effect=software_engineer
+            ), patch("core.evaluator_optimizer_loops.steps.step_software_engineer_evaluator", side_effect=evaluator):
+                with self.assertRaisesRegex(ImplReportValidationError, "implementation report"):
+                    run_uow_eval_loop(
+                        "UOW-001",
+                        "CHANGE-1",
+                        repo="/tmp/repo",
+                        iter_count=2,
+                        runner="claude",
+                        runner_model="claude-sonnet",
+                    )
+
+            self.assertEqual(len(software_engineer_calls), 2)
+            self.assertEqual(evaluator_calls, [])
+            for iteration in (1, 2):
+                payload = json.loads((uow_dir / f"eval_impl_{iteration}.json").read_text(encoding="utf-8"))
+                self.assertEqual(payload["status"], "FAIL")
+                self.assertEqual(payload["artifact_evaluated"], "impl_report.yaml")
+
+    def test_medium__uow_eval_loop_hard_fails_on_missing_uow_spec(self):
+        # Missing/invalid uow_spec.yaml is upstream corruption (task-assigner
+        # output), not a recoverable agent stumble — it must fail fast on the
+        # first iteration without burning the retry budget.
+        from core.artifact_utils import ImplReportValidationError
+        from core.evaluator_optimizer_loops import run_uow_eval_loop
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "agent-context"
+            uow_dir = root / "CHANGE-1" / "execution" / "UOW-001"
+            uow_dir.mkdir(parents=True)
+            # Note: no uow_spec.yaml written.
+            software_engineer_calls = []
+            evaluator_calls = []
+
+            def software_engineer(**kwargs) -> str:
+                software_engineer_calls.append(kwargs)
+                return "implemented"
+
+            def evaluator(**_kwargs) -> str:
+                evaluator_calls.append(True)
+                return "PASS"
+
+            with patch("core.evaluator_optimizer_loops.steps.AGENT_CONTEXT_ROOT", root), patch(
+                "core.evaluator_optimizer_loops.steps.step_software_engineer", side_effect=software_engineer
+            ), patch("core.evaluator_optimizer_loops.steps.step_software_engineer_evaluator", side_effect=evaluator):
+                with self.assertRaisesRegex(ImplReportValidationError, "UoW spec"):
+                    run_uow_eval_loop(
+                        "UOW-001",
+                        "CHANGE-1",
+                        repo="/tmp/repo",
+                        iter_count=3,
+                        runner="claude",
+                        runner_model="claude-sonnet",
+                    )
+
+            # Fails fast: one attempt, no retries, evaluator never reached.
+            self.assertEqual(len(software_engineer_calls), 1)
+            self.assertEqual(evaluator_calls, [])
+
+        from core.evaluator_optimizer_loops import run_uow_eval_loop
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "agent-context"
+            uow_dir = root / "CHANGE-1" / "execution" / "UOW-001"
+            uow_dir.mkdir(parents=True)
+            (uow_dir / "uow_spec.yaml").write_text(
+                yaml.safe_dump(
+                    {
+                        "uow_id": "UOW-001",
+                        "title": "Implement alpha ordering helper",
+                        "implementation_hints": ["libs/orders/alpha-order/alpha-order-helper.ts"],
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+            software_engineer_calls = []
+            evaluator_calls = []
+
+            def software_engineer(**kwargs) -> str:
+                software_engineer_calls.append(kwargs)
+                if len(software_engineer_calls) == 1:
+                    summary = "Implemented beta billing helper."
+                    item = "Beta billing complete"
+                    evidence = "beta billing helper verified"
+                else:
+                    summary = "Alpha order helper verified."
+                    item = "Alpha order preserved"
+                    evidence = "alpha order helper verified"
+                (uow_dir / "impl_report.yaml").write_text(
+                    yaml.safe_dump(
+                        {
+                            "change_id": "CHANGE-1",
+                            "uow_id": "UOW-001",
+                            "status": "complete",
+                            "implementation_summary": summary,
+                            "definition_of_done_status": [
+                                {"item": item, "met": True, "evidence": evidence}
+                            ],
+                        },
+                        sort_keys=False,
+                    ),
+                    encoding="utf-8",
+                )
+                return "implemented"
+
+            def evaluator(**_kwargs) -> str:
+                evaluator_calls.append(True)
+                return "PASS"
+
+            with patch("core.evaluator_optimizer_loops.steps.AGENT_CONTEXT_ROOT", root), patch(
+                "core.evaluator_optimizer_loops.steps.step_software_engineer", side_effect=software_engineer
+            ), patch("core.evaluator_optimizer_loops.steps.step_software_engineer_evaluator", side_effect=evaluator):
+                run_uow_eval_loop(
+                    "UOW-001",
+                    "CHANGE-1",
+                    repo="/tmp/repo",
+                    iter_count=2,
+                    runner="claude",
+                    runner_model="claude-sonnet",
+                )
+
+            self.assertEqual(len(software_engineer_calls), 2)
+            self.assertEqual(evaluator_calls, [True])
+            self.assertIn("impl_report domain", software_engineer_calls[1]["evaluator_feedback"])
+            self.assertTrue((uow_dir / "attempts" / "attempt-001" / "impl_report.yaml").is_file())
 
     def test_medium__uow_eval_loop_saves_fenced_json_feedback_as_object(self):
         from core.evaluator_optimizer_loops import run_uow_eval_loop

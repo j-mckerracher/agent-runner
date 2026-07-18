@@ -95,6 +95,50 @@ class EnsureGeminiMcpRegisteredTests(unittest.TestCase):
         self.assertFalse(result)
 
 
+class EnsureOmpMcpRegisteredTests(unittest.TestCase):
+    def test_medium__creates_config_when_absent(self):
+        from core.mcp_configs import ensure_omp_mcp_registered, MCP_SERVER_NAME
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg_path = Path(tmpdir) / ".omp" / "agent" / "mcp.json"
+            with patch("core.mcp_configs._OMP_MCP_CONFIG", cfg_path):
+                newly = ensure_omp_mcp_registered()
+
+            self.assertTrue(newly)
+            self.assertTrue(cfg_path.exists())
+            data = json.loads(cfg_path.read_text())
+            self.assertIn(MCP_SERVER_NAME, data["mcpServers"])
+            self.assertEqual(data["mcpServers"][MCP_SERVER_NAME]["type"], "stdio")
+
+    def test_medium__preserves_existing_servers(self):
+        from core.mcp_configs import ensure_omp_mcp_registered, MCP_SERVER_NAME
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg_path = Path(tmpdir) / "mcp.json"
+            cfg_path.write_text(
+                json.dumps({"mcpServers": {"fs": {"type": "stdio", "command": "npx"}}}),
+                encoding="utf-8",
+            )
+            with patch("core.mcp_configs._OMP_MCP_CONFIG", cfg_path):
+                ensure_omp_mcp_registered()
+
+            data = json.loads(cfg_path.read_text())
+            self.assertIn("fs", data["mcpServers"])
+            self.assertIn(MCP_SERVER_NAME, data["mcpServers"])
+
+    def test_medium__idempotent_on_second_call(self):
+        from core.mcp_configs import ensure_omp_mcp_registered
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg_path = Path(tmpdir) / "mcp.json"
+            with patch("core.mcp_configs._OMP_MCP_CONFIG", cfg_path):
+                first = ensure_omp_mcp_registered()
+                second = ensure_omp_mcp_registered()
+
+            self.assertTrue(first)
+            self.assertFalse(second)
+
+
 class EnsureCodexMcpRegisteredTests(unittest.TestCase):
     def test_easy__returns_false_when_existing_registration_matches(self):
         from core import mcp_configs

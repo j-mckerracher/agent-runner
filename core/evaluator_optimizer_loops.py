@@ -9,7 +9,12 @@ from typing import Callable
 from .opik_compat import opik_context
 
 from . import steps
-from .artifact_utils import normalize_impl_report_file, snapshot_impl_report_attempt, validate_impl_report_alignment
+from .artifact_utils import (
+    ImplReportValidationError,
+    normalize_impl_report_file,
+    snapshot_impl_report_attempt,
+    validate_impl_report_alignment,
+)
 from .ui_trace_bridge import start_span_with_ui, track_with_ui
 
 logger = logging.getLogger(__name__)
@@ -85,6 +90,85 @@ def _persist_impl_evaluator_feedback(*, change_id: str, uow_id: str, iteration: 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return path
+
+
+def _impl_report_artifact_failure_feedback(*, change_id: str, uow_id: str, error: Exception) -> str:
+    report_path = steps.AGENT_CONTEXT_ROOT / change_id / "execution" / uow_id / "impl_report.yaml"
+    payload = {
+        "artifact_evaluated": "impl_report.yaml",
+        "status": "FAIL",
+        "summary": "The software-engineer invocation did not produce a valid implementation report.",
+        "issues": [
+            {
+                "severity": "blocker",
+                "description": str(error),
+            }
+        ],
+        "required_changes": [
+            f"Write the required implementation report to {report_path} before ending the turn.",
+            "Do not leave test, lint, or build commands pending; include completed verification evidence or document a blocker.",
+        ],
+        "programmatic_gates": [
+            {
+                "name": "impl_report_artifact_validation",
+                "status": "FAIL",
+                "details": str(error),
+            }
+        ],
+    }
+    return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
+def _retryable_impl_report_error(exc: ImplReportValidationError) -> ImplReportValidationError | None:
+    # A missing/invalid uow_spec.yaml is upstream corruption (the task-assigner's
+    # output), not something the software-engineer can fix by retrying — fail fast.
+    # Everything else (missing / invalid / malformed / wrong-domain impl_report.yaml)
+    # is a recoverable artifact failure the next iteration can address.
+    if "UoW spec" in str(exc):
+        return None
+    return exc
+
+
+def _artifact_missing(artifact: "Path | str | None") -> bool:
+    """True when a required producer artifact is absent or empty.
+
+    Detects the failure mode where a producer agent exits cleanly (CLI status 0)
+    without writing its required output — e.g. it ended its turn early to "wait
+    for test results". Returns False when no artifact path is supplied, so the
+    guard stays opt-in per call site.
+    """
+    if artifact is None:
+        return False
+    path = Path(artifact)
+    try:
+        return (not path.is_file()) or path.stat().st_size == 0
+    except OSError:
+        return True
+
+
+def _missing_producer_artifact_feedback(artifact: "Path | str") -> str:
+    """Corrective evaluator-style feedback when a producer wrote no artifact.
+
+    Returned as a JSON object so it flows through
+    `_format_evaluator_feedback_for_retry` (which selects status / summary /
+    required_changes) on the next iteration's retry prompt.
+    """
+    payload = {
+        "artifact_evaluated": Path(artifact).name,
+        "status": "FAIL",
+        "summary": (
+            f"The required artifact was not produced: {artifact}. "
+            "Your previous turn ended before the artifact was written to disk."
+        ),
+        "required_changes": [
+            f"Write {artifact} before ending your turn.",
+            "Finish all work in a single turn. If you start tests or other long-running "
+            "commands, wait for them to complete and capture their results yourself. Do NOT "
+            "end your turn saying you will 'wait for test results' — the session stops when "
+            "you stop, so nothing runs after you end the turn.",
+        ],
+    }
+    return json.dumps(payload, indent=2, ensure_ascii=False)
 
 
 def _extract_change_id(text: str) -> str:
@@ -205,6 +289,7 @@ def run_uow_eval_loop(
                 },
             ) as span:
                 span.input = {"uow_id": uow_id, "iteration": iteration}
+                artifact_error: ImplReportValidationError | None = None
                 producer_out = steps.step_software_engineer(
                     uow_id=uow_id,
                     change_id=change_id,
@@ -214,36 +299,69 @@ def run_uow_eval_loop(
                     runner=runner,
                     runner_model=runner_model,
                 )
-                normalize_impl_report_file(
-                    steps.AGENT_CONTEXT_ROOT / change_id / "execution" / uow_id / "impl_report.yaml"
-                )
-                snapshot_impl_report_attempt(
-                    agent_context_root=steps.AGENT_CONTEXT_ROOT,
-                    change_id=change_id,
-                    uow_id=uow_id,
-                    attempt=iteration,
-                )
-                validate_impl_report_alignment(
-                    agent_context_root=steps.AGENT_CONTEXT_ROOT,
-                    change_id=change_id,
-                    uow_id=uow_id,
-                )
-                evaluator_out = steps.step_software_engineer_evaluator(
-                    uow_id=uow_id,
-                    change_id=change_id,
-                    repo=repo,
-                    runner=effective_evaluator_runner,
-                    runner_model=effective_evaluator_model,
-                )
-                evaluator_feedback_path = _persist_impl_evaluator_feedback(
-                    change_id=change_id,
-                    uow_id=uow_id,
-                    iteration=iteration,
-                    evaluator_out=evaluator_out,
-                )
+                try:
+                    try:
+                        normalize_impl_report_file(
+                            steps.AGENT_CONTEXT_ROOT / change_id / "execution" / uow_id / "impl_report.yaml"
+                        )
+                    except ValueError as normalize_exc:
+                        # normalize_impl_report_file raises a bare ValueError for
+                        # malformed / non-mapping report YAML — a recoverable agent
+                        # mistake. Promote it to a retryable artifact failure so it
+                        # routes through the classifier like other report problems,
+                        # while genuine ValueErrors from snapshot/validate below stay
+                        # unmasked and propagate as real bugs.
+                        raise ImplReportValidationError(str(normalize_exc)) from normalize_exc
+                    snapshot_impl_report_attempt(
+                        agent_context_root=steps.AGENT_CONTEXT_ROOT,
+                        change_id=change_id,
+                        uow_id=uow_id,
+                        attempt=iteration,
+                    )
+                    validate_impl_report_alignment(
+                        agent_context_root=steps.AGENT_CONTEXT_ROOT,
+                        change_id=change_id,
+                        uow_id=uow_id,
+                    )
+                except ImplReportValidationError as exc:
+                    artifact_error = _retryable_impl_report_error(exc)
+                    if artifact_error is None:
+                        raise
+                    evaluator_out = _impl_report_artifact_failure_feedback(
+                        change_id=change_id,
+                        uow_id=uow_id,
+                        error=artifact_error,
+                    )
+                    evaluator_feedback_path = _persist_impl_evaluator_feedback(
+                        change_id=change_id,
+                        uow_id=uow_id,
+                        iteration=iteration,
+                        evaluator_out=evaluator_out,
+                    )
+                    logger.warning(
+                        "run_uow_eval_loop: iteration %d/%d uow_id=%s produced invalid impl_report artifact: %s",
+                        iteration,
+                        iter_count,
+                        uow_id,
+                        artifact_error,
+                    )
+                else:
+                    evaluator_out = steps.step_software_engineer_evaluator(
+                        uow_id=uow_id,
+                        change_id=change_id,
+                        repo=repo,
+                        runner=effective_evaluator_runner,
+                        runner_model=effective_evaluator_model,
+                    )
+                    evaluator_feedback_path = _persist_impl_evaluator_feedback(
+                        change_id=change_id,
+                        uow_id=uow_id,
+                        iteration=iteration,
+                        evaluator_out=evaluator_out,
+                    )
                 passed = "PASS" in evaluator_out
                 logger.info("run_uow_eval_loop: iteration %d/%d uow_id=%s passed=%s", iteration, iter_count, uow_id, passed)
-                span.output = {"passed": passed}
+                span.output = {"passed": passed, "artifact_error": str(artifact_error) if artifact_error else None}
                 try:
                     opik_context.update_current_span(
                         metadata={
@@ -253,6 +371,7 @@ def run_uow_eval_loop(
                             "change_id": change_id,
                             "stage": "uow-eval",
                             "passed": passed,
+                            "artifact_error": bool(artifact_error),
                         },
                     )
                 except Exception:
@@ -269,7 +388,13 @@ def run_uow_eval_loop(
                 duration_ms=int((time.perf_counter() - iteration_started) * 1000),
                 runner=runner,
                 model=runner_model,
+                artifact_error=bool(artifact_error),
+                error=str(artifact_error)[:500] if artifact_error else None,
             )
+            if artifact_error is not None:
+                if iteration >= iter_count:
+                    raise artifact_error
+                continue
             if passed:
                 logger.info("run_uow_eval_loop: uow_id=%s PASSED on iteration %d — stopping early", uow_id, iteration)
                 print(f"[{uow_id}] Evaluator passed on iteration {iteration} — stopping loop early.")
@@ -337,6 +462,7 @@ def run_eval_optimizer_loop(
     evaluator_runner: str | None = None,
     evaluator_runner_model: str | None = None,
     on_exhausted: Callable[[str], None] | None = None,
+    producer_artifact: "Path | str | None" = None,
 ):
     change_id = _extract_change_id(producer_input) or _extract_change_id(evaluator_prompt)
     effective_evaluator_runner = evaluator_runner or runner
@@ -406,12 +532,24 @@ def run_eval_optimizer_loop(
                     len(evaluator_feedback),
                 )
             producer_out = producer_func(combined_input, runner=runner, runner_model=runner_model)
-            evaluator_out = evaluator_func(
-                evaluator_prompt,
-                runner=effective_evaluator_runner,
-                runner_model=effective_evaluator_model,
-            )
-            passed = "PASS" in evaluator_out
+            if _artifact_missing(producer_artifact):
+                # The producer agent exited without writing its required artifact
+                # (e.g. it ended its turn to "wait for test results"). Force a
+                # deterministic retry with corrective feedback rather than trusting
+                # the evaluator to notice — or crashing when it reads a missing file.
+                logger.warning(
+                    "run_eval_optimizer_loop: producer wrote no artifact %s (iteration %d/%d) — retrying",
+                    producer_artifact, iteration, iter_count,
+                )
+                evaluator_out = _missing_producer_artifact_feedback(producer_artifact)
+                passed = False
+            else:
+                evaluator_out = evaluator_func(
+                    evaluator_prompt,
+                    runner=effective_evaluator_runner,
+                    runner_model=effective_evaluator_model,
+                )
+                passed = "PASS" in evaluator_out
             logger.info("run_eval_optimizer_loop: iteration %d/%d change_id=%s passed=%s", iteration, iter_count, change_id, passed)
             span.output = {"passed": passed}
             try:

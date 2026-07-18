@@ -445,7 +445,48 @@ class ServerRoutesTests(unittest.TestCase):
             "/evaluate/runs",
             json={"repo": self.tmpdir, "story_id": "EVAL-001", "runner": "claude", "mode": "live"},
         )
-        self.assertEqual(r.status_code, 404)
+        self.assertEqual(r.status_code, 405)
+
+    def test_medium__list_evaluate_runs_returns_only_evaluation_kinds(self):
+        from server import db
+
+        db.insert_job({
+            "id": "eval_hist_001",
+            "change_id": "EVAL-HIST-001",
+            "status": "succeeded",
+            "run_kind": "evaluation",
+            "mode": "live",
+            "runner": "claude",
+            "repo": str(Path.cwd()),
+            "submitted_at": "2026-01-01T00:00:00Z",
+        })
+        db.insert_job({
+            "id": "eval_hist_002",
+            "change_id": "EVAL-HIST-002",
+            "status": "failed",
+            "run_kind": "benchmark_evaluation",
+            "mode": "live",
+            "runner": "copilot",
+            "repo": str(Path.cwd()),
+            "submitted_at": "2026-01-01T00:00:01Z",
+        })
+        db.insert_job({
+            "id": "regular_hist_001",
+            "change_id": "RUN-HIST-001",
+            "status": "succeeded",
+            "run_kind": "regular",
+            "mode": "live",
+            "runner": "claude",
+            "repo": str(Path.cwd()),
+            "submitted_at": "2026-01-01T00:00:02Z",
+        })
+
+        r = self.client.get("/evaluate/runs?limit=10")
+        self.assertEqual(r.status_code, 200)
+        payload = r.json()
+        self.assertEqual(payload["count"], 2)
+        ids = [item["id"] for item in payload["items"]]
+        self.assertEqual(ids, ["eval_hist_002", "eval_hist_001"])
 
     def test_medium__submit_benchmark_evaluation_run_queues_eval_runner_job(self):
         from server import db
@@ -591,7 +632,7 @@ class ServerRoutesTests(unittest.TestCase):
             "/evaluate/runs",
             json={"repo": "/tmp/none", "story_id": "EVAL-DOES-NOT-EXIST", "runner": "claude", "mode": "live"},
         )
-        self.assertEqual(r.status_code, 404)
+        self.assertEqual(r.status_code, 405)
         after = len(db.list_jobs(run_kind="evaluation", limit=500))
         self.assertEqual(after, before)
 

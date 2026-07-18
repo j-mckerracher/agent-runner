@@ -105,6 +105,22 @@ class StepIntakeSyntheticModeTests(unittest.TestCase):
         self.assertIn("Prepared feature branch: feature/test-branch", prompt)
         self.assertIn("Set run_metadata.feature_branch in config.yaml exactly", prompt)
 
+    def test_easy__openai_compat_ado_prompt_uses_prefetched_json(self):
+        prompt = build_intake_prompt(
+            intake_source="https://dev.azure.com/example/project/_workitems/edit/123456",
+            repo="/tmp/target-repo",
+            change_id="WI-123456",
+            intake_mode="ado",
+            runner="openai-compat",
+            ado_work_item_json='{"id": 123456, "fields": {"System.Title": "Fix menu"}}',
+            source_artifact_path="/tmp/agent-context/WI-123456/intake/source.json",
+        )
+
+        self.assertIn("The work item data has already been fetched for you", prompt)
+        self.assertIn('"System.Title": "Fix menu"', prompt)
+        self.assertIn("/tmp/agent-context/WI-123456/intake/source.json", prompt)
+        self.assertNotIn("Use the azure-devops-cli skill", prompt)
+
     def test_easy__synthetic_mode_bypasses_llm_runner(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -220,6 +236,51 @@ class StepIntakeSyntheticModeTests(unittest.TestCase):
                 config = yaml.safe_load(handle)
             self.assertEqual(config["run_metadata"]["feature_branch"], "feature/test-branch")
             self.assertEqual(config["custom"], {"preserved": True})
+
+    def test_easy__ado_mode_seeds_source_artifact_before_runner(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            context_root = root / "agent-context"
+
+            def _fake_runner(**kwargs):
+                source_path = context_root / "WI-123456" / "intake" / "source.json"
+                self.assertTrue(source_path.is_file())
+                seed = json.loads(source_path.read_text(encoding="utf-8"))
+                self.assertEqual(seed["work_item_url"], "https://dev.azure.com/example/project/_workitems/edit/123456")
+                self.assertEqual(seed["prefetch_status"], "unavailable")
+                self.assertIn(str(source_path), kwargs["prompt"])
+
+                story_path = context_root / "WI-123456" / "intake" / "story.yaml"
+                story_path.write_text(
+                    yaml.safe_dump(
+                        {
+                            "change_id": "WI-123456",
+                            "title": "stub",
+                            "description": "stub",
+                            "acceptance_criteria": {"AC1": "stub criterion"},
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                return "intake complete"
+
+            with (
+                patch("core.steps.AGENT_CONTEXT_ROOT", context_root),
+                patch("core.steps._fetch_ado_work_item", return_value=None),
+                patch("core.steps.run_agent_cmd", side_effect=_fake_runner) as run_agent_cmd,
+                patch("core.user_escalation.request_user_input", side_effect=RuntimeError("no interactive channel")),
+            ):
+                result = step_intake(
+                    intake_source="https://dev.azure.com/example/project/_workitems/edit/123456",
+                    repo="/tmp/target-repo",
+                    change_id="WI-123456",
+                    intake_mode="ado",
+                    runner="openai-compat",
+                    runner_model="glm-5.2:cloud",
+                )
+
+            self.assertEqual(result, "intake complete")
+            run_agent_cmd.assert_called_once()
 
     def test_medium__ado_mode_surfaces_refusal_when_no_artifacts_are_written(self):
         with tempfile.TemporaryDirectory() as tmpdir:
