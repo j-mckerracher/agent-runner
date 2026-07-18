@@ -13,6 +13,13 @@ Each generated benchmark is a pair of files in `<data-dir>/eval/benchmarks/<diff
 
 Three built-in difficulty levels exist: **easy**, **medium**, and **hard**.
 
+For comparing two versioned v0.2 evaluation reports (`eval/report_schema.py`)
+programmatically — AC/benchmark deltas, config drift, and a documented
+`improved`/`regressed`/`mixed`/`unchanged`/`inconclusive` classification —
+see [`docs/evaluation-comparison.md`](../docs/evaluation-comparison.md).
+That layer is a standalone library today; it is not yet wired into this
+runner's live execution or CLI.
+
 ---
 
 ## Quick start
