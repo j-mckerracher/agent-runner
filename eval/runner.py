@@ -40,6 +40,8 @@ from core.runtime_paths import (
 
 load_data_dir_override_from_env_file(ROOT / ".env")
 from core.runner_models import RUNNER_MODEL_CHOICES, is_copilot_runner
+from eval.benchmark_manifest import load_manifest
+from eval.live_report import ReportBuildError, build_eval_report, write_eval_report
 from eval.result_schema import BenchmarkResult, EvalMetrics, TestSummary
 from eval.seed_benchmarks import (
     acceptance_criterion_ids,
@@ -47,6 +49,7 @@ from eval.seed_benchmarks import (
     validate_ac_test_map,
     validate_hidden_tests,
 )
+from telemetry import EventStatus, EventType, JsonlEventSink, make_event, new_run_id
 
 DEFAULT_BENCHMARKS = eval_benchmarks_root()
 DEFAULT_REPORTS = eval_reports_root()
@@ -661,8 +664,102 @@ def build_quality(
     }
 
 
+def _utcnow_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+_ID_SAFE = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_."
+
+
+def _sanitize_path_segment(raw: str) -> str:
+    """Make `raw` safe as a single filesystem path segment. Collisions between
+    two different raw ids that sanitize to the same string are disambiguated
+    with a short hash suffix so evidence from unrelated benchmarks never
+    silently overwrites each other."""
+    import hashlib
+
+    cleaned = "".join(ch if ch in _ID_SAFE else "-" for ch in (raw or "unknown")).strip("-.") or "unknown"
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
+    return f"{cleaned}-{digest}"
+
+
+def _evidence_dir(args: argparse.Namespace, eval_run_id: str, benchmark_id: str, trial_id: str) -> Path | None:
+    reports_dir = getattr(args, "reports_dir", None)
+    if not reports_dir:
+        return None
+    base = Path(reports_dir) / "evidence" / _sanitize_path_segment(eval_run_id)
+    base = base / _sanitize_path_segment(benchmark_id) / _sanitize_path_segment(trial_id)
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+def _normalize_workflow_result(obj: Any) -> dict[str, Any]:
+    """Extract stdout/stderr/returncode from whatever `invoke_workflow`
+    returned — a real `subprocess.CompletedProcess`, a test double, or a dict
+    — without cementing `CompletedProcess` as the contract."""
+    if obj is None:
+        return {"stdout": "", "stderr": "", "returncode": None}
+    if isinstance(obj, dict):
+        return {
+            "stdout": obj.get("stdout", "") or "",
+            "stderr": obj.get("stderr", "") or "",
+            "returncode": obj.get("returncode"),
+        }
+    return {
+        "stdout": getattr(obj, "stdout", "") or "",
+        "stderr": getattr(obj, "stderr", "") or "",
+        "returncode": getattr(obj, "returncode", None),
+    }
+
+
+def _capture_workflow_evidence(evidence_dir: Path | None, workflow: Any, evidence: dict[str, Any]) -> None:
+    if evidence_dir is None:
+        return
+    normalized = _normalize_workflow_result(workflow)
+    try:
+        stdout_path = evidence_dir / "workflow.stdout.log"
+        stderr_path = evidence_dir / "workflow.stderr.log"
+        stdout_path.write_text(normalized["stdout"], encoding="utf-8")
+        stderr_path.write_text(normalized["stderr"], encoding="utf-8")
+        evidence["workflow_stdout_ref"] = str(stdout_path)
+        evidence["workflow_stderr_ref"] = str(stderr_path)
+        result_path = evidence_dir / "workflow_result.json"
+        result_path.write_text(json.dumps({"returncode": normalized["returncode"]}, indent=2), encoding="utf-8")
+        evidence["workflow_result_ref"] = str(result_path)
+    except OSError as exc:
+        evidence.setdefault("warnings", []).append(f"failed to persist workflow evidence: {exc}")
+
+
+def _capture_hidden_test_evidence(evidence_dir: Path | None, workspace: Path, evidence: dict[str, Any]) -> None:
+    if evidence_dir is None:
+        return
+    junit_path = workspace / ".awb-hidden-tests.xml"
+    if not junit_path.exists():
+        return
+    try:
+        dest = evidence_dir / "hidden_tests.xml"
+        shutil.copyfile(junit_path, dest)
+        evidence["hidden_tests_xml_ref"] = str(dest)
+    except OSError as exc:
+        evidence.setdefault("warnings", []).append(f"failed to persist hidden-test evidence: {exc}")
+
+
+def _capture_final_diff(evidence_dir: Path | None, workspace: Path, evidence: dict[str, Any]) -> None:
+    if evidence_dir is None or not workspace.exists():
+        return
+    try:
+        run_cmd(["git", "add", "-A", "-N"], cwd=workspace, timeout=60)
+        diff = run_cmd(["git", "diff"], cwd=workspace, timeout=120)
+        dest = evidence_dir / "final.diff"
+        dest.write_text(diff.stdout or "", encoding="utf-8")
+        evidence["diff_ref"] = str(dest)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        evidence.setdefault("warnings", []).append(f"failed to capture final diff: {exc}")
+
+
 def finalize_result(result: BenchmarkResult, start: float) -> dict[str, Any]:
     elapsed = round(time.monotonic() - start, 2)
+    result.completed_at = _utcnow_iso()
     session_metrics = collect_session_metrics(result.run_id)
     result.metrics = EvalMetrics(wall_seconds=elapsed, cost_usd=0.0, **session_metrics)
     payload = result.to_dict()
@@ -692,6 +789,7 @@ def run_one(path: Path, args: argparse.Namespace, *, trial_index: int = 1) -> di
     story = benchmark_story(path)
     ac_ids = acceptance_criterion_ids(story["acceptance_criteria"])
     ac_map = benchmark_ac_test_map(path)
+    manifest = load_manifest(path)
     print(f"\n== {path.name} (trial {trial_index}) ==")
     emit_event({"type": "job.start", "job_id": run_id, "msg": f"Starting benchmark {path.name} trial {trial_index}"})
     result = BenchmarkResult(
@@ -713,7 +811,31 @@ def run_one(path: Path, args: argparse.Namespace, *, trial_index: int = 1) -> di
             "metadata": story.get("metadata", {}),
         },
         artifacts={"story": str(run_story)},
+        benchmark_id=manifest.id,
+        difficulty=manifest.difficulty,
+        started_at=_utcnow_iso(),
+        evidence={"dir": None, "warnings": []},
     )
+
+    eval_run_id = getattr(args, "eval_run_id", None)
+    evidence_dir = _evidence_dir(args, eval_run_id, result.benchmark_id, run_id) if eval_run_id else None
+    sink: JsonlEventSink | None = None
+    if evidence_dir is not None:
+        result.evidence["dir"] = str(evidence_dir)
+        try:
+            story_dest = evidence_dir / "story.json"
+            story_dest.write_text(json.dumps(story, indent=2), encoding="utf-8")
+            result.evidence["story_ref"] = str(story_dest)
+        except OSError as exc:
+            result.evidence["warnings"].append(f"failed to persist story evidence: {exc}")
+        try:
+            sink = JsonlEventSink(evidence_dir / "trace.jsonl")
+            result.evidence["trace_ref"] = str(evidence_dir / "trace.jsonl")
+            sink.emit(make_event(EventType.RUN_STARTED, eval_run_id, stage="benchmark", metadata={"benchmark_id": result.benchmark_id, "trial_id": run_id}))
+        except OSError as exc:
+            result.evidence["warnings"].append(f"failed to open trace sink: {exc}")
+            sink = None
+
     try:
         print("Preparing sandbox")
         emit_event({"type": "log", "level": "info", "stage": "benchmark.clone", "msg": f"Preparing sandbox for {path.name}"})
@@ -739,6 +861,7 @@ def run_one(path: Path, args: argparse.Namespace, *, trial_index: int = 1) -> di
         print("Running workflow")
         emit_event({"type": "log", "level": "info", "stage": "benchmark.workflow", "msg": f"Running workflow for {path.name}"})
         workflow = invoke_workflow(path, workspace, args, story_file=run_story)
+        _capture_workflow_evidence(evidence_dir, workflow, result.evidence)
         if workflow.returncode != 0:
             print(tail(workflow.stdout))
             print(tail(workflow.stderr), file=sys.stderr)
@@ -767,7 +890,19 @@ def run_one(path: Path, args: argparse.Namespace, *, trial_index: int = 1) -> di
 
         print("Running hidden tests")
         emit_event({"type": "log", "level": "info", "stage": "benchmark.hidden_tests", "msg": f"Running hidden tests for {path.name}"})
+        if sink is not None:
+            sink.emit(make_event(EventType.TEST_STARTED, eval_run_id, stage="benchmark.hidden_tests"))
         hidden, hidden_summary = run_hidden_tests(path, workspace, args.test_timeout)
+        _capture_hidden_test_evidence(evidence_dir, workspace, result.evidence)
+        if sink is not None:
+            sink.emit(
+                make_event(
+                    EventType.TEST_COMPLETED if hidden.returncode == 0 else EventType.TEST_FAILED,
+                    eval_run_id,
+                    stage="benchmark.hidden_tests",
+                    status=EventStatus.OK if hidden.returncode == 0 else EventStatus.ERROR,
+                )
+            )
         ac_results = map_ac_results(hidden_summary, ac_map, required_ids=ac_ids)
         hidden_passed = hidden.returncode == 0 and (args.allow_hidden_skips or hidden_summary.skipped == 0)
         result.hidden_tests = hidden_summary
@@ -807,6 +942,31 @@ def run_one(path: Path, args: argparse.Namespace, *, trial_index: int = 1) -> di
         return finalize_result(result, start)
     finally:
         elapsed = round(time.monotonic() - start, 2)
+        try:
+            _capture_final_diff(evidence_dir, workspace, result.evidence)
+        except Exception as exc:  # noqa: BLE001 - evidence capture must never mask the real outcome
+            result.evidence.setdefault("warnings", []).append(f"final diff capture raised: {exc}")
+        if sink is not None:
+            try:
+                if result.status == "PASS":
+                    sink.emit(make_event(EventType.RUN_COMPLETED, eval_run_id, stage="benchmark", status=EventStatus.OK))
+                else:
+                    sink.emit(
+                        make_event(
+                            EventType.RUN_FAILED,
+                            eval_run_id,
+                            stage="benchmark",
+                            status=EventStatus.ERROR,
+                            error_message=result.error or None,
+                        )
+                    )
+            except Exception as exc:  # noqa: BLE001 - trace failures must never mask the real outcome
+                result.evidence.setdefault("warnings", []).append(f"terminal trace event failed: {exc}")
+            finally:
+                try:
+                    sink.close()
+                except Exception:  # noqa: BLE001 - best-effort close
+                    pass
         if args.keep_sandbox:
             print(f"Sandbox kept at {workspace}")
         elif sandbox_obj is not None:
@@ -917,6 +1077,12 @@ def load_baseline(path: Path | None) -> dict[str, Any] | None:
 
 
 def write_report(results: list[dict[str, Any]], args: argparse.Namespace) -> None:
+    """Build and atomically publish the v0.2 `EvalReport` (sole machine report).
+
+    Baseline comparison still runs (trend classification + drift warnings) but
+    lands in `summary["comparison_context"]` rather than a hand-rolled legacy
+    dict — see `eval/live_report.py::build_eval_report`.
+    """
     if not args.write_report:
         return
     reports_dir = Path(getattr(args, "reports_dir", DEFAULT_REPORTS)).expanduser().resolve()
@@ -925,47 +1091,48 @@ def write_report(results: list[dict[str, Any]], args: argparse.Namespace) -> Non
     summary = aggregate_results(results)
     baseline_payload = load_baseline(args.compare_to)
     baseline_summary = baseline_payload.get("summary") if baseline_payload else None
+    comparison_context: dict[str, Any] = {"legacy_summary": summary}
     if baseline_summary:
-        summary["trend"] = classify_trend(
+        comparison_context["trend"] = classify_trend(
             summary,
             baseline_summary,
             quality_pp=args.regression_quality_pp,
             efficiency_pct=args.regression_efficiency_pct,
         )
-        summary["baseline"] = baseline_summary
+        comparison_context["baseline"] = baseline_summary
+        warnings: list[str] = []
         if baseline_payload.get("runner") != args.runner or baseline_payload.get("model") != args.model:
-            summary.setdefault("warnings", []).append("Current runner/model differs from baseline.")
+            warnings.append("Current runner/model differs from baseline.")
         if baseline_payload.get("sha") != args.sha:
-            summary.setdefault("warnings", []).append("Current target SHA differs from baseline.")
+            warnings.append("Current target SHA differs from baseline.")
         baseline_names = sorted({result.get("name") for result in baseline_payload.get("results", [])})
         current_names = sorted({result.get("name") for result in results})
         if baseline_names != current_names:
-            summary.setdefault("warnings", []).append("Current benchmark set differs from baseline.")
+            warnings.append("Current benchmark set differs from baseline.")
+        if warnings:
+            comparison_context["warnings"] = warnings
     else:
-        summary["trend"] = "insufficient data"
-        summary.setdefault("warnings", []).append("No baseline selected.")
+        comparison_context["trend"] = "insufficient data"
+        comparison_context["warnings"] = ["No baseline selected."]
     if args.runs <= 1:
-        summary.setdefault("warnings", []).append("Only one run; reliability unknown.")
-    payload = {
-        "created_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "repo": args.repo,
-        "sha": args.sha,
-        "runner": args.runner,
-        "model": args.model,
-        "runs": args.runs,
-        "summary": summary,
-        "results": results,
-    }
+        comparison_context.setdefault("warnings", []).append("Only one run; reliability unknown.")
+
+    eval_run_id = getattr(args, "eval_run_id", None) or new_run_id()
+    created_at = now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
+    report = build_eval_report(
+        results,
+        args,
+        created_at=created_at,
+        eval_run_id=eval_run_id,
+        comparison_context=comparison_context,
+    )
     # Filename: YYYY-MM-DD-HHMMss-<difficulty>.json  e.g. 2026-05-20-143022-easy.json
     stamp = now.strftime("%Y-%m-%d-%H%M%S")
     difficulty = _difficulty_label(results)
-    report_path = reports_dir / f"{stamp}-{difficulty}.json"
-    latest_path = reports_dir / "latest.json"
-    report_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    latest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    report_path = write_eval_report(report, reports_dir, difficulty=difficulty, stamp=stamp)
     if args.update_baseline:
         baseline_path = args.compare_to or (reports_dir / "baseline.json")
-        baseline_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        baseline_path.write_text(report.to_json() + "\n", encoding="utf-8")
     print(f"Report written to {report_path}")
 
 
@@ -1023,6 +1190,7 @@ def main(argv: list[str] | None = None) -> int:
         print("--runs must be >= 1", file=sys.stderr)
         return 2
 
+    args.eval_run_id = new_run_id()
     results = []
     for path in benchmarks:
         for trial_index in range(1, args.runs + 1):

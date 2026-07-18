@@ -1,0 +1,414 @@
+{
+  "artifact_references": [
+    {
+      "description": "",
+      "kind": "artifact",
+      "ref_id": "story",
+      "uri": "evidence/run-fixture-generated-001/easy/easy-t1/story.json"
+    },
+    {
+      "description": "",
+      "kind": "log",
+      "ref_id": "workflow-stdout",
+      "uri": "evidence/run-fixture-generated-001/easy/easy-t1/workflow.stdout.log"
+    },
+    {
+      "description": "",
+      "kind": "artifact",
+      "ref_id": "story",
+      "uri": "evidence/run-fixture-generated-001/easy/easy-t2/story.json"
+    },
+    {
+      "description": "",
+      "kind": "log",
+      "ref_id": "workflow-stdout",
+      "uri": "evidence/run-fixture-generated-001/easy/easy-t2/workflow.stdout.log"
+    },
+    {
+      "description": "",
+      "kind": "artifact",
+      "ref_id": "story",
+      "uri": "evidence/run-fixture-generated-001/medium/medium-t1/story.json"
+    },
+    {
+      "description": "",
+      "kind": "log",
+      "ref_id": "workflow-stdout",
+      "uri": "evidence/run-fixture-generated-001/medium/medium-t1/workflow.stdout.log"
+    }
+  ],
+  "baseline_version": "fixturesha0000",
+  "benchmark_case_results": [
+    {
+      "acceptance_criteria_results": [
+        {
+          "ac_id": "AC1",
+          "critical": true,
+          "description": "First behavior.",
+          "evidence": [
+            {
+              "description": "",
+              "kind": "test-report",
+              "ref_id": "AC1-hidden-tests",
+              "uri": "evidence/run-fixture-generated-001/easy/easy-t1/hidden_tests.xml"
+            }
+          ],
+          "failure_reason": null,
+          "related_tests": [
+            "test_ac1_first"
+          ],
+          "status": "pass"
+        },
+        {
+          "ac_id": "AC2",
+          "critical": false,
+          "description": "Second behavior.",
+          "evidence": [
+            {
+              "description": "",
+              "kind": "test-report",
+              "ref_id": "AC2-hidden-tests",
+              "uri": "evidence/run-fixture-generated-001/easy/easy-t1/hidden_tests.xml"
+            }
+          ],
+          "failure_reason": null,
+          "related_tests": [
+            "test_ac2_second"
+          ],
+          "status": "pass"
+        }
+      ],
+      "aggregate_result": {
+        "trial_fail_count": 1,
+        "trial_pass_count": 1,
+        "trial_pass_rate": 0.5,
+        "weighted_score_mean": 0.5
+      },
+      "benchmark_id": "easy",
+      "difficulty": "easy",
+      "domain": "fixture",
+      "evidence_references": [
+        {
+          "description": "",
+          "kind": "test-report",
+          "ref_id": "hidden-tests-xml",
+          "uri": "evidence/run-fixture-generated-001/easy/easy-t1/hidden_tests.xml"
+        }
+      ],
+      "status": "partial",
+      "trial_results": [
+        {
+          "artifact_refs": [
+            {
+              "description": "",
+              "kind": "artifact",
+              "ref_id": "story",
+              "uri": "evidence/run-fixture-generated-001/easy/easy-t1/story.json"
+            },
+            {
+              "description": "",
+              "kind": "log",
+              "ref_id": "workflow-stdout",
+              "uri": "evidence/run-fixture-generated-001/easy/easy-t1/workflow.stdout.log"
+            }
+          ],
+          "benchmark_id": "easy",
+          "completed_at": "2026-07-18T00:00:08Z",
+          "duration_ms": {
+            "status": "known",
+            "unavailable_reason": null,
+            "value": 8000
+          },
+          "error_summary": null,
+          "failure_category": null,
+          "started_at": "2026-07-18T00:00:00Z",
+          "status": "passed",
+          "test_result_ref": "evidence/run-fixture-generated-001/easy/easy-t1/hidden_tests.xml",
+          "trace_ref": "evidence/run-fixture-generated-001/easy/easy-t1/trace.jsonl",
+          "trial_id": "easy-t1",
+          "workflow_result_ref": null
+        },
+        {
+          "artifact_refs": [
+            {
+              "description": "",
+              "kind": "artifact",
+              "ref_id": "story",
+              "uri": "evidence/run-fixture-generated-001/easy/easy-t2/story.json"
+            },
+            {
+              "description": "",
+              "kind": "log",
+              "ref_id": "workflow-stdout",
+              "uri": "evidence/run-fixture-generated-001/easy/easy-t2/workflow.stdout.log"
+            }
+          ],
+          "benchmark_id": "easy",
+          "completed_at": "2026-07-18T00:00:12Z",
+          "duration_ms": {
+            "status": "known",
+            "unavailable_reason": null,
+            "value": 2500
+          },
+          "error_summary": "workflow failed",
+          "failure_category": "workflow_failure",
+          "started_at": "2026-07-18T00:00:10Z",
+          "status": "failed",
+          "test_result_ref": null,
+          "trace_ref": "evidence/run-fixture-generated-001/easy/easy-t2/trace.jsonl",
+          "trial_id": "easy-t2",
+          "workflow_result_ref": null
+        }
+      ]
+    },
+    {
+      "acceptance_criteria_results": [
+        {
+          "ac_id": "AC1",
+          "critical": true,
+          "description": "Renders correctly.",
+          "evidence": [
+            {
+              "description": "",
+              "kind": "test-report",
+              "ref_id": "AC1-hidden-tests",
+              "uri": "evidence/run-fixture-generated-001/medium/medium-t1/hidden_tests.xml"
+            }
+          ],
+          "failure_reason": null,
+          "related_tests": [
+            "test_ac1_renders"
+          ],
+          "status": "pass"
+        },
+        {
+          "ac_id": "AC2",
+          "critical": true,
+          "description": "Handles edge case.",
+          "evidence": [
+            {
+              "description": "",
+              "kind": "test-report",
+              "ref_id": "AC2-hidden-tests",
+              "uri": "evidence/run-fixture-generated-001/medium/medium-t1/hidden_tests.xml"
+            }
+          ],
+          "failure_reason": "AC AC2 hidden test(s) failed",
+          "related_tests": [
+            "test_ac2_edge_case"
+          ],
+          "status": "fail"
+        }
+      ],
+      "aggregate_result": {
+        "trial_fail_count": 1,
+        "trial_pass_count": 0,
+        "trial_pass_rate": 0.0,
+        "weighted_score_mean": 0.5
+      },
+      "benchmark_id": "medium",
+      "difficulty": "medium",
+      "domain": "fixture",
+      "evidence_references": [
+        {
+          "description": "",
+          "kind": "test-report",
+          "ref_id": "hidden-tests-xml",
+          "uri": "evidence/run-fixture-generated-001/medium/medium-t1/hidden_tests.xml"
+        }
+      ],
+      "status": "failed",
+      "trial_results": [
+        {
+          "artifact_refs": [
+            {
+              "description": "",
+              "kind": "artifact",
+              "ref_id": "story",
+              "uri": "evidence/run-fixture-generated-001/medium/medium-t1/story.json"
+            },
+            {
+              "description": "",
+              "kind": "log",
+              "ref_id": "workflow-stdout",
+              "uri": "evidence/run-fixture-generated-001/medium/medium-t1/workflow.stdout.log"
+            }
+          ],
+          "benchmark_id": "medium",
+          "completed_at": "2026-07-18T00:01:15Z",
+          "duration_ms": {
+            "status": "known",
+            "unavailable_reason": null,
+            "value": 15000
+          },
+          "error_summary": "hidden tests failed",
+          "failure_category": "hidden_test_failure",
+          "started_at": "2026-07-18T00:01:00Z",
+          "status": "failed",
+          "test_result_ref": "evidence/run-fixture-generated-001/medium/medium-t1/hidden_tests.xml",
+          "trace_ref": "evidence/run-fixture-generated-001/medium/medium-t1/trace.jsonl",
+          "trial_id": "medium-t1",
+          "workflow_result_ref": null
+        }
+      ]
+    }
+  ],
+  "benchmark_suite_id": "mixed",
+  "candidate_version": "fixturesha0001",
+  "created_at": "2026-07-18T00:00:00Z",
+  "eval_run_id": "run-fixture-generated-001",
+  "metadata": {
+    "model": "fixture-model",
+    "repo": "/repo",
+    "runner": "claude"
+  },
+  "report_schema_version": "0.2",
+  "scorecard": {
+    "capability": {
+      "ac_pass_rate": {
+        "status": "known",
+        "unavailable_reason": null,
+        "value": 0.75
+      },
+      "critical_ac_pass_rate": {
+        "status": "known",
+        "unavailable_reason": null,
+        "value": 0.6666666666666666
+      },
+      "full_benchmark_pass_rate": {
+        "status": "known",
+        "unavailable_reason": null,
+        "value": 0.0
+      },
+      "hidden_test_pass_rate": {
+        "status": "known",
+        "unavailable_reason": null,
+        "value": 0.75
+      }
+    },
+    "efficiency": {
+      "agent_invocation_count": {
+        "status": "unknown",
+        "unavailable_reason": "trace event parsing for invocation counts is not implemented",
+        "value": null
+      },
+      "estimated_cost": {
+        "status": "not_collected",
+        "unavailable_reason": "cost accounting is not implemented; the runner never computes a real cost value",
+        "value": null
+      },
+      "loop_iteration_count": {
+        "status": "unknown",
+        "unavailable_reason": "trace event parsing for loop iteration counts is not implemented",
+        "value": null
+      },
+      "token_usage": {
+        "status": "not_collected",
+        "unavailable_reason": "token accounting from session-metric files is best-effort and not treated as authoritative",
+        "value": null
+      },
+      "wall_clock_duration_ms": {
+        "status": "known",
+        "unavailable_reason": null,
+        "value": 8500.0
+      }
+    },
+    "reliability": {
+      "flaky_case_count": {
+        "status": "known",
+        "unavailable_reason": null,
+        "value": 1
+      },
+      "trial_pass_rate": {
+        "status": "known",
+        "unavailable_reason": null,
+        "value": 0.3333333333333333
+      },
+      "variance": {
+        "status": "known",
+        "unavailable_reason": null,
+        "value": 0.0
+      },
+      "workflow_failure_rate": {
+        "status": "known",
+        "unavailable_reason": null,
+        "value": 0.3333333333333333
+      }
+    },
+    "traceability": {
+      "final_artifact_refs_present": {
+        "status": "known",
+        "unavailable_reason": null,
+        "value": true
+      },
+      "final_diff_ref_present": {
+        "status": "known",
+        "unavailable_reason": null,
+        "value": false
+      },
+      "prompt_hashes_present": {
+        "status": "not_collected",
+        "unavailable_reason": "prompt hashing is not implemented yet",
+        "value": null
+      },
+      "test_output_present": {
+        "status": "known",
+        "unavailable_reason": null,
+        "value": true
+      },
+      "trace_present": {
+        "status": "known",
+        "unavailable_reason": null,
+        "value": true
+      }
+    }
+  },
+  "summary": {
+    "comparison_context": {
+      "trend": "insufficient data",
+      "warnings": [
+        "Fixture report: not a real comparison baseline."
+      ]
+    },
+    "tier_aggregates": {
+      "easy": {
+        "ac_pass_rate": 1.0,
+        "case_count": 1,
+        "critical_ac_pass_rate": 1.0,
+        "full_case_pass_rate": 0.0,
+        "hidden_test_pass_rate": 1.0,
+        "trial_count": 2,
+        "workflow_failure_rate": 0.5
+      },
+      "medium": {
+        "ac_pass_rate": 0.5,
+        "case_count": 1,
+        "critical_ac_pass_rate": 0.5,
+        "full_case_pass_rate": 0.0,
+        "hidden_test_pass_rate": 0.5,
+        "trial_count": 1,
+        "workflow_failure_rate": 0.0
+      }
+    }
+  },
+  "trace_references": [
+    {
+      "description": "",
+      "kind": "trace",
+      "ref_id": "easy-t1-trace",
+      "uri": "evidence/run-fixture-generated-001/easy/easy-t1/trace.jsonl"
+    },
+    {
+      "description": "",
+      "kind": "trace",
+      "ref_id": "easy-t2-trace",
+      "uri": "evidence/run-fixture-generated-001/easy/easy-t2/trace.jsonl"
+    },
+    {
+      "description": "",
+      "kind": "trace",
+      "ref_id": "medium-t1-trace",
+      "uri": "evidence/run-fixture-generated-001/medium/medium-t1/trace.jsonl"
+    }
+  ]
+}

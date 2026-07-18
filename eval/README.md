@@ -118,14 +118,28 @@ For each benchmark:
    to check for regressions.
 6. `hidden_tests.py` is copied into the sandbox and run with pytest plus JUnit
    XML output. Skipped hidden tests fail by default.
-7. The sandbox is cleaned up (regardless of outcome).
+7. Evidence for the trial (workflow stdout/stderr, hidden-test JUnit XML, the
+   final sandbox diff, and a `trace.jsonl` event log) is persisted under
+   `<reports-dir>/evidence/<eval-run-id>/<benchmark-id>/<trial-id>/` before the
+   sandbox is cleaned up. This happens regardless of outcome — a failed
+   workflow still leaves a structured evidence trail, not just an error
+   string.
+8. The sandbox is cleaned up (regardless of outcome).
 
-Results are printed to the terminal and (by default) written to
-`<data-dir>/eval/reports/latest.json` with AC-level quality, reliability, efficiency, and
-optional baseline trend fields.
+Results are printed to the terminal and (by default) written as a **v0.2
+evaluation report** (`eval/report_schema.py`) to `<data-dir>/eval/reports/latest.json`,
+with trial → case → tier → suite aggregates, AC-level results, and stable
+references to the persisted evidence above. Metrics that weren't actually
+observed (e.g. token usage) are reported as honestly missing
+(`unknown`/`not_collected`), never coerced to zero. See
+[`docs/live-eval-integration.md`](../docs/live-eval-integration.md) for the
+full evidence layout, trace event lifecycle, and the v0.2 report's
+compatibility break with the pre-Prompt-6 ad hoc report shape.
 
 The local Evaluate UI is benchmark-report first: it launches `/evaluate/benchmark-runs`
-through this runner, reads reports from `<data-dir>/eval/reports`, and shows warnings when a
+through this runner, reads the v0.2 report from `<data-dir>/eval/reports`
+(via a thin adapter in `server/evaluate.py` that maps it onto the UI's existing
+response keys — the GUI itself is unchanged), and shows warnings when a
 baseline is missing, only one trial was run, hidden tests skipped, AC mapping is
 incomplete, or the selected baseline differs by runner/model, target SHA, or
 benchmark set.
@@ -280,6 +294,18 @@ hard                     trial 01 FAIL (timeout after 10800s)
 ```
 
 ### Report JSON structure
+
+> **Note:** The field-by-field structure documented below (`results[]`,
+> top-level `quality`/`metrics`/`summary`) describes the pre-Prompt-6 ad hoc
+> report shape. As of Prompt 6, the runner writes the **v0.2 evaluation
+> report** (`eval/report_schema.py`) instead — this is an intentional
+> compatibility break for any consumer parsing the JSON directly (the local
+> GUI is unaffected; `server/evaluate.py` adapts v0.2 to its existing response
+> shape). See [`docs/live-eval-integration.md`](../docs/live-eval-integration.md)
+> for the current report structure. The concepts below (AC-level quality,
+> per-benchmark trial detail, aggregate summary, trend classification) all
+> still exist in v0.2, just under different field names and with an explicit
+> `unknown`/`not_collected` distinction for anything not actually measured.
 
 Each run writes two files to `<data-dir>/eval/reports/`:
 

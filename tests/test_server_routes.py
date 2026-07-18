@@ -326,62 +326,56 @@ class ServerRoutesTests(unittest.TestCase):
         self.assertIn("warnings", payload)
 
     def test_medium__evaluate_summary_is_benchmark_report_first(self):
+        from types import SimpleNamespace
         from server import db, evaluate
+        from eval.live_report import build_eval_report
 
         original_reports = evaluate.DEFAULT_REPORTS
         reports_root = Path(self.tmpdir) / "eval-reports"
         reports_root.mkdir(parents=True, exist_ok=True)
+
+        # Build a schema-valid v0.2 report from a raw `run_one`-shaped result
+        # dict, same as the live path (eval/runner.py::write_report) does —
+        # this is the canonical (sole) machine report format post-Prompt-6.
+        args_stub = SimpleNamespace(
+            sha="abc123", runner="claude", model="claude-sonnet-4-6",
+            repo="/repo", difficulty="medium", compare_to=None,
+        )
+        raw_result = {
+            "benchmark_id": "medium",
+            "difficulty": "medium",
+            "run_id": "medium-t1",
+            "trial_index": 1,
+            "status": "FAIL",
+            "error": "hidden tests failed",
+            "started_at": "2026-05-22T11:59:47.500Z",
+            "completed_at": "2026-05-22T12:00:00.000Z",
+            "score_weighted": 0.5,
+            "metrics": {"wall_seconds": 12.5},
+            "story": {
+                "acceptance_criteria": ["AC1: First.", "AC2: Second."],
+                "metadata": {"critical_acceptance_criteria": [], "domain": "test"},
+            },
+            "hidden_tests": {
+                "total": 2,
+                "passed": 1,
+                "ac_results": {
+                    "AC1": {"tests": ["test_ac1_first"], "passed": True},
+                    "AC2": {"tests": ["test_ac2_second"], "failed": True},
+                },
+            },
+            "evidence": {"story_ref": "/repo/artifacts/story.json"},
+        }
+        report = build_eval_report(
+            [raw_result], args_stub,
+            created_at="2026-05-22T12:00:00.000Z", eval_run_id="run-fixture-1",
+            comparison_context={
+                "trend": "insufficient data",
+                "warnings": ["No baseline selected.", "Only one run; reliability unknown."],
+            },
+        )
         (reports_root / "2026-05-22-120000-medium.json").write_text(
-            json.dumps(
-                {
-                    "created_at": "2026-05-22T12:00:00Z",
-                    "repo": "/repo",
-                    "sha": "abc123",
-                    "runner": "claude",
-                    "model": "claude-sonnet-4-6",
-                    "runs": 1,
-                    "summary": {
-                        "trend": "insufficient data",
-                        "quality": {"weighted_score": 0.5},
-                        "reliability": {"runs": 1, "pass_rate": 0.0},
-                        "efficiency": {"wall_seconds_mean": 12.5, "tokens_total_mean": 1234},
-                        "warnings": ["No baseline selected.", "Only one run; reliability unknown."],
-                    },
-                    "results": [
-                        {
-                            "name": "medium",
-                            "run_id": "medium-t1",
-                            "trial_index": 1,
-                            "status": "FAIL",
-                            "error": "hidden tests failed",
-                            "quality": {"weighted_score": 0.5, "hidden_tests_skipped": 0},
-                            "metrics": {"wall_seconds": 12.5, "tokens_total": 1234},
-                            "story": {
-                                "title": "Medium benchmark",
-                                "description": "Story detail.",
-                                "acceptance_criteria": ["AC1: First.", "AC2: Second."],
-                            },
-                            "hidden_tests": {
-                                "skipped": 0,
-                                "ac_results": {
-                                    "AC1": {
-                                        "tests": ["test_ac1_first"],
-                                        "passed": True,
-                                        "cases": [{"name": "test_ac1_first", "status": "passed", "message": ""}],
-                                    },
-                                    "AC2": {
-                                        "tests": ["test_ac2_second"],
-                                        "passed": False,
-                                        "cases": [{"name": "test_ac2_second", "status": "failed", "message": "bad"}],
-                                    },
-                                },
-                            },
-                            "artifacts": {"story": "/tmp/story.json"},
-                        }
-                    ],
-                }
-            ),
-            encoding="utf-8",
+            report.to_json() + "\n", encoding="utf-8",
         )
         try:
             evaluate.DEFAULT_REPORTS = reports_root
@@ -404,8 +398,9 @@ class ServerRoutesTests(unittest.TestCase):
             row = summary["rows"][0]
             self.assertEqual(row["task"], "medium")
             self.assertEqual(row["score_source"], "benchmark_report")
-            self.assertEqual(row["story"]["description"], "Story detail.")
-            self.assertEqual(row["details"][0]["hidden_tests"]["ac_results"]["AC2"]["cases"][0]["message"], "bad")
+            self.assertIn("AC2: Second.", row["story"]["acceptance_criteria"])
+            self.assertFalse(row["details"][0]["hidden_tests"]["ac_results"]["AC2"]["passed"])
+            self.assertEqual(row["details"][0]["artifacts"]["story"], "/repo/artifacts/story.json")
         finally:
             evaluate.DEFAULT_REPORTS = original_reports
 

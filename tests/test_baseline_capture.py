@@ -167,3 +167,31 @@ class BuildManifestTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GenerateV02ReportFixtureTests(unittest.TestCase):
+    """Guards scripts/generate_v02_report_fixture.py's determinism contract:
+    no wall-clock/uuid inputs, so re-running it must be byte-identical, and
+    its output must be schema-valid and comparison-round-trippable."""
+
+    def test_generated_fixture_is_deterministic_and_valid(self):
+        import importlib
+        from eval.comparison import compare_reports
+        from eval.report_schema import EvalReport, validate_report_payload
+
+        module = importlib.import_module("scripts.generate_v02_report_fixture")
+        trials = module.build_canned_trials()
+        report_a = module.build_eval_report(
+            trials, module.FIXTURE_ARGS,
+            created_at=module.CREATED_AT, eval_run_id=module.EVAL_RUN_ID,
+        )
+        report_b = module.build_eval_report(
+            module.build_canned_trials(), module.FIXTURE_ARGS,
+            created_at=module.CREATED_AT, eval_run_id=module.EVAL_RUN_ID,
+        )
+        self.assertEqual(report_a.to_json(), report_b.to_json())
+        self.assertEqual(validate_report_payload(report_a.to_dict()), [])
+
+        # compare_reports round-trip via from_dict, same as a real reader would.
+        reloaded = EvalReport.from_dict(report_a.to_dict())
+        compare_reports(reloaded, reloaded)
