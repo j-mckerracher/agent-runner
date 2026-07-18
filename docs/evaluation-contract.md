@@ -122,10 +122,12 @@ metrics, and evidence/artifact references.
 
 ## What later prompts build on this
 
-- **Prompt 3 (benchmark manifests)**: manifests will describe what
-  benchmark cases *should* exist and their ACs; `BenchmarkCaseResult` /
-  `AcceptanceCriteriaResult` are the shape a manifest-driven run reports
-  against.
+- **Prompt 3 (benchmark manifests)**: implemented in
+  `eval/benchmark_manifest.py` — see `docs/benchmark-manifests.md`. Manifests
+  describe what benchmark cases *should* exist and their ACs;
+  `BenchmarkCaseResult` / `AcceptanceCriteriaResult` are the shape a
+  manifest-driven run reports against. `eval/runner.py` is not yet wired to
+  either schema.
 - **Prompt 4 (canonical trace events)**: `trace_references` /
   `TrialResult.trace_ref` are currently opaque URIs. The trace event
   contract will define what a valid trace looks like and how to check
