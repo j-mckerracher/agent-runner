@@ -1,0 +1,13 @@
+{
+  "change_id": "EVAL-FIXTURE-LEGACY-001",
+  "title": "Fixture: trivial legacy benchmark",
+  "description": "Self-contained legacy-shape benchmark used by v0.2 CLI/E2E tests. Not a real workflow -- runner test seams (prepare_workspace/invoke_workflow/run_hidden_tests) are patched so this never executes for real.",
+  "acceptance_criteria": [
+    "AC1: A file marker exists in the workspace.",
+    "AC2: The marker file contains the expected text."
+  ],
+  "metadata": {
+    "critical_acceptance_criteria": ["AC1"],
+    "difficulty": "easy"
+  }
+}
