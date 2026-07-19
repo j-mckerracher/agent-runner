@@ -40,7 +40,7 @@ Also exported: `ArtifactRefValidationError`,
 | `artifact_schema_version` | `str \| None` | Optional. Must pair with `artifact_schema`. |
 | `validation_status` | `ArtifactValidationStatus \| None` | Optional. Enum or resolvable string; garbage rejected; absence stays `None`. |
 | `checksum_sha256` | `str \| None` | Optional. Exactly 64 lowercase hex chars; **never computed** by this contract. |
-| `metadata` | `Mapping[str, Any]` | Free-form. Must be a `Mapping`; defensively copied. JSON-ability checked at serialization. |
+| `metadata` | `Mapping[str, Any]` | Free-form. Must be a `Mapping`; recursively detached into fresh dicts/lists (tuples canonicalized to lists at every depth) so caller mutation cannot leak in. Full JSON-ability — string keys, finite floats, acyclic, supported leaves only — is checked at serialization. |
 | `artifact_ref_schema_version` | `str` | Contract version. Defaults to `"1"`; must be in `SUPPORTED_ARTIFACT_REF_SCHEMA_VERSIONS`. |
 
 ### `ArtifactValidationStatus`
@@ -86,19 +86,50 @@ point at the same bytes, and it never resolves, reads, or stats either.
 - `to_dict()` always includes `artifact_type` and
   `artifact_ref_schema_version`. `None` optionals are omitted. Observed empty
   collections are preserved (`consumer_stages == ()` -> `[]`). `Path` -> `str`,
-  enum -> `.value`. `metadata` is included only when non-empty and its
-  JSON-ability is verified first, so a serialization failure raises
+  enum -> `.value`. `metadata` is included only when non-empty; it is strictly
+  re-serialized into a **fresh** nested structure (never aliasing the ref's own
+  metadata), rejecting non-string keys, non-finite floats (`NaN`/`±Infinity`),
+  reference cycles, and unsupported leaves with
   `ArtifactMetadataSerializationError` before any partial output is produced.
-- `to_json()` is deterministic (`json.dumps(..., sort_keys=True)`).
+- `to_json()` is deterministic and strict
+  (`json.dumps(..., sort_keys=True, allow_nan=False)`); any residual encoder
+  `ValueError` is surfaced as `ArtifactMetadataSerializationError`.
 - `from_dict()` ignores unknown top-level keys (forward-compat) and passes raw
   known values to the constructor, so `__post_init__` is the single place that
   validates and normalizes them. That is what makes `path=""` a contract error
   (not `Path('.')`), and `validation_status="bad"` / `consumer_stages="qa"`
   surface the aggregate error rather than a bare `ValueError` or a silent
-  character split.
+  character split. A **missing** required `artifact_type` is likewise surfaced
+  as an aggregated `ArtifactRefValidationError` (alongside any other field
+  problems), never a bare constructor `TypeError`.
 - `validate_payload(data, where)` (staticmethod) performs structural
   validation without constructing — at minimum rejecting a non-`Mapping`
   payload (including `None`).
+
+## Metadata semantics
+
+- **Detachment.** At construction, `metadata` mappings and sequences are
+  recursively copied into fresh `dict`s/`list`s. Caller-owned containers are
+  never retained, so later mutation of the input (at any depth) cannot alter a
+  constructed `ArtifactRef`.
+- **Tuple canonicalization.** Tuples are normalized to lists at every depth, so
+  `(1, 2)` and `[1, 2]` are equivalent inputs. This is what makes tuple-bearing
+  metadata survive a dict or JSON round trip to `ArtifactRef` equality
+  (`from_dict(ref.to_dict()) == ref`, `from_dict(json.loads(ref.to_json())) == ref`).
+- **Finite floats only.** `NaN`, `Infinity`, and `-Infinity` are rejected at
+  serialization with `ArtifactMetadataSerializationError` naming the offending
+  location; ordinary finite floats serialize unchanged.
+- **Acyclic only.** Reference cycles (direct or via mixed dict/list nesting) are
+  rejected with `ArtifactMetadataSerializationError` — never a `RecursionError`.
+  Shared **non-cyclic** substructures (the same child referenced from two keys)
+  remain valid and serialize under each path.
+- **Fresh output.** `to_dict()` returns a freshly detached nested structure;
+  mutating one result never affects the ref or any other `to_dict()` result.
+- **No stringification.** Unsupported leaf values and non-string dict keys are
+  rejected with an actionable location, never silently stringified.
+- Construction stays lazy and side-effect-free: detachment validates nothing
+  and touches no filesystem, subprocess, network, env, or logging; all strict
+  checks happen at serialization time.
 
 ## Import isolation & no filesystem I/O
 

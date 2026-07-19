@@ -441,3 +441,204 @@ def test_consumer_stages_defensively_copied():
     caller.append("extra")
     caller[0] = "mutated"
     assert ref.consumer_stages == ("execution", "qa")
+
+
+# --------------------------------------------------------------------------
+# 16. from_dict required-field contract (Defect 1)
+# --------------------------------------------------------------------------
+
+
+def test_from_dict_empty_payload_raises_validation_error():
+    with pytest.raises(ArtifactRefValidationError):
+        ArtifactRef.from_dict({})
+
+
+def test_from_dict_missing_artifact_type_reports_field_not_typeerror():
+    with pytest.raises(ArtifactRefValidationError) as excinfo:
+        ArtifactRef.from_dict({"path": "p"})
+    assert any("artifact_type" in e for e in excinfo.value.errors)
+
+
+def test_from_dict_aggregates_missing_type_with_other_field_errors():
+    with pytest.raises(ArtifactRefValidationError) as excinfo:
+        ArtifactRef.from_dict(
+            {
+                "path": "",
+                "uri": " ",
+                "consumer_stages": "qa",
+                "checksum_sha256": "bad",
+            }
+        )
+    errors = excinfo.value.errors
+    assert any("artifact_type" in e for e in errors)
+    assert any("path" in e for e in errors)
+    assert any("uri" in e for e in errors)
+    assert any("consumer_stages" in e for e in errors)
+    assert any("checksum_sha256" in e for e in errors)
+
+
+def test_from_dict_missing_type_never_leaks_raw_typeerror():
+    # ArtifactRefValidationError subclasses ValueError; a bare TypeError
+    # (or non-subclass ValueError) escaping would be the defect.
+    try:
+        ArtifactRef.from_dict({"path": "p"})
+    except ArtifactRefValidationError:
+        pass
+    except TypeError as exc:  # pragma: no cover - defect regression guard
+        pytest.fail(f"raw TypeError leaked: {exc!r}")
+
+
+# --------------------------------------------------------------------------
+# 17. Tuple canonicalization + round-trip equality (Defect 2)
+# --------------------------------------------------------------------------
+
+
+def test_top_level_tuple_metadata_canonicalized_to_list():
+    ref = ArtifactRef(artifact_type="plan", path="p", metadata={"coords": (1, 2)})
+    assert ref.metadata == {"coords": [1, 2]}
+    assert isinstance(ref.metadata["coords"], list)
+
+
+def test_deeply_nested_tuples_normalized_at_every_depth():
+    ref = ArtifactRef(
+        artifact_type="plan",
+        path="p",
+        metadata={"nested": {"rows": [("a", "b"), {"values": (3, 4)}]}},
+    )
+    assert ref.metadata == {"nested": {"rows": [["a", "b"], {"values": [3, 4]}]}}
+    rows = ref.metadata["nested"]["rows"]
+    assert isinstance(rows[0], list)
+    assert isinstance(rows[1]["values"], list)
+
+
+def test_to_dict_metadata_contains_only_lists_not_tuples():
+    ref = ArtifactRef(
+        artifact_type="plan",
+        path="p",
+        metadata={"coords": (1, 2), "n": {"rows": [("a", "b")]}},
+    )
+    meta = ref.to_dict()["metadata"]
+    assert meta == {"coords": [1, 2], "n": {"rows": [["a", "b"]]}}
+    assert isinstance(meta["coords"], list)
+    assert isinstance(meta["n"]["rows"][0], list)
+
+
+def test_tuple_metadata_dict_and_json_round_trip_to_equality():
+    import json
+
+    ref = ArtifactRef(
+        artifact_type="plan",
+        path="p",
+        metadata={"coords": (1, 2), "n": {"rows": [("a", "b")]}},
+    )
+    assert ArtifactRef.from_dict(ref.to_dict()) == ref
+    assert ArtifactRef.from_dict(json.loads(ref.to_json())) == ref
+
+
+# --------------------------------------------------------------------------
+# 18. Non-finite float rejection (Defect 3)
+# --------------------------------------------------------------------------
+
+
+def test_nan_metadata_rejected_with_location():
+    ref = ArtifactRef(
+        artifact_type="plan", path="p", metadata={"metrics": {"value": float("nan")}}
+    )
+    with pytest.raises(ArtifactMetadataSerializationError) as excinfo:
+        ref.to_dict()
+    msg = str(excinfo.value)
+    assert "metrics" in msg and "value" in msg
+
+
+def test_positive_and_negative_infinity_metadata_rejected():
+    for bad in (float("inf"), float("-inf")):
+        ref = ArtifactRef(
+            artifact_type="plan", path="p", metadata={"metrics": {"value": bad}}
+        )
+        with pytest.raises(ArtifactMetadataSerializationError):
+            ref.to_dict()
+        with pytest.raises(ArtifactMetadataSerializationError):
+            ref.to_json()
+
+
+def test_finite_float_metadata_still_serializes():
+    ref = ArtifactRef(
+        artifact_type="plan", path="p", metadata={"metrics": {"value": 3.5}}
+    )
+    assert ref.to_dict()["metadata"] == {"metrics": {"value": 3.5}}
+
+
+# --------------------------------------------------------------------------
+# 19. Cycle rejection + shared non-cyclic refs (Defect 4)
+# --------------------------------------------------------------------------
+
+
+def test_cyclic_dict_metadata_rejected_not_recursionerror():
+    cycle: dict = {}
+    cycle["self"] = cycle
+    ref = ArtifactRef(artifact_type="plan", path="p", metadata=cycle)
+    with pytest.raises(ArtifactMetadataSerializationError):
+        ref.to_dict()
+
+
+def test_cyclic_list_metadata_rejected_not_recursionerror():
+    inner: list = []
+    inner.append(inner)
+    ref = ArtifactRef(artifact_type="plan", path="p", metadata={"loop": inner})
+    with pytest.raises(ArtifactMetadataSerializationError):
+        ref.to_dict()
+
+
+def test_mixed_dict_list_cycle_rejected():
+    node: dict = {"children": []}
+    node["children"].append(node)
+    ref = ArtifactRef(artifact_type="plan", path="p", metadata=node)
+    with pytest.raises(ArtifactMetadataSerializationError):
+        ref.to_dict()
+
+
+def test_shared_non_cyclic_child_serializes_successfully():
+    child = {"x": 1}
+    ref = ArtifactRef(
+        artifact_type="plan", path="p", metadata={"left": child, "right": child}
+    )
+    assert ref.to_dict()["metadata"] == {"left": {"x": 1}, "right": {"x": 1}}
+
+
+# --------------------------------------------------------------------------
+# 20. Deep defensive detachment (Defect 5)
+# --------------------------------------------------------------------------
+
+
+def test_nested_caller_mutation_does_not_leak_into_ref():
+    caller = {"nested": {"values": [1, 2]}}
+    ref = ArtifactRef(artifact_type="plan", path="p", metadata=caller)
+    caller["nested"]["values"].append(3)
+    assert ref.metadata == {"nested": {"values": [1, 2]}}
+
+
+def test_to_dict_result_mutation_does_not_change_ref():
+    ref = ArtifactRef(
+        artifact_type="plan", path="p", metadata={"nested": {"values": [1, 2]}}
+    )
+    out = ref.to_dict()
+    out["metadata"]["nested"]["values"].append(99)
+    assert ref.metadata == {"nested": {"values": [1, 2]}}
+
+
+def test_two_to_dict_results_are_independent():
+    ref = ArtifactRef(
+        artifact_type="plan", path="p", metadata={"nested": {"values": [1, 2]}}
+    )
+    first = ref.to_dict()
+    first["metadata"]["nested"]["values"].append(99)
+    second = ref.to_dict()
+    assert second["metadata"]["nested"]["values"] == [1, 2]
+
+
+def test_tuple_normalization_does_not_alias_caller_containers():
+    inner = [1, 2]
+    caller = {"seq": (inner,)}
+    ref = ArtifactRef(artifact_type="plan", path="p", metadata=caller)
+    inner.append(3)
+    assert ref.metadata == {"seq": [[1, 2]]}

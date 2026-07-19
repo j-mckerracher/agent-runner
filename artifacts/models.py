@@ -35,6 +35,7 @@ Design rules (see `docs/artifact-ref.md` for the full rationale):
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass, field, fields
 from enum import Enum
@@ -82,31 +83,78 @@ class ArtifactMetadataSerializationError(ValueError):
     """
 
 
-_JSON_SCALAR_TYPES = (str, int, float, bool, type(None))
-
 _HEX64 = re.compile(r"[0-9a-f]{64}")
 
 
-def _ensure_jsonable(value: Any, *, where: str) -> None:
-    """Recursively verify `value` is made only of JSON-compatible types.
+def _detach_metadata(value: Any, _memo: dict[int, Any]) -> Any:
+    """Recursively copy caller-owned containers, tuples -> lists.
 
-    Never stringifies unsupported values as a fallback — raises
-    `ArtifactMetadataSerializationError` naming the offending location instead.
+    Memoized by object identity so cyclic or shared input copies in bounded
+    time. Unsupported leaves are left in place for lazy serialization
+    rejection. Performs no I/O.
     """
-    if isinstance(value, _JSON_SCALAR_TYPES):
-        return
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
+        if id(value) in _memo:
+            return _memo[id(value)]
+        new_map: dict[Any, Any] = {}
+        _memo[id(value)] = new_map
+        for key, item in value.items():
+            new_map[key] = _detach_metadata(item, _memo)
+        return new_map
+    if isinstance(value, (list, tuple)):
+        if id(value) in _memo:
+            return _memo[id(value)]
+        new_seq: list[Any] = []
+        _memo[id(value)] = new_seq
+        for item in value:
+            new_seq.append(_detach_metadata(item, _memo))
+        return new_seq
+    return value
+
+
+def _strict_jsonable(value: Any, *, where: str, _active: set[int]) -> Any:
+    """Return a fresh JSON-compatible copy of `value`, or raise.
+
+    Rejects non-string keys, non-finite floats, unsupported leaves, and active
+    reference cycles, each with an actionable metadata location. Shared
+    non-cyclic references are permitted.
+    """
+    if value is None or isinstance(value, (bool, int, str)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ArtifactMetadataSerializationError(
+                f"{where}: non-finite float {value!r} is not valid JSON"
+            )
+        return value
+    if isinstance(value, Mapping):
+        if id(value) in _active:
+            raise ArtifactMetadataSerializationError(
+                f"{where}: metadata contains a reference cycle"
+            )
+        _active.add(id(value))
+        out: dict[str, Any] = {}
         for key, item in value.items():
             if not isinstance(key, str):
                 raise ArtifactMetadataSerializationError(
                     f"{where}: dict keys must be strings, got {type(key).__name__}"
                 )
-            _ensure_jsonable(item, where=f"{where}.{key}")
-        return
+            out[key] = _strict_jsonable(item, where=f"{where}.{key}", _active=_active)
+        _active.discard(id(value))
+        return out
     if isinstance(value, (list, tuple)):
+        if id(value) in _active:
+            raise ArtifactMetadataSerializationError(
+                f"{where}: metadata contains a reference cycle"
+            )
+        _active.add(id(value))
+        out_seq: list[Any] = []
         for index, item in enumerate(value):
-            _ensure_jsonable(item, where=f"{where}[{index}]")
-        return
+            out_seq.append(
+                _strict_jsonable(item, where=f"{where}[{index}]", _active=_active)
+            )
+        _active.discard(id(value))
+        return out_seq
     raise ArtifactMetadataSerializationError(
         f"{where}: value of type {type(value).__name__} is not JSON-serializable"
     )
@@ -280,14 +328,15 @@ class ArtifactRef:
                     f"{self.checksum_sha256!r}"
                 )
 
-        # 11. metadata — must be a Mapping; defensively shallow-copied to a dict.
-        # JSON-ability is verified lazily in to_dict().
+        # 11. metadata — must be a Mapping; recursively detached to fresh
+        # dicts/lists (tuples canonicalized to lists) so caller mutation can
+        # never leak in. JSON-ability is verified lazily in to_dict().
         if not isinstance(self.metadata, Mapping):
             errors.append(
                 f"metadata: must be a mapping, got {type(self.metadata).__name__}"
             )
         else:
-            object.__setattr__(self, "metadata", dict(self.metadata))
+            object.__setattr__(self, "metadata", _detach_metadata(self.metadata, {}))
 
         if errors:
             raise ArtifactRefValidationError(errors)
@@ -298,9 +347,10 @@ class ArtifactRef:
         Always includes `artifact_type` and `artifact_ref_schema_version`.
         `None` optionals are omitted; observed empty collections are preserved
         (`consumer_stages == ()` -> `[]`). `Path` -> `str`, enum -> `.value`.
-        `metadata` is included only when non-empty, and its JSON-ability is
-        verified first so a serialization failure raises before any partial
-        output is produced.
+        `metadata` is included only when non-empty, and it is strictly
+        re-serialized to a fresh nested structure so a serialization failure
+        raises before any partial output is produced and the returned dict
+        never aliases the ref's own metadata.
         """
         result: dict[str, Any] = {
             "artifact_type": self.artifact_type,
@@ -323,13 +373,20 @@ class ArtifactRef:
         if self.checksum_sha256 is not None:
             result["checksum_sha256"] = self.checksum_sha256
         if self.metadata:
-            _ensure_jsonable(self.metadata, where="ArtifactRef.metadata")
-            result["metadata"] = dict(self.metadata)
+            result["metadata"] = _strict_jsonable(
+                self.metadata, where="ArtifactRef.metadata", _active=set()
+            )
         return result
 
     def to_json(self) -> str:
-        """Serialize to a deterministic, sorted-keys JSON string."""
-        return json.dumps(self.to_dict(), sort_keys=True)
+        """Serialize to a deterministic, sorted-keys, strict JSON string."""
+        data = self.to_dict()
+        try:
+            return json.dumps(data, sort_keys=True, allow_nan=False)
+        except ValueError as exc:
+            raise ArtifactMetadataSerializationError(
+                f"ArtifactRef.metadata: {exc}"
+            ) from exc
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "ArtifactRef":
@@ -347,7 +404,12 @@ class ArtifactRef:
         if errors:
             raise ArtifactRefValidationError(errors)
         known = {f.name for f in fields(cls)}
-        return cls(**{k: v for k, v in data.items() if k in known})
+        kwargs = {k: v for k, v in data.items() if k in known}
+        if "artifact_type" not in kwargs:
+            # Invalid sentinel: __post_init__ aggregates the missing-required
+            # error with any other field problems instead of TypeError leaking.
+            kwargs["artifact_type"] = None
+        return cls(**kwargs)
 
     @staticmethod
     def validate_payload(data: Any, where: str) -> list[str]:
