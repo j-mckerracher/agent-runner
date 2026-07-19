@@ -39,6 +39,14 @@ from runners.models import (
 )
 from runners.omp import BuiltinOpenAICompatBackend
 from runners.openai_compat import OpenAICompatAliasBackend
+from runners.registry import (
+    InvalidRunnerNameError,
+    RegistryConfigurationError,
+    RunnerRegistry,
+    RunnerSelectionError,
+    UnknownRunnerError,
+    resolve_backend,
+)
 
 __all__ = [
     "AgentContractError",
@@ -51,13 +59,19 @@ __all__ = [
     "CopilotBackend",
     "FailoverMetadata",
     "GeminiBackend",
+    "InvalidRunnerNameError",
     "MetadataSerializationError",
     "OpenAICompatAliasBackend",
+    "RegistryConfigurationError",
     "RetryMetadata",
     "RunnerBackend",
     "RunnerBackendError",
     "RunnerInvocationError",
+    "RunnerRegistry",
+    "RunnerSelectionError",
     "TraceContext",
+    "UnknownRunnerError",
     "UnsupportedInvocationError",
     "from_completed_process",
+    "resolve_backend",
 ]
