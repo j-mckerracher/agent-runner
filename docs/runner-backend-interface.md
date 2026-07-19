@@ -130,3 +130,7 @@ selection or config loading, any CLI/workflow/eval/server changes, changes to
 `run_agent_cmd`'s params/return/failover/exceptions, moving failover into the
 backend, retry, lifecycle events, hashing, `ArtifactRef`, prompt-ref file
 resolution, and async/stream/batch execution.
+
+Update (Prompt 14): concrete per-family adapters now exist alongside the legacy
+adapter — see [`docs/runner-backend-adapters.md`](runner-backend-adapters.md).
+`run_agent_cmd` and `LegacyDispatchBackend` remain unchanged.

@@ -1,9 +1,13 @@
-"""Runner contracts and execution boundary (Prompts 12–13).
+"""Runner contracts and execution boundary (Prompts 12–14).
 
 Typed, runner-neutral data contracts for a single agent execution and its
-result (Prompt 12), plus the `RunnerBackend` execution seam (Prompt 13).
-Stdlib-only leaf package at the root — importing `runners` loads nothing from
-`core`, `workflow`, `server`, `eval`, `telemetry`, `opik`, or vendor SDKs.
+result (Prompt 12), the `RunnerBackend` execution seam (Prompt 13), and the
+concrete per-family adapters (Prompt 14: `ClaudeBackend`, `CodexBackend`,
+`GeminiBackend`, `CopilotBackend`, `BuiltinOpenAICompatBackend`,
+`OpenAICompatAliasBackend`). Stdlib-only leaf package at the root — importing
+`runners` loads nothing from `core`, `workflow`, `server`, `eval`,
+`telemetry`, `opik`, or vendor SDKs: every adapter lazy-imports its backend
+callable inside `invoke`.
 
 `LegacyDispatchBackend` is deliberately **not** re-exported here: its public
 path is `from runners.legacy import LegacyDispatchBackend`. This keeps
@@ -18,7 +22,11 @@ from runners.base import (
     RunnerInvocationError,
     UnsupportedInvocationError,
 )
+from runners.claude import ClaudeBackend
+from runners.codex import CodexBackend
 from runners.compat import from_completed_process
+from runners.copilot import CopilotBackend
+from runners.gemini import GeminiBackend
 from runners.models import (
     AgentContractError,
     AgentInvocation,
@@ -29,14 +37,22 @@ from runners.models import (
     RetryMetadata,
     TraceContext,
 )
+from runners.omp import BuiltinOpenAICompatBackend
+from runners.openai_compat import OpenAICompatAliasBackend
 
 __all__ = [
     "AgentContractError",
     "AgentInvocation",
     "AgentResult",
     "AgentResultStatus",
+    "BuiltinOpenAICompatBackend",
+    "ClaudeBackend",
+    "CodexBackend",
+    "CopilotBackend",
     "FailoverMetadata",
+    "GeminiBackend",
     "MetadataSerializationError",
+    "OpenAICompatAliasBackend",
     "RetryMetadata",
     "RunnerBackend",
     "RunnerBackendError",
