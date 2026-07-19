@@ -93,6 +93,33 @@ def test_optional_fields_populated_round_trip() -> None:
     assert payload["status"] == "ok"
 
 
+def test_agent_invocation_timed_out_family_creation_and_round_trip() -> None:
+    # Prompt 17: the fourth agent-invocation family. Additive; schema stays v1.
+    event = make_event(
+        EventType.AGENT_INVOCATION_TIMED_OUT,
+        "run-1",
+        timestamp=FIXED_TS,
+        span_id="span-1",
+        agent="claude",
+        runner="claude",
+        model="claude-opus-4-8",
+        status=EventStatus.ERROR,
+        duration_ms=30000.0,
+        error_type="Timeout",
+    )
+    assert event.event_type == EventType.AGENT_INVOCATION_TIMED_OUT
+    assert event.event_schema_version == TRACE_SCHEMA_VERSION
+
+    payload = event.to_dict()
+    assert payload["event_type"] == "agent.invocation.timed_out"
+    assert payload["status"] == "error"
+    assert payload["error_type"] == "Timeout"
+
+    restored = TraceEvent.from_dict(json.loads(json.dumps(payload)))
+    assert restored.event_type == EventType.AGENT_INVOCATION_TIMED_OUT
+    assert restored.to_dict() == payload
+
+
 def test_unknown_token_and_cost_metrics_remain_unknown_not_zero() -> None:
     event = TraceEvent(event_type=EventType.RUN_STARTED, timestamp=FIXED_TS, run_id="run-1")
     payload = event.to_dict()

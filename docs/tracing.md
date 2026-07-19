@@ -74,6 +74,7 @@ Centralized in `telemetry.events.EventType`:
 run.started                     stage.started                    agent.invocation.started
 run.completed                    stage.completed                   agent.invocation.completed
 run.failed                       stage.failed                      agent.invocation.failed
+                                                                  agent.invocation.timed_out
 
 artifact.created                 test.started
 artifact.validated                test.completed
@@ -107,8 +108,12 @@ with JsonlEventSink("path/to/trace.jsonl") as sink:
     sink.emit(make_event(EventType.RUN_COMPLETED, run_id, span_id=run_span, status=EventStatus.OK))
 ```
 
-`make_event` is the single generic factory used for all 15 event
+`make_event` is the single generic factory used for all 16 event
 families — pass the desired `EventType` and only the fields that apply.
+The `agent.invocation.*` family has four members
+(`started` / `completed` / `failed` / `timed_out`); `timed_out` was added
+additively and the schema stays v1. See `docs/runner-lifecycle-events.md`
+for the runner-boundary seam that emits these.
 `timestamp` defaults to "now" (UTC); pass an explicit value for
 deterministic tests.
 
