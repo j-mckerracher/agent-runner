@@ -9,10 +9,10 @@ workflow orchestration in `run.py::main`:
 RunSpec -> WorkflowRunner -> run.py::main -> WorkflowResult
 ```
 
-This is a **shell**, not a redesign. It does not extract stages, does
-not change the runner/artifact contract, and does not migrate any
-caller (CLI, eval, server) onto it. Those are separate, later prompts
-(see "Deferred to later prompts" below).
+This is a **shell**, not a redesign. It does not extract stages and
+does not change the runner/artifact contract. Prompt 10 (below) wires
+the CLI entry path onto this boundary; eval and server reach it
+through that same CLI path, unchanged. See "Entry points (Prompt 10)".
 
 ## The models (`workflow/models.py`)
 
@@ -139,18 +139,103 @@ assert result.status.value == "succeeded"
 assert result.final_output == "ran for 12345"
 ```
 
+## Entry points (Prompt 10)
+
+Prompt 9 left `WorkflowRunner` wired but unused by any real caller.
+Prompt 10 routes the CLI, eval, and server entry paths through it,
+without rewriting any of them:
+
+```
+CLI            run.py __main__ -> execute_cli_args -> RunSpec -> WorkflowRunner -> run.main
+Eval           eval/runner.py subprocess -> `python run.py ...` -> (same CLI path above)
+Server (job)   server/runner_proc.py subprocess -> `python run.py ...` -> (same CLI path above)
+Server (bench) server/runner_proc.py subprocess -> `python eval/runner.py ...` -> (Eval path above)
+```
+
+Eval and server already invoked `run.py` as a subprocess with CLI
+flags — neither one ever re-implemented `run.py::main`'s internal
+argument mapping. So the only place that bypassed `WorkflowRunner` was
+`run.py`'s own `__main__` block, which called `main(...)` directly.
+Fixing that single seam is enough to bring all three entry paths behind
+the shared boundary; **no code in `eval/runner.py` or
+`server/runner_proc.py` changed for Prompt 10.**
+
+### Two distinct mapping boundaries — do not confuse them
+
+```
+run.py::run_spec_from_args                  parsed CLI arguments -> RunSpec
+workflow.runner::_default_legacy_workflow   RunSpec -> run.main(**kwargs)
+```
+
+`run_spec_from_args` is the **authoritative, single, tested**
+conversion from `argparse.Namespace` to `RunSpec` — every CLI flag is
+mapped explicitly (including cases where the CLI's argparse default
+differs from `RunSpec`'s own default, e.g. `--skip-lessons-optimizer`
+defaults to `False` via `store_true` while `RunSpec.skip_lessons_optimizer`
+defaults to `True`; the mapping always passes the CLI's actual value
+through rather than relying on either default). It does not know
+about `run.main`'s parameter names.
+
+`_default_legacy_workflow` (pre-existing, Prompt 8) is the separate,
+already-tested conversion from `RunSpec` to `run.main`'s actual keyword
+arguments (`story_path` -> `story_file`, `Path` -> `str`, etc.). It
+does not know about argparse.
+
+Neither function duplicates the other's job.
+
+### `run.py`'s CLI adapter functions
+
+```python
+def run_spec_from_args(args: argparse.Namespace) -> RunSpec: ...
+def execute_cli_args(args: argparse.Namespace) -> WorkflowResult: ...
+
+if __name__ == "__main__":
+    args = parse_args()
+    try:
+        execute_cli_args(args)
+    except INPUT_VALIDATION_ERRORS:
+        sys.exit(1)
+```
+
+* `execute_cli_args` constructs exactly one `RunSpec` and calls
+  `WorkflowRunner().run(...)` exactly once, using `run()` (not
+  `run_capturing()`) so exceptions propagate unchanged — matching
+  `main`'s pre-existing re-raise contract. `SystemExit` (including the
+  `SIGTERM` handler's `sys.exit(143)`) is never caught here either.
+* `INPUT_VALIDATION_ERRORS = (FileNotFoundError, ValueError)` catches
+  both `RunSpec.__post_init__`'s story-mutual-exclusivity `ValueError`
+  and any `FileNotFoundError`/`ValueError` raised deeper inside
+  `run.main` — both still map to CLI exit code `1`, exactly as before.
+  Any other exception type is **not** remapped and propagates with its
+  original traceback, same as before this prompt.
+* **No recursion is possible.** `_default_legacy_workflow` calls
+  `run.main` directly — never `execute_cli_args` — so the only call
+  graph is `execute_cli_args -> WorkflowRunner.run ->
+  _default_legacy_workflow -> run.main`, a straight line with `main` as
+  the leaf. `main`'s body, `main.fn = main`, and programmatic callers of
+  `run.main(...)` are all unchanged.
+
+### Why eval/server keep their subprocess boundary
+
+Eval and server retain subprocess isolation deliberately — timeouts,
+process-group cancellation (`os.killpg`), event-log tailing, progress
+polling, and evidence capture all depend on the workflow running in a
+separate OS process, not in the calling Python process. Prompt 10 does
+not convert either into an in-process `WorkflowRunner` call; it only
+ensures the subprocess they already launch (`run.py`) reaches
+`WorkflowRunner` internally once it starts.
+
 ## Compatibility
 
-Nothing about the existing CLI (`run.py`'s `__main__` block), the eval
-harness (`eval/runner.py`), the server, workflow ordering, prompts, or
-loop/retry limits changes in this prompt. `run.py`, `core/*`,
-`eval/*`, `server/*`, and `telemetry/*` are untouched. No existing
-caller is migrated onto `WorkflowRunner` — the only proof of the shell
-working is test-only, via the injectable adapter.
+Workflow ordering, prompts, loop/retry limits, and stage internals are
+unchanged. `core/*`, `eval/*` (behavior), `server/*` (behavior), and
+`telemetry/*` are untouched. `run.py::main`'s body, signature, and
+`main.fn` compatibility attribute are unchanged — only `__main__` was
+rewired to reach it through `WorkflowRunner` instead of calling it
+directly.
 
 ## Deferred to later prompts
 
-* **Stage contracts** (typed per-stage inputs/outputs, `StageResult`) —
-  Prompt 9. See `docs/workflow-stages.md`.
-* **CLI / eval / server migration** onto `WorkflowRunner` — Prompt 10.
+* **Stage contracts wired into production call sites** — still
+  deferred; see `docs/workflow-stages.md`.
 * **Runner-backend and artifact-contract redesign** — v0.4.
