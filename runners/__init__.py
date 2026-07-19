@@ -26,6 +26,15 @@ from runners.claude import ClaudeBackend
 from runners.codex import CodexBackend
 from runners.compat import from_completed_process
 from runners.copilot import CopilotBackend
+from runners.failover import (
+    FailoverConfigurationError,
+    FailoverExecutor,
+    FailoverExhaustedError,
+    FailoverMetadataConflictError,
+    FailoverPlan,
+    RunnerRoute,
+    default_failover_eligibility,
+)
 from runners.gemini import GeminiBackend
 from runners.models import (
     AgentContractError,
@@ -57,7 +66,12 @@ __all__ = [
     "ClaudeBackend",
     "CodexBackend",
     "CopilotBackend",
+    "FailoverConfigurationError",
+    "FailoverExecutor",
+    "FailoverExhaustedError",
     "FailoverMetadata",
+    "FailoverMetadataConflictError",
+    "FailoverPlan",
     "GeminiBackend",
     "InvalidRunnerNameError",
     "MetadataSerializationError",
@@ -68,10 +82,12 @@ __all__ = [
     "RunnerBackendError",
     "RunnerInvocationError",
     "RunnerRegistry",
+    "RunnerRoute",
     "RunnerSelectionError",
     "TraceContext",
     "UnknownRunnerError",
     "UnsupportedInvocationError",
+    "default_failover_eligibility",
     "from_completed_process",
     "resolve_backend",
 ]
