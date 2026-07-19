@@ -12,7 +12,10 @@ WorkflowStage -> CallableStage.run -> StageResult             (Prompt 9)
 
 This wraps existing stage callables — it does not extract, rewrite, or
 reorder any stage's internals, and it does not migrate any production
-call site in `run.py` onto it. That migration is deferred to Prompt 10.
+call site in `run.py` onto it. Prompt 10 wired the CLI/eval/server
+*entry paths* onto the Prompt 8 `WorkflowRunner` shell above — it did
+not touch stage internals or wire any `_Stage` call site onto
+`CallableStage`. That migration is still deferred (see below).
 
 ## The contract (`workflow/stages.py`)
 
@@ -169,7 +172,10 @@ that executes in production. Two consequences:
   block, since that combination is never exercised by this prompt.
 
 Migrating a real `run.py` stage call site onto `CallableStage` — and
-deciding what happens to `_Stage` at that point — is Prompt 10's job.
+deciding what happens to `_Stage` at that point — remains unscheduled.
+Prompt 10 did not do this; see `docs/workflow-runner.md`'s "Entry
+points (Prompt 10)" section for what it did do (CLI/eval/server entry
+routing onto `WorkflowRunner`, not stage internals).
 
 ## What this prompt does *not* do
 
@@ -181,7 +187,10 @@ deciding what happens to `_Stage` at that point — is Prompt 10's job.
   populating it later would be exactly the kind of ahead-of-integration
   scaffolding this refactor avoids.
 * No new `AgentInvocation`/`AgentResult`/`RunnerBackend` types.
-* No CLI, eval, or server migration onto stage contracts.
+* No CLI, eval, or server migration onto stage contracts. (Prompt 10
+  later routed the CLI/eval/server *entry paths* onto `WorkflowRunner`
+  — a different boundary than this one — without touching stage
+  contracts; see `docs/workflow-runner.md`.)
 
 ## Minimal local example
 
@@ -202,7 +211,8 @@ assert result.output == {"intake_source": "story-123"}
 ## Deferred to later prompts
 
 * Migrating real `run.py` stage call sites onto `CallableStage` and
-  reconciling with `_Stage` — Prompt 10.
+  reconciling with `_Stage` — still unscheduled (not part of Prompt 10).
 * `WorkflowResult.stage_results` aggregation across a full run.
-* CLI / eval / server adapters built on top of stage contracts.
+* Wiring stage contracts into the CLI/eval/server entry paths that
+  Prompt 10 routed onto `WorkflowRunner`.
 * Runner-backend and artifact-contract redesign — v0.4.

@@ -1728,24 +1728,56 @@ def _rtk_available() -> bool:
 main.fn = main
 
 
+def run_spec_from_args(args: argparse.Namespace):
+    """Authoritative mapping: parsed CLI arguments -> `workflow.RunSpec`.
+
+    This is the single source of truth for CLI-argument-to-RunSpec conversion.
+    It is a distinct boundary from `workflow.runner._default_legacy_workflow`,
+    which owns the separate RunSpec -> `main(...)` kwargs mapping. Neither
+    function duplicates the other.
+    """
+    from workflow import RunSpec
+
+    return RunSpec(
+        repo_path=args.repo,
+        change_id=args.change_id,
+        ado_url=args.ado_url,
+        story_path=args.story_file,
+        manual_story_path=args.manual_story_file,
+        runner=args.runner,
+        model=args.model,
+        agent_llm_overrides=args.agent_llm_overrides,
+        extra_context=args.extra_context,
+        skip_lessons_optimizer=args.skip_lessons_optimizer,
+        skip_materialize=args.skip_materialize,
+        calibration_fast_mode=args.calibration_fast_mode,
+        headless=args.headless,
+        log_level=args.log_level,
+    )
+
+
+def execute_cli_args(args: argparse.Namespace):
+    """CLI executable path: args -> RunSpec -> WorkflowRunner (exactly once).
+
+    `WorkflowRunner.run` propagates exceptions unchanged (it does not catch
+    and remap them), so this function preserves `main`'s existing exception
+    contract without adding a second exception-handling layer. Callers of
+    this function are responsible for catching `INPUT_VALIDATION_ERRORS` if
+    they want the legacy `sys.exit(1)` behavior (see `__main__` below).
+
+    This function must never be called from `WorkflowRunner`'s legacy
+    delegate — the delegate calls `run.main` directly, not this function —
+    so no recursive `WorkflowRunner -> execute_cli_args -> WorkflowRunner`
+    path can exist.
+    """
+    from workflow import WorkflowRunner
+
+    return WorkflowRunner().run(run_spec_from_args(args))
+
+
 if __name__ == "__main__":
     args = parse_args()
     try:
-        main(
-            repo=args.repo,
-            change_id=args.change_id,
-            ado_url=args.ado_url,
-            story_file=args.story_file,
-            manual_story_file=args.manual_story_file,
-            runner=args.runner,
-            model=args.model,
-            agent_llm_overrides=args.agent_llm_overrides,
-            extra_context=args.extra_context,
-            skip_lessons_optimizer=args.skip_lessons_optimizer,
-            skip_materialize=args.skip_materialize,
-            calibration_fast_mode=args.calibration_fast_mode,
-            headless=args.headless,
-            log_level=args.log_level,
-        )
+        execute_cli_args(args)
     except INPUT_VALIDATION_ERRORS:
         sys.exit(1)
