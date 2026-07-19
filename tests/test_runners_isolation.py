@@ -71,3 +71,24 @@ def test_constructing_contracts_starts_no_subprocess():
     result = _run_probe(code)
     assert result.returncode == 0, result.stderr
     assert "OK" in result.stdout
+
+
+def test_importing_failover_pulls_in_no_forbidden_modules():
+    # Prompt 16 extension: importing + constructing the failover seam must not
+    # load core/workflow/server/eval/telemetry/opik or any vendor SDK. The
+    # google.* entries extend the base forbidden list per the Prompt 16 spec.
+    code = (
+        "import sys\n"
+        "from runners import FailoverExecutor, FailoverPlan, RunnerRoute\n"
+        "FailoverExecutor()\n"
+        "forbidden = ('opik', 'server', 'run', 'telemetry', 'core', 'workflow',\n"
+        "             'eval', 'anthropic', 'openai',\n"
+        "             'google.generativeai', 'google.genai')\n"
+        "bad = [m for m in sys.modules\n"
+        "       if any(m == f or m.startswith(f + '.') for f in forbidden)]\n"
+        "assert not bad, bad\n"
+        "print('OK')\n"
+    )
+    result = _run_probe(code)
+    assert result.returncode == 0, result.stderr
+    assert "OK" in result.stdout
