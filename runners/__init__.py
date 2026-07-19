@@ -1,13 +1,23 @@
-"""Runner contracts (Prompt 12).
+"""Runner contracts and execution boundary (Prompts 12–13).
 
 Typed, runner-neutral data contracts for a single agent execution and its
-result. Stdlib-only leaf package — imports nothing from `core`, `workflow`,
-`server`, `telemetry`, `opik`, or vendor SDKs. Not yet wired into production
-dispatch; a later prompt places these behind a `RunnerBackend`.
+result (Prompt 12), plus the `RunnerBackend` execution seam (Prompt 13).
+Stdlib-only leaf package at the root — importing `runners` loads nothing from
+`core`, `workflow`, `server`, `eval`, `telemetry`, `opik`, or vendor SDKs.
+
+`LegacyDispatchBackend` is deliberately **not** re-exported here: its public
+path is `from runners.legacy import LegacyDispatchBackend`. This keeps
+`from runners import *` from pulling in the legacy execution stack.
 """
 
 from __future__ import annotations
 
+from runners.base import (
+    RunnerBackend,
+    RunnerBackendError,
+    RunnerInvocationError,
+    UnsupportedInvocationError,
+)
 from runners.compat import from_completed_process
 from runners.models import (
     AgentContractError,
@@ -28,6 +38,10 @@ __all__ = [
     "FailoverMetadata",
     "MetadataSerializationError",
     "RetryMetadata",
+    "RunnerBackend",
+    "RunnerBackendError",
+    "RunnerInvocationError",
     "TraceContext",
+    "UnsupportedInvocationError",
     "from_completed_process",
 ]

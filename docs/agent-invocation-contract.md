@@ -143,13 +143,13 @@ real hop from `claude` to `codex`.
 
 ## Relationship to `run_agent_cmd` (why dispatch is unchanged)
 
-`run_agent_cmd` still returns `str`. Prompt 12 introduces only the data
-shapes; a **later** prompt will place them behind a `RunnerBackend`
-abstraction and wire dispatch to produce an `AgentResult`. Keeping dispatch
-untouched here isolates the contract change from any behavioral change to
-production runners.
+`run_agent_cmd` still returns `str`. Prompt 12 introduced only the data
+shapes; Prompt 13 places them behind the `RunnerBackend` abstraction (see
+`docs/runner-backend-interface.md`) via `LegacyDispatchBackend`, which
+delegates to `run_agent_cmd` without changing it. Keeping dispatch untouched
+isolates the contract change from any behavioral change to production runners.
 
-### Current-code mapping (for the future `RunnerBackend` prompt)
+### Current-code mapping (realized by the `RunnerBackend` seam)
 
 - `run_agent_cmd` inputs → `AgentInvocation`: `runner` → `runner`, `prompt` →
   `prompt`, `agent` → `agent`, kwarg `runner_model` → `model`, `repo` →
@@ -169,7 +169,8 @@ production runners.
 
 ## Non-goals / deferred work
 
-Out of scope for this prompt: `RunnerBackend`, a runner registry, adapting
+Out of scope for this prompt: a runner registry, adapting
 Claude/Codex/Gemini/Copilot/omp/openai-compat, changing `run_agent_cmd`'s
 return type, `ArtifactRef`, new production lifecycle events, and any
-prompt/response hashing beyond existing fields.
+prompt/response hashing beyond existing fields. The `RunnerBackend` seam
+itself arrives in Prompt 13 (`docs/runner-backend-interface.md`).
