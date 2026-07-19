@@ -151,6 +151,6 @@ working is test-only, via the injectable adapter.
 ## Deferred to later prompts
 
 * **Stage contracts** (typed per-stage inputs/outputs, `StageResult`) —
-  Prompt 9.
+  Prompt 9. See `docs/workflow-stages.md`.
 * **CLI / eval / server migration** onto `WorkflowRunner` — Prompt 10.
 * **Runner-backend and artifact-contract redesign** — v0.4.
