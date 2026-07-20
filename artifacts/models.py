@@ -213,9 +213,10 @@ def _canonical_scalar(value: Any) -> Any:
     if isinstance(value, bool):
         return bool(value)
     if isinstance(value, int):
-        # Base-16 repr via the built-in `int` method bypasses any overridden
-        # `__int__`/`__repr__` on the subclass.
-        return int(int.__repr__(value), 10)
+        # `int.__index__` returns the exact underlying integer payload without
+        # calling any overridden `__int__`, `__index__`, or `__repr__` on the
+        # subclass, and works for arbitrarily large values.
+        return int.__index__(value)
     if isinstance(value, float):
         # `float.hex`/`float.fromhex` round-trips the exact value, preserving
         # `-0.0`, and cannot be intercepted by an overridden `__float__`.

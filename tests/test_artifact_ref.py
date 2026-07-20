@@ -1136,3 +1136,35 @@ def test_evil_scalar_caller_object_not_retained():
     )
     assert ref.metadata["v"] is not caller_value
     assert type(ref.metadata["v"]) is int
+
+
+# ---------------------------------------------------------------------------
+# 25. int.__index__ extraction: overridden hook + large payload (Prompt 18R-A)
+# ---------------------------------------------------------------------------
+
+
+class _EvilIndexInt(int):
+    def __index__(self):
+        return 999
+
+
+def test_overridden_index_hook_does_not_change_stored_value():
+    result = ArtifactRef(
+        artifact_type="x",
+        path="p",
+        metadata={"v": _EvilIndexInt(7)},
+    ).to_dict()
+    assert result["metadata"]["v"] == 7
+    assert type(result["metadata"]["v"]) is int
+
+
+def test_large_int_subclass_canonicalizes_without_decimal_conversion():
+    value = 10**5000
+    ref = ArtifactRef(
+        artifact_type="x",
+        path="p",
+        metadata={"v": type("_BigInt", (int,), {})(value)},
+    )
+    stored = ref.metadata["v"]
+    assert type(stored) is int
+    assert stored == value
