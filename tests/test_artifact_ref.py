@@ -642,3 +642,185 @@ def test_tuple_normalization_does_not_alias_caller_containers():
     ref = ArtifactRef(artifact_type="plan", path="p", metadata=caller)
     inner.append(3)
     assert ref.metadata == {"seq": [[1, 2]]}
+
+
+# --------------------------------------------------------------------------
+# 21. Deep semantic immutability of metadata (Prompt 18R-A)
+# --------------------------------------------------------------------------
+
+
+def test_top_level_metadata_item_assignment_rejected():
+    ref = ArtifactRef(artifact_type="plan", path="p", metadata={"k": "v"})
+    with pytest.raises(TypeError):
+        ref.metadata["new"] = 1  # type: ignore[index]
+    assert ref.metadata == {"k": "v"}
+
+
+def test_top_level_metadata_deletion_rejected():
+    ref = ArtifactRef(artifact_type="plan", path="p", metadata={"k": "v"})
+    with pytest.raises(TypeError):
+        del ref.metadata["k"]  # type: ignore[misc]
+    assert ref.metadata == {"k": "v"}
+
+
+def test_nested_mapping_mutation_is_harmless():
+    ref = ArtifactRef(
+        artifact_type="plan", path="p", metadata={"nested": {"value": 1}}
+    )
+    nested = ref.metadata["nested"]
+    nested["value"] = 2
+    nested["added"] = True
+    assert ref.metadata["nested"] == {"value": 1}
+    assert ref.to_dict()["metadata"] == {"nested": {"value": 1}}
+
+
+def test_nested_sequence_append_is_harmless():
+    ref = ArtifactRef(
+        artifact_type="plan", path="p", metadata={"sequence": [1, 2]}
+    )
+    seq = ref.metadata["sequence"]
+    seq.append(3)
+    assert ref.metadata["sequence"] == [1, 2]
+    assert ref.to_dict()["metadata"] == {"sequence": [1, 2]}
+
+
+def test_nested_sequence_item_replacement_is_harmless():
+    ref = ArtifactRef(
+        artifact_type="plan", path="p", metadata={"sequence": [1, 2]}
+    )
+    seq = ref.metadata["sequence"]
+    seq[0] = 99
+    assert ref.metadata["sequence"] == [1, 2]
+
+
+def test_nested_sequence_deletion_is_harmless():
+    ref = ArtifactRef(
+        artifact_type="plan", path="p", metadata={"sequence": [1, 2, 3]}
+    )
+    seq = ref.metadata["sequence"]
+    del seq[0]
+    assert ref.metadata["sequence"] == [1, 2, 3]
+
+
+def test_mapping_inside_nested_sequence_mutation_is_harmless():
+    ref = ArtifactRef(
+        artifact_type="plan", path="p", metadata={"rows": [{"k": 1}]}
+    )
+    row = ref.metadata["rows"][0]
+    row["k"] = 2
+    row["added"] = True
+    assert ref.metadata["rows"] == [{"k": 1}]
+
+
+def test_view_getitem_returns_fresh_detached_values():
+    ref = ArtifactRef(
+        artifact_type="plan", path="p", metadata={"nested": {"values": [1, 2]}}
+    )
+    first = ref.metadata["nested"]
+    second = ref.metadata["nested"]
+    assert first == second
+    assert first is not second
+    first["values"].append(3)
+    assert ref.metadata["nested"]["values"] == [1, 2]
+
+
+def test_caller_owned_nested_list_mutation_after_construction_is_isolated():
+    caller_list = [1, 2]
+    ref = ArtifactRef(
+        artifact_type="plan", path="p", metadata={"seq": caller_list}
+    )
+    caller_list.append(3)
+    caller_list[0] = 99
+    assert ref.metadata["seq"] == [1, 2]
+
+
+def test_caller_owned_invalid_mutable_leaf_is_not_retained():
+    invalid = bytearray(b"a")
+    ref = ArtifactRef(
+        artifact_type="plan", path="p", metadata={"invalid": invalid}
+    )
+    invalid.extend(b"bcd")
+    # The reference never holds the caller's mutable object: reading it does not
+    # return the bytearray, and serialization still rejects it by original type.
+    with pytest.raises(ArtifactMetadataSerializationError):
+        _ = ref.metadata["invalid"]
+    with pytest.raises(ArtifactMetadataSerializationError) as excinfo:
+        ref.to_dict()
+    assert "bytearray" in str(excinfo.value)
+
+
+def test_metadata_view_is_not_a_dict_but_compares_by_value():
+    ref = ArtifactRef(
+        artifact_type="plan", path="p", metadata={"coords": [1, 2]}
+    )
+    assert not isinstance(ref.metadata, dict)
+    assert ref.metadata == {"coords": [1, 2]}
+    assert ref.metadata != {"coords": [1, 3]}
+
+
+def test_metadata_view_is_unhashable_like_dict():
+    ref = ArtifactRef(
+        artifact_type="plan", path="p", metadata={"coords": [1, 2]}
+    )
+    with pytest.raises(TypeError):
+        hash(ref.metadata)
+
+
+def test_to_dict_metadata_uses_exact_plain_container_types():
+    ref = ArtifactRef(
+        artifact_type="plan",
+        path="p",
+        metadata={"nested": {"values": [1, 2]}},
+    )
+    result = ref.to_dict()
+    assert type(result["metadata"]) is dict
+    assert type(result["metadata"]["nested"]) is dict
+    assert type(result["metadata"]["nested"]["values"]) is list
+
+
+def test_cycle_construction_succeeds_and_serialization_rejects_unchanged():
+    cycle: dict = {}
+    cycle["self"] = cycle
+    ref = ArtifactRef(artifact_type="plan", path="p", metadata=cycle)
+    with pytest.raises(ArtifactMetadataSerializationError):
+        ref.to_dict()
+    with pytest.raises(ArtifactMetadataSerializationError):
+        ref.to_json()
+
+
+def test_shared_acyclic_value_not_mistaken_for_cycle():
+    shared = {"value": 1}
+    ref = ArtifactRef(
+        artifact_type="plan",
+        path="p",
+        metadata={"left": shared, "right": shared},
+    )
+    assert ref.to_dict()["metadata"] == {
+        "left": {"value": 1},
+        "right": {"value": 1},
+    }
+
+
+def test_to_json_output_is_deterministic_after_immutability_change():
+    ref = ArtifactRef(
+        artifact_type="plan",
+        path="p",
+        metadata={"b": 2, "a": {"y": [1, 2], "x": 1}},
+    )
+    assert ref.to_json() == ref.to_json()
+    assert ref.to_json() == (
+        '{"artifact_ref_schema_version": "1", "artifact_type": "plan", '
+        '"metadata": {"a": {"x": 1, "y": [1, 2]}, "b": 2}, "path": "p"}'
+    )
+
+
+def test_from_dict_round_trip_preserves_equality_after_immutability_change():
+    import json
+
+    ref = ArtifactRef(
+        artifact_type="plan",
+        path="p",
+        metadata={"coords": (1, 2), "nested": {"rows": [("a", "b")]}},
+    )
+    assert ArtifactRef.from_dict(ref.to_dict()) == ref
+    assert ArtifactRef.from_dict(json.loads(ref.to_json())) == ref

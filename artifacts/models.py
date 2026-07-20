@@ -37,10 +37,11 @@ from __future__ import annotations
 import json
 import math
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from enum import Enum
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 ARTIFACT_REF_SCHEMA_VERSION = "1"
 SUPPORTED_ARTIFACT_REF_SCHEMA_VERSIONS = frozenset({"1"})
@@ -86,12 +87,43 @@ class ArtifactMetadataSerializationError(ValueError):
 _HEX64 = re.compile(r"[0-9a-f]{64}")
 
 
-def _detach_metadata(value: Any, _memo: dict[int, Any]) -> Any:
-    """Recursively copy caller-owned containers, tuples -> lists.
+class _UnsupportedMetadataValue:
+    """Immutable stand-in for a caller leaf that JSON cannot encode.
 
-    Memoized by object identity so cyclic or shared input copies in bounded
-    time. Unsupported leaves are left in place for lazy serialization
-    rejection. Performs no I/O.
+    Stored in the private backing graph in place of the original object so the
+    caller's mutable value (e.g. ``bytearray`` or an arbitrary instance) is
+    never retained by the `ArtifactRef`. Records only the original type name so
+    `_strict_jsonable` can raise the same actionable serialization error at
+    serialization time, without ever holding or deep-copying the caller object.
+    """
+
+    __slots__ = ("original_type",)
+
+    def __init__(self, original_type: str):
+        self.original_type = original_type
+
+    def __eq__(self, other: Any) -> bool:
+        return (
+            isinstance(other, _UnsupportedMetadataValue)
+            and self.original_type == other.original_type
+        )
+
+    def __hash__(self) -> int:
+        return hash((_UnsupportedMetadataValue, self.original_type))
+
+    def __repr__(self) -> str:
+        return f"_UnsupportedMetadataValue({self.original_type!r})"
+
+
+def _build_backing(value: Any, _memo: dict[int, Any]) -> Any:
+    """Recursively copy caller input into a fresh private backing graph.
+
+    Mappings/sequences become fresh `dict`/`list` (tuples canonicalized to
+    lists), memoized by object identity so shared and cyclic input copy in
+    bounded time. JSON-supported leaves pass through unchanged; any other leaf
+    is replaced by an immutable `_UnsupportedMetadataValue` marker so the
+    caller's object is never retained. Validates nothing and performs no I/O —
+    strict JSON checks stay lazy in `to_dict()`.
     """
     if isinstance(value, Mapping):
         if id(value) in _memo:
@@ -99,7 +131,7 @@ def _detach_metadata(value: Any, _memo: dict[int, Any]) -> Any:
         new_map: dict[Any, Any] = {}
         _memo[id(value)] = new_map
         for key, item in value.items():
-            new_map[key] = _detach_metadata(item, _memo)
+            new_map[key] = _build_backing(item, _memo)
         return new_map
     if isinstance(value, (list, tuple)):
         if id(value) in _memo:
@@ -107,9 +139,91 @@ def _detach_metadata(value: Any, _memo: dict[int, Any]) -> Any:
         new_seq: list[Any] = []
         _memo[id(value)] = new_seq
         for item in value:
-            new_seq.append(_detach_metadata(item, _memo))
+            new_seq.append(_build_backing(item, _memo))
         return new_seq
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    return _UnsupportedMetadataValue(type(value).__name__)
+
+
+def _detach_public(value: Any, _active: set[int]) -> Any:
+    """Return a fresh detached plain copy of a backing-graph value.
+
+    Used by the read-only metadata view so callers receive independent
+    `dict`/`list` copies (mutating them cannot reach the backing graph).
+    `_active` is a recursion-stack id-set: a re-entered container is a cycle,
+    and an `_UnsupportedMetadataValue` marker is an unserializable leaf — both
+    raise `ArtifactMetadataSerializationError` rather than expose the backing
+    graph or return a retained invalid object.
+    """
+    if isinstance(value, _UnsupportedMetadataValue):
+        raise ArtifactMetadataSerializationError(
+            f"metadata: value of type {value.original_type} is not JSON-serializable"
+        )
+    if isinstance(value, dict):
+        if id(value) in _active:
+            raise ArtifactMetadataSerializationError(
+                "metadata contains a reference cycle"
+            )
+        _active.add(id(value))
+        out: dict[Any, Any] = {
+            key: _detach_public(item, _active) for key, item in value.items()
+        }
+        _active.discard(id(value))
+        return out
+    if isinstance(value, list):
+        if id(value) in _active:
+            raise ArtifactMetadataSerializationError(
+                "metadata contains a reference cycle"
+            )
+        _active.add(id(value))
+        out_seq = [_detach_public(item, _active) for item in value]
+        _active.discard(id(value))
+        return out_seq
     return value
+
+
+class _ReadOnlyMetadata(Mapping):
+    """Read-only `Mapping` view over an `ArtifactRef`'s private backing graph.
+
+    Exposes no assignment or deletion API, so `ref.metadata[k] = v` and
+    `del ref.metadata[k]` raise `TypeError`. `__getitem__` returns a freshly
+    detached plain `dict`/`list` (or leaf), so mutating a returned value cannot
+    reach the reference. Equality is value-based over the backing graph; the
+    view is unhashable, exactly as the plain `dict` it replaces was.
+    """
+
+    __slots__ = ("_graph",)
+
+    def __init__(self, graph: dict[Any, Any]):
+        self._graph = graph
+
+    def __getitem__(self, key: Any) -> Any:
+        return _detach_public(self._graph[key], set())
+
+    def __iter__(self):
+        return iter(self._graph)
+
+    def __len__(self) -> int:
+        return len(self._graph)
+
+    def __eq__(self, other: Any) -> Any:
+        if isinstance(other, _ReadOnlyMetadata):
+            return self._graph == other._graph
+        if isinstance(other, Mapping):
+            return self._graph == dict(other)
+        return NotImplemented
+
+    def __ne__(self, other: Any) -> Any:
+        result = self.__eq__(other)
+        if result is NotImplemented:
+            return result
+        return not result
+
+    __hash__ = None
+
+    def __repr__(self) -> str:
+        return f"_ReadOnlyMetadata({self._graph!r})"
 
 
 def _strict_jsonable(value: Any, *, where: str, _active: set[int]) -> Any:
@@ -119,6 +233,10 @@ def _strict_jsonable(value: Any, *, where: str, _active: set[int]) -> Any:
     reference cycles, each with an actionable metadata location. Shared
     non-cyclic references are permitted.
     """
+    if isinstance(value, _UnsupportedMetadataValue):
+        raise ArtifactMetadataSerializationError(
+            f"{where}: value of type {value.original_type} is not JSON-serializable"
+        )
     if value is None or isinstance(value, (bool, int, str)):
         return value
     if isinstance(value, float):
@@ -176,7 +294,8 @@ class ArtifactRef:
     `path` strings are coerced to `Path` without resolution; `checksum_sha256`
     is validated but never computed. `consumer_stages` is a tri-state:
     `None` (unknown), `()` (explicitly no consumers), or an ordered tuple of
-    stage names. `metadata` is defensively copied; its JSON-ability is checked
+    stage names. `metadata` is captured into a private backing graph and
+    exposed as a read-only, deeply immutable view; its JSON-ability is checked
     lazily at serialization time.
     """
 
@@ -328,15 +447,19 @@ class ArtifactRef:
                     f"{self.checksum_sha256!r}"
                 )
 
-        # 11. metadata — must be a Mapping; recursively detached to fresh
-        # dicts/lists (tuples canonicalized to lists) so caller mutation can
-        # never leak in. JSON-ability is verified lazily in to_dict().
+        # 11. metadata — must be a Mapping; recursively copied into a private
+        # backing graph (fresh dicts/lists, tuples canonicalized to lists,
+        # unsupported leaves captured as immutable markers) so no caller-owned
+        # object is retained. The public field holds a read-only Mapping view
+        # over that graph; JSON-ability is verified lazily in to_dict().
         if not isinstance(self.metadata, Mapping):
             errors.append(
                 f"metadata: must be a mapping, got {type(self.metadata).__name__}"
             )
         else:
-            object.__setattr__(self, "metadata", _detach_metadata(self.metadata, {}))
+            object.__setattr__(
+                self, "metadata", _ReadOnlyMetadata(_build_backing(self.metadata, {}))
+            )
 
         if errors:
             raise ArtifactRefValidationError(errors)
@@ -374,7 +497,7 @@ class ArtifactRef:
             result["checksum_sha256"] = self.checksum_sha256
         if self.metadata:
             result["metadata"] = _strict_jsonable(
-                self.metadata, where="ArtifactRef.metadata", _active=set()
+                self.metadata._graph, where="ArtifactRef.metadata", _active=set()
             )
         return result
 

@@ -40,7 +40,7 @@ Also exported: `ArtifactRefValidationError`,
 | `artifact_schema_version` | `str \| None` | Optional. Must pair with `artifact_schema`. |
 | `validation_status` | `ArtifactValidationStatus \| None` | Optional. Enum or resolvable string; garbage rejected; absence stays `None`. |
 | `checksum_sha256` | `str \| None` | Optional. Exactly 64 lowercase hex chars; **never computed** by this contract. |
-| `metadata` | `Mapping[str, Any]` | Free-form. Must be a `Mapping`; recursively detached into fresh dicts/lists (tuples canonicalized to lists at every depth) so caller mutation cannot leak in. Full JSON-ability — string keys, finite floats, acyclic, supported leaves only — is checked at serialization. |
+| `metadata` | `Mapping[str, Any]` | Free-form. Must be a `Mapping`; captured into a private detached backing graph (tuples canonicalized to lists at every depth) and exposed as a **read-only, deeply immutable** `Mapping` view. Caller input cannot leak in, and callers cannot mutate the ref through `ref.metadata` (top-level or nested). Full JSON-ability — string keys, finite floats, acyclic, supported leaves only — is checked lazily at serialization. |
 | `artifact_ref_schema_version` | `str` | Contract version. Defaults to `"1"`; must be in `SUPPORTED_ARTIFACT_REF_SCHEMA_VERSIONS`. |
 
 ### `ArtifactValidationStatus`
@@ -108,10 +108,18 @@ point at the same bytes, and it never resolves, reads, or stats either.
 
 ## Metadata semantics
 
-- **Detachment.** At construction, `metadata` mappings and sequences are
-  recursively copied into fresh `dict`s/`list`s. Caller-owned containers are
-  never retained, so later mutation of the input (at any depth) cannot alter a
-  constructed `ArtifactRef`.
+- **Detached backing graph.** At construction, `metadata` mappings and
+  sequences are copied into a **private** backing graph of fresh `dict`s/`list`s
+  (memoized by object identity, so cyclic and shared inputs are tolerated).
+  Caller-owned containers are never retained, so later mutation of the input (at
+  any depth) cannot alter a constructed `ArtifactRef`.
+- **Read-only view.** The `metadata` field is a `collections.abc.Mapping` view
+  over the private backing graph. It is **deeply immutable to callers**:
+  item assignment/deletion on `ref.metadata` raises `TypeError`, and each
+  `ref.metadata[key]` access returns a **fresh detached copy**, so mutating a
+  value read out of the view (at any nesting depth) never changes the ref. The
+  view is not a `dict` but compares by value (`ref.metadata == {...}`) and is
+  unhashable, exactly as a plain metadata `dict` would be.
 - **Tuple canonicalization.** Tuples are normalized to lists at every depth, so
   `(1, 2)` and `[1, 2]` are equivalent inputs. This is what makes tuple-bearing
   metadata survive a dict or JSON round trip to `ArtifactRef` equality
@@ -120,13 +128,19 @@ point at the same bytes, and it never resolves, reads, or stats either.
   serialization with `ArtifactMetadataSerializationError` naming the offending
   location; ordinary finite floats serialize unchanged.
 - **Acyclic only.** Reference cycles (direct or via mixed dict/list nesting) are
-  rejected with `ArtifactMetadataSerializationError` — never a `RecursionError`.
-  Shared **non-cyclic** substructures (the same child referenced from two keys)
-  remain valid and serialize under each path.
-- **Fresh output.** `to_dict()` returns a freshly detached nested structure;
-  mutating one result never affects the ref or any other `to_dict()` result.
-- **No stringification.** Unsupported leaf values and non-string dict keys are
-  rejected with an actionable location, never silently stringified.
+  constructed successfully and rejected **lazily** at serialization with
+  `ArtifactMetadataSerializationError` — never a `RecursionError`. Shared
+  **non-cyclic** substructures (the same child referenced from two keys) remain
+  valid and serialize under each path.
+- **Fresh output.** `to_dict()` serializes the private backing graph into a
+  freshly detached nested structure; mutating one result never affects the ref
+  or any other `to_dict()` result.
+- **No stringification, unsupported leaves not retained.** Unsupported leaf
+  values are replaced in the backing graph by a private immutable marker (the
+  caller's mutable object is never held), and both reading such a value through
+  the view and serializing it raise `ArtifactMetadataSerializationError` naming
+  the original leaf type; non-string dict keys are likewise rejected with an
+  actionable location, never silently stringified.
 - Construction stays lazy and side-effect-free: detachment validates nothing
   and touches no filesystem, subprocess, network, env, or logging; all strict
   checks happen at serialization time.
