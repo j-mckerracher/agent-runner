@@ -18,6 +18,9 @@ truststore
 python-dotenv
 google-genai
 
+# Read-only YAML artifact loaders (artifacts/payloads.py) import PyYAML lazily.
+PyYAML
+
 # Local API + GUI server (server/ + gui/, started via `python3 server_main.py`)
 fastapi
 uvicorn[standard]
