@@ -199,12 +199,32 @@ class _CycleMarker(_Immutable):
 _CYCLE = _CycleMarker()
 
 
+def _canonical_scalar(value: Any) -> Any:
+    """Return an exact built-in for an accepted JSON scalar, detaching subclass
+    instances (e.g. a mutable `int`/`str`/`float` subclass) so no caller-owned
+    object is retained. Order matters: `bool` is an `int` subclass and must be
+    checked first. Returns `NotImplemented` for anything not a JSON scalar.
+    """
+    if value is None or type(value) in (bool, int, float, str):
+        return value
+    if isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float):
+        return float(value)
+    if isinstance(value, str):
+        return str(value)
+    return NotImplemented
+
+
 def _canonical_key(key: Any) -> Any:
-    """Return a canonical mapping key: strings kept, anything else replaced by
-    an immutable `_UnsupportedKey` marker so the caller's key is never retained.
+    """Return a canonical mapping key: strings become an exact detached `str`,
+    anything else is replaced by an immutable `_UnsupportedKey` marker so the
+    caller's key object is never retained.
     """
     if isinstance(key, str):
-        return key
+        return str(key)
     return _UnsupportedKey(type(key).__name__)
 
 
@@ -220,8 +240,9 @@ def _canonicalize(value: Any, _memo: dict[int, Any], _active: set[int]) -> Any:
     keeping the result a finite tree. Validates nothing and performs no I/O —
     strict JSON checks stay lazy in `to_dict()`.
     """
-    if value is None or isinstance(value, (bool, int, float, str)):
-        return value
+    scalar = _canonical_scalar(value)
+    if scalar is not NotImplemented:
+        return scalar
     if isinstance(value, Mapping):
         vid = id(value)
         if vid in _active:

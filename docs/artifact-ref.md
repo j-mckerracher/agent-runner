@@ -127,10 +127,19 @@ point at the same bytes, and it never resolves, reads, or stats either.
   (`ref.metadata == {...}`) and is unhashable, exactly as a plain metadata
   `dict` would be.
 - **Caller keys are never retained.** Mapping keys are canonicalized: string
-  keys are kept; any non-string key is replaced by an immutable
+  keys are detached into an exact built-in `str` (subclasses are never held);
+  any non-string key is replaced by an immutable
   `_UnsupportedKey` marker recording only the original type name. The caller's
-  key object is never held or exposed (iteration yields the marker, not the
-  caller object), and serialization still rejects the non-string key lazily.
+  key object is never held or exposed (iteration yields the exact `str` or the
+  marker, not the caller object), and serialization still rejects the
+  non-string key lazily.
+- **Scalar subclasses are detached.** Accepted JSON scalars are canonicalized
+  into exact built-ins — `str`/`int`/`float` subclasses become plain
+  `str`/`int`/`float`, `bool` stays `bool` (checked before `int`), and `None`
+  stays `None`. A mutable scalar subclass is therefore never retained: mutating
+  its attributes after construction cannot change `ArtifactRef` equality, and
+  `to_dict()` returns exact built-in leaves rather than aliasing the caller
+  object.
 - **Tuple canonicalization.** Tuples are normalized to lists at every depth, so
   `(1, 2)` and `[1, 2]` are equivalent inputs. This is what makes tuple-bearing
   metadata survive a dict or JSON round trip to `ArtifactRef` equality

@@ -942,3 +942,119 @@ def test_mutating_caller_non_string_key_after_construction_is_isolated():
     exposed = next(iter(ref.metadata))
     assert exposed is not caller_key
     assert not hasattr(exposed, "tag")
+
+
+# ---------------------------------------------------------------------------
+# 23. Scalar subclasses are canonicalized to exact builtins (Prompt 18R-A repair)
+# ---------------------------------------------------------------------------
+
+
+class _TaggedInt(int):
+    def __new__(cls, value, tag):
+        obj = int.__new__(cls, value)
+        obj.tag = tag
+        return obj
+
+    def __eq__(self, other):
+        if isinstance(other, _TaggedInt):
+            return int(self) == int(other) and self.tag == other.tag
+        return int.__eq__(self, other)
+
+    __hash__ = int.__hash__
+
+
+class _TaggedStr(str):
+    def __new__(cls, value, tag):
+        obj = str.__new__(cls, value)
+        obj.tag = tag
+        return obj
+
+
+class _TaggedFloat(float):
+    def __new__(cls, value, tag):
+        obj = float.__new__(cls, value)
+        obj.tag = tag
+        return obj
+
+
+def test_mutable_scalar_subclass_is_not_retained():
+    caller_value = _TaggedInt(7, "a")
+    ref = ArtifactRef(
+        artifact_type="x", path="p", metadata={"value": caller_value}
+    )
+    stored_value = ref.metadata["value"]
+    assert stored_value is not caller_value
+    assert type(stored_value) is int
+    assert stored_value == 7
+
+
+def test_to_dict_returns_exact_builtin_scalar_leaves():
+    ref = ArtifactRef(
+        artifact_type="x",
+        path="p",
+        metadata={
+            "text": _TaggedStr("hi", "t"),
+            "count": _TaggedInt(3, "c"),
+            "ratio": _TaggedFloat(1.5, "r"),
+        },
+    )
+    result = ref.to_dict()
+    assert type(result["metadata"]["text"]) is str
+    assert type(result["metadata"]["count"]) is int
+    assert type(result["metadata"]["ratio"]) is float
+
+
+def test_to_dict_does_not_alias_caller_scalar_subclass():
+    caller_count = _TaggedInt(42, "c")
+    ref = ArtifactRef(
+        artifact_type="x", path="p", metadata={"count": caller_count}
+    )
+    result = ref.to_dict()
+    assert result["metadata"]["count"] is not caller_count
+    assert type(result["metadata"]["count"]) is int
+
+
+def test_mutating_caller_scalar_subclass_does_not_change_equality():
+    caller_value = _TaggedInt(7, "a")
+    ref_before = ArtifactRef(
+        artifact_type="x", path="p", metadata={"value": caller_value}
+    )
+    equivalent_ref = ArtifactRef(
+        artifact_type="x", path="p", metadata={"value": 7}
+    )
+    assert ref_before == equivalent_ref
+    caller_value.tag = "changed"
+    assert ref_before == equivalent_ref
+
+
+def test_bool_scalar_subclass_path_preserves_bool():
+    # bool is an int subclass; ordering must keep it a bool.
+    ref = ArtifactRef(
+        artifact_type="x", path="p", metadata={"flag": True, "n": 1}
+    )
+    result = ref.to_dict()
+    assert result["metadata"]["flag"] is True
+    assert type(result["metadata"]["n"]) is int
+
+
+def test_string_subclass_key_is_detached():
+    caller_key = _TaggedStr("k", "t")
+    ref = ArtifactRef(
+        artifact_type="x", path="p", metadata={caller_key: "v"}
+    )
+    exposed_key = next(iter(ref.metadata))
+    assert exposed_key is not caller_key
+    assert type(exposed_key) is str
+    assert exposed_key == "k"
+
+
+def test_serialization_keys_are_exact_strings():
+    ref = ArtifactRef(
+        artifact_type="x",
+        path="p",
+        metadata={_TaggedStr("a", "t"): 1, "b": 2},
+    )
+    result = ref.to_dict()
+    for key in result["metadata"]:
+        assert type(key) is str
+    assert type(next(iter(result["metadata"]))) is str
