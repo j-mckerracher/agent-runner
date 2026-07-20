@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from core.opik_integration import call_evaluator_sdk
@@ -136,10 +137,11 @@ class EvaluatorSdkModelMatrixTests(unittest.TestCase):
                 mock_client = MagicMock()
                 mock_client.models.generate_content.return_value = mock_response
 
+                fake_genai = SimpleNamespace(Client=MagicMock(return_value=mock_client))
                 with (
                     patch("core.opik_integration.build_runner_agent_instructions", return_value="SYSTEM"),
                     patch("core.opik_integration.inject_file_contents", return_value=""),
-                    patch("core.opik_integration.google_genai.Client", return_value=mock_client),
+                    patch("core.opik_integration._load_google_genai", return_value=fake_genai),
                 ):
                     result = call_evaluator_sdk(
                         context="Evaluate the report.",

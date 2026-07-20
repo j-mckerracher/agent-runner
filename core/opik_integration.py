@@ -22,6 +22,7 @@ import logging
 import os
 import re
 import time
+from importlib import import_module
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -38,10 +39,6 @@ except ModuleNotFoundError:  # Optional until the Anthropic evaluator path is se
     anthropic = SimpleNamespace(Anthropic=None)
 import httpx
 from .opik_compat import opik_context
-try:
-    from google import genai as google_genai
-except ModuleNotFoundError:  # Optional until the Gemini evaluator path is selected.
-    google_genai = SimpleNamespace(Client=None)
 from .ui_trace_bridge import track_with_ui
 from .run_cmds import build_runner_agent_instructions, run_codex_cmd, run_copilot_cmd, run_openai_compat_text
 from .runner_models import is_copilot_runner, _provider_for_runner
@@ -49,6 +46,29 @@ from .runner_models import is_copilot_runner, _provider_for_runner
 logger = logging.getLogger(__name__)
 
 RUNNER_ROOT = Path(__file__).resolve().parent.parent
+
+
+class OptionalIntegrationUnavailableError(RuntimeError):
+    """Raised when a selected optional integration is not installed."""
+
+
+def _load_google_genai():
+    """Import the optional Google GenAI SDK lazily, only on the Gemini path.
+
+    Importing this module (or unrelated workflow modules) must never require
+    the optional ``google.genai`` package. Only a genuinely missing SDK is
+    reported as an actionable optional-dependency error; an internal import
+    failure inside an installed SDK (or any other ImportError) propagates so a
+    damaged installation or programming error is not silently mislabeled.
+    """
+    try:
+        return import_module("google.genai")
+    except ModuleNotFoundError as exc:
+        if exc.name not in {"google", "google.genai"}:
+            raise
+        raise OptionalIntegrationUnavailableError(
+            "Gemini evaluation requires the optional google.genai package"
+        ) from exc
 
 _MODEL_PRICING: dict[str, tuple[float, float]] = {
     "claude-sonnet-4-6": (3.0, 15.0),
@@ -244,8 +264,7 @@ def call_evaluator_sdk(
         return text
 
     elif runner == "gemini":
-        if getattr(google_genai, "Client", None) is None:
-            raise RuntimeError("Google GenAI SDK is not installed; install requirements.txt to use the gemini evaluator path")
+        google_genai = _load_google_genai()
         if runner_model and "gemini" in runner_model:
             gemini_model = runner_model
         elif model and "gemini" in model:
