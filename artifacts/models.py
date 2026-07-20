@@ -202,29 +202,39 @@ _CYCLE = _CycleMarker()
 def _canonical_scalar(value: Any) -> Any:
     """Return an exact built-in for an accepted JSON scalar, detaching subclass
     instances (e.g. a mutable `int`/`str`/`float` subclass) so no caller-owned
-    object is retained. Order matters: `bool` is an `int` subclass and must be
-    checked first. Returns `NotImplemented` for anything not a JSON scalar.
+    object is retained. The underlying built-in payload is extracted **without**
+    calling overridable conversion hooks (`__int__`/`__float__`/`__str__`), so a
+    subclass cannot change the stored value or wire output. Order matters:
+    `bool` is an `int` subclass and must be checked first. Returns
+    `NotImplemented` for anything not a JSON scalar.
     """
     if value is None or type(value) in (bool, int, float, str):
         return value
     if isinstance(value, bool):
         return bool(value)
     if isinstance(value, int):
-        return int(value)
+        # Base-16 repr via the built-in `int` method bypasses any overridden
+        # `__int__`/`__repr__` on the subclass.
+        return int(int.__repr__(value), 10)
     if isinstance(value, float):
-        return float(value)
+        # `float.hex`/`float.fromhex` round-trips the exact value, preserving
+        # `-0.0`, and cannot be intercepted by an overridden `__float__`.
+        return float.fromhex(float.hex(value))
     if isinstance(value, str):
-        return str(value)
+        # Full-slice via the built-in `str` method bypasses any overridden
+        # `__str__`/`__getitem__` on the subclass.
+        return str.__getitem__(value, slice(None))
     return NotImplemented
 
 
 def _canonical_key(key: Any) -> Any:
-    """Return a canonical mapping key: strings become an exact detached `str`,
-    anything else is replaced by an immutable `_UnsupportedKey` marker so the
-    caller's key object is never retained.
+    """Return a canonical mapping key: strings become an exact detached `str`
+    (extracted via the built-in `str` slice, bypassing any overridden
+    `__str__`/`__getitem__`), anything else is replaced by an immutable
+    `_UnsupportedKey` marker so the caller's key object is never retained.
     """
     if isinstance(key, str):
-        return str(key)
+        return str.__getitem__(key, slice(None))
     return _UnsupportedKey(type(key).__name__)
 
 

@@ -9,6 +9,7 @@ safety, unsupported contract version, aggregated errors, and defensive copying.
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import pytest
@@ -1058,3 +1059,80 @@ def test_serialization_keys_are_exact_strings():
     for key in result["metadata"]:
         assert type(key) is str
     assert type(next(iter(result["metadata"]))) is str
+
+
+# ---------------------------------------------------------------------------
+# 24. Overridden conversion hooks cannot change stored value (Prompt 18R-A)
+# ---------------------------------------------------------------------------
+
+
+class _EvilInt(int):
+    def __int__(self):
+        return 999
+
+    def __repr__(self):
+        return "999"
+
+
+class _EvilFloat(float):
+    def __float__(self):
+        return 9.5
+
+
+class _EvilStr(str):
+    def __str__(self):
+        return "EVIL"
+
+    def __getitem__(self, item):
+        return "EVIL"
+
+
+def test_evil_int_hook_does_not_change_stored_value():
+    result = ArtifactRef(
+        artifact_type="x", path="p", metadata={"v": _EvilInt(7)}
+    ).to_dict()
+    assert result["metadata"]["v"] == 7
+    assert type(result["metadata"]["v"]) is int
+
+
+def test_evil_float_hook_does_not_change_stored_value():
+    result = ArtifactRef(
+        artifact_type="x", path="p", metadata={"v": _EvilFloat(1.5)}
+    ).to_dict()
+    assert result["metadata"]["v"] == 1.5
+    assert type(result["metadata"]["v"]) is float
+
+
+def test_evil_str_hook_does_not_change_stored_value():
+    result = ArtifactRef(
+        artifact_type="x", path="p", metadata={"v": _EvilStr("hello")}
+    ).to_dict()
+    assert result["metadata"]["v"] == "hello"
+    assert type(result["metadata"]["v"]) is str
+
+
+def test_evil_str_key_hook_does_not_change_serialized_key():
+    result = ArtifactRef(
+        artifact_type="x", path="p", metadata={_EvilStr("key"): 1}
+    ).to_dict()
+    assert result["metadata"] == {"key": 1}
+    assert type(next(iter(result["metadata"]))) is str
+
+
+def test_negative_zero_float_subclass_stays_negative_zero():
+    result = ArtifactRef(
+        artifact_type="x", path="p", metadata={"z": _EvilFloat(-0.0)}
+    ).to_dict()
+    stored = result["metadata"]["z"]
+    assert type(stored) is float
+    assert stored == 0.0
+    assert math.copysign(1.0, stored) == -1.0
+
+
+def test_evil_scalar_caller_object_not_retained():
+    caller_value = _EvilInt(7)
+    ref = ArtifactRef(
+        artifact_type="x", path="p", metadata={"v": caller_value}
+    )
+    assert ref.metadata["v"] is not caller_value
+    assert type(ref.metadata["v"]) is int

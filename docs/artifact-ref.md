@@ -136,7 +136,10 @@ point at the same bytes, and it never resolves, reads, or stats either.
 - **Scalar subclasses are detached.** Accepted JSON scalars are canonicalized
   into exact built-ins — `str`/`int`/`float` subclasses become plain
   `str`/`int`/`float`, `bool` stays `bool` (checked before `int`), and `None`
-  stays `None`. A mutable scalar subclass is therefore never retained: mutating
+  stays `None`. The underlying built-in payload is extracted without calling
+  overridable conversion hooks (`__int__`/`__float__`/`__str__`/`__getitem__`),
+  so a subclass cannot change the stored value or wire output (and `-0.0` is
+  preserved). A mutable scalar subclass is therefore never retained: mutating
   its attributes after construction cannot change `ArtifactRef` equality, and
   `to_dict()` returns exact built-in leaves rather than aliasing the caller
   object.
