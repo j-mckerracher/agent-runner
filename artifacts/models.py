@@ -87,131 +87,246 @@ class ArtifactMetadataSerializationError(ValueError):
 _HEX64 = re.compile(r"[0-9a-f]{64}")
 
 
-class _UnsupportedMetadataValue:
-    """Immutable stand-in for a caller leaf that JSON cannot encode.
+class _Immutable:
+    """Base for genuinely immutable, slotted canonical metadata nodes.
 
-    Stored in the private backing graph in place of the original object so the
-    caller's mutable value (e.g. ``bytearray`` or an arbitrary instance) is
-    never retained by the `ArtifactRef`. Records only the original type name so
-    `_strict_jsonable` can raise the same actionable serialization error at
-    serialization time, without ever holding or deep-copying the caller object.
+    Subclasses declare their own ``__slots__`` and set fields via
+    ``object.__setattr__`` in ``__init__``. Because there is no ``__dict__`` and
+    both ``__setattr__``/``__delattr__`` raise, an instance cannot be mutated —
+    even when reached directly through an internal-looking attribute.
+    """
+
+    __slots__ = ()
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        raise AttributeError(f"{type(self).__name__} is immutable")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError(f"{type(self).__name__} is immutable")
+
+
+class _MappingNode(_Immutable):
+    """Immutable canonical mapping: an ordered tuple of (key, value) entries.
+
+    Keys are either ``str`` or an immutable `_UnsupportedKey` marker (a
+    caller-owned non-string key is never retained). Values are canonical nodes.
+    Equality is order-insensitive, matching plain-`dict` semantics.
+    """
+
+    __slots__ = ("entries",)
+
+    def __init__(self, entries: tuple):
+        object.__setattr__(self, "entries", entries)
+
+    def __eq__(self, other: Any) -> Any:
+        if not isinstance(other, _MappingNode):
+            return NotImplemented
+        return dict(self.entries) == dict(other.entries)
+
+    __hash__ = None
+
+    def __repr__(self) -> str:
+        return f"_MappingNode({self.entries!r})"
+
+
+class _SequenceNode(_Immutable):
+    """Immutable canonical sequence: an ordered tuple of canonical items."""
+
+    __slots__ = ("items",)
+
+    def __init__(self, items: tuple):
+        object.__setattr__(self, "items", items)
+
+    def __eq__(self, other: Any) -> Any:
+        if not isinstance(other, _SequenceNode):
+            return NotImplemented
+        return self.items == other.items
+
+    __hash__ = None
+
+    def __repr__(self) -> str:
+        return f"_SequenceNode({self.items!r})"
+
+
+class _UnsupportedValue(_Immutable):
+    """Immutable marker for a caller leaf JSON cannot encode.
+
+    Records only the original type name — the caller object is never retained.
+    Equality is by identity, so two distinct unsupported values (even of the
+    same type) never silently compare equal.
     """
 
     __slots__ = ("original_type",)
 
     def __init__(self, original_type: str):
-        self.original_type = original_type
-
-    def __eq__(self, other: Any) -> bool:
-        return (
-            isinstance(other, _UnsupportedMetadataValue)
-            and self.original_type == other.original_type
-        )
-
-    def __hash__(self) -> int:
-        return hash((_UnsupportedMetadataValue, self.original_type))
+        object.__setattr__(self, "original_type", original_type)
 
     def __repr__(self) -> str:
-        return f"_UnsupportedMetadataValue({self.original_type!r})"
+        return f"_UnsupportedValue({self.original_type!r})"
 
 
-def _build_backing(value: Any, _memo: dict[int, Any]) -> Any:
-    """Recursively copy caller input into a fresh private backing graph.
+class _UnsupportedKey(_Immutable):
+    """Immutable marker for a caller-owned non-string mapping key.
 
-    Mappings/sequences become fresh `dict`/`list` (tuples canonicalized to
-    lists), memoized by object identity so shared and cyclic input copy in
-    bounded time. JSON-supported leaves pass through unchanged; any other leaf
-    is replaced by an immutable `_UnsupportedMetadataValue` marker so the
-    caller's object is never retained. Validates nothing and performs no I/O —
+    The caller's key object is never retained or exposed; iteration yields this
+    marker instead. Equality is by identity so distinct invalid keys never
+    silently compare equal.
+    """
+
+    __slots__ = ("original_type",)
+
+    def __init__(self, original_type: str):
+        object.__setattr__(self, "original_type", original_type)
+
+    def __repr__(self) -> str:
+        return f"_UnsupportedKey({self.original_type!r})"
+
+
+class _CycleMarker(_Immutable):
+    """Immutable singleton standing in for a detected reference cycle.
+
+    Using a marker rather than an actual cyclic Python container keeps the
+    canonical graph a finite tree, so equality and hashing can never leak a
+    ``RecursionError``. Serialization still rejects it lazily.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "_CYCLE"
+
+
+_CYCLE = _CycleMarker()
+
+
+def _canonical_key(key: Any) -> Any:
+    """Return a canonical mapping key: strings kept, anything else replaced by
+    an immutable `_UnsupportedKey` marker so the caller's key is never retained.
+    """
+    if isinstance(key, str):
+        return key
+    return _UnsupportedKey(type(key).__name__)
+
+
+def _canonicalize(value: Any, _memo: dict[int, Any], _active: set[int]) -> Any:
+    """Build an immutable canonical graph from caller input.
+
+    Mappings become `_MappingNode` (ordered tuple of canonical key/value
+    entries), sequences become `_SequenceNode` (ordered tuple of items, tuples
+    canonicalized to lists), and JSON scalars pass through. Non-string keys and
+    unencodable leaves become immutable markers so no caller-owned mutable
+    object is ever retained. Memoized by object identity for shared substructure;
+    a container re-entered while still on the active stack becomes `_CYCLE`,
+    keeping the result a finite tree. Validates nothing and performs no I/O —
     strict JSON checks stay lazy in `to_dict()`.
     """
-    if isinstance(value, Mapping):
-        if id(value) in _memo:
-            return _memo[id(value)]
-        new_map: dict[Any, Any] = {}
-        _memo[id(value)] = new_map
-        for key, item in value.items():
-            new_map[key] = _build_backing(item, _memo)
-        return new_map
-    if isinstance(value, (list, tuple)):
-        if id(value) in _memo:
-            return _memo[id(value)]
-        new_seq: list[Any] = []
-        _memo[id(value)] = new_seq
-        for item in value:
-            new_seq.append(_build_backing(item, _memo))
-        return new_seq
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
-    return _UnsupportedMetadataValue(type(value).__name__)
-
-
-def _detach_public(value: Any, _active: set[int]) -> Any:
-    """Return a fresh detached plain copy of a backing-graph value.
-
-    Used by the read-only metadata view so callers receive independent
-    `dict`/`list` copies (mutating them cannot reach the backing graph).
-    `_active` is a recursion-stack id-set: a re-entered container is a cycle,
-    and an `_UnsupportedMetadataValue` marker is an unserializable leaf — both
-    raise `ArtifactMetadataSerializationError` rather than expose the backing
-    graph or return a retained invalid object.
-    """
-    if isinstance(value, _UnsupportedMetadataValue):
-        raise ArtifactMetadataSerializationError(
-            f"metadata: value of type {value.original_type} is not JSON-serializable"
+    if isinstance(value, Mapping):
+        vid = id(value)
+        if vid in _active:
+            return _CYCLE
+        if vid in _memo:
+            return _memo[vid]
+        _active.add(vid)
+        entries = tuple(
+            (_canonical_key(key), _canonicalize(item, _memo, _active))
+            for key, item in value.items()
         )
-    if isinstance(value, dict):
-        if id(value) in _active:
-            raise ArtifactMetadataSerializationError(
-                "metadata contains a reference cycle"
-            )
-        _active.add(id(value))
-        out: dict[Any, Any] = {
-            key: _detach_public(item, _active) for key, item in value.items()
-        }
-        _active.discard(id(value))
+        _active.discard(vid)
+        node: Any = _MappingNode(entries)
+        _memo[vid] = node
+        return node
+    if isinstance(value, (list, tuple)):
+        vid = id(value)
+        if vid in _active:
+            return _CYCLE
+        if vid in _memo:
+            return _memo[vid]
+        _active.add(vid)
+        items = tuple(_canonicalize(item, _memo, _active) for item in value)
+        _active.discard(vid)
+        node = _SequenceNode(items)
+        _memo[vid] = node
+        return node
+    return _UnsupportedValue(type(value).__name__)
+
+
+def _materialize(node: Any) -> Any:
+    """Materialize a canonical node into a fresh plain `dict`/`list`/scalar.
+
+    Raises `ArtifactMetadataSerializationError` on an unsupported-value marker,
+    a non-string (marker) key, or a cycle marker — never exposing the immutable
+    canonical graph or returning a retained caller object. The canonical graph
+    is a finite tree, so this always terminates.
+    """
+    if isinstance(node, _MappingNode):
+        out: dict[str, Any] = {}
+        for key, value in node.entries:
+            if isinstance(key, _UnsupportedKey):
+                raise ArtifactMetadataSerializationError(
+                    f"metadata: mapping key of type {key.original_type} is not a string"
+                )
+            out[key] = _materialize(value)
         return out
-    if isinstance(value, list):
-        if id(value) in _active:
-            raise ArtifactMetadataSerializationError(
-                "metadata contains a reference cycle"
-            )
-        _active.add(id(value))
-        out_seq = [_detach_public(item, _active) for item in value]
-        _active.discard(id(value))
-        return out_seq
-    return value
+    if isinstance(node, _SequenceNode):
+        return [_materialize(item) for item in node.items]
+    if isinstance(node, _UnsupportedValue):
+        raise ArtifactMetadataSerializationError(
+            f"metadata: value of type {node.original_type} is not JSON-serializable"
+        )
+    if node is _CYCLE:
+        raise ArtifactMetadataSerializationError(
+            "metadata contains a reference cycle"
+        )
+    return node
 
 
 class _ReadOnlyMetadata(Mapping):
-    """Read-only `Mapping` view over an `ArtifactRef`'s private backing graph.
+    """Read-only, deeply immutable `Mapping` view over an immutable canonical
+    metadata graph.
 
-    Exposes no assignment or deletion API, so `ref.metadata[k] = v` and
-    `del ref.metadata[k]` raise `TypeError`. `__getitem__` returns a freshly
-    detached plain `dict`/`list` (or leaf), so mutating a returned value cannot
-    reach the reference. Equality is value-based over the backing graph; the
-    view is unhashable, exactly as the plain `dict` it replaces was.
+    The graph root is an immutable `_MappingNode`; the view exposes no mutation
+    API (so `ref.metadata[k] = v` / `del ref.metadata[k]` raise `TypeError`) and
+    `_root` itself cannot be reassigned. Even reached directly, `_root` yields
+    only immutable canonical nodes — there is no `dict`/`list` to edit.
+    `__getitem__` materializes a fresh plain `dict`/`list` (or scalar), so
+    mutating a returned value cannot reach the reference. Equality is value-based
+    and finite (cycles are markers, never real cycles); the view is unhashable,
+    exactly as the plain `dict` it replaces was.
     """
 
-    __slots__ = ("_graph",)
+    __slots__ = ("_root",)
 
-    def __init__(self, graph: dict[Any, Any]):
-        self._graph = graph
+    def __init__(self, root: "_MappingNode"):
+        object.__setattr__(self, "_root", root)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        raise AttributeError("_ReadOnlyMetadata is immutable")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError("_ReadOnlyMetadata is immutable")
 
     def __getitem__(self, key: Any) -> Any:
-        return _detach_public(self._graph[key], set())
+        for entry_key, entry_value in self._root.entries:
+            if entry_key == key:
+                return _materialize(entry_value)
+        raise KeyError(key)
+
+    def __contains__(self, key: Any) -> bool:
+        return any(entry_key == key for entry_key, _ in self._root.entries)
 
     def __iter__(self):
-        return iter(self._graph)
+        return (entry_key for entry_key, _ in self._root.entries)
 
     def __len__(self) -> int:
-        return len(self._graph)
+        return len(self._root.entries)
 
     def __eq__(self, other: Any) -> Any:
         if isinstance(other, _ReadOnlyMetadata):
-            return self._graph == other._graph
+            return self._root == other._root
         if isinstance(other, Mapping):
-            return self._graph == dict(other)
+            return self._root == _canonicalize(dict(other), {}, set())
         return NotImplemented
 
     def __ne__(self, other: Any) -> Any:
@@ -223,58 +338,49 @@ class _ReadOnlyMetadata(Mapping):
     __hash__ = None
 
     def __repr__(self) -> str:
-        return f"_ReadOnlyMetadata({self._graph!r})"
+        return f"_ReadOnlyMetadata({self._root!r})"
 
 
-def _strict_jsonable(value: Any, *, where: str, _active: set[int]) -> Any:
-    """Return a fresh JSON-compatible copy of `value`, or raise.
+def _strict_jsonable(node: Any, *, where: str) -> Any:
+    """Return a fresh JSON-compatible copy of a canonical metadata node, or raise.
 
-    Rejects non-string keys, non-finite floats, unsupported leaves, and active
-    reference cycles, each with an actionable metadata location. Shared
-    non-cyclic references are permitted.
+    Rejects non-string (marker) keys, non-finite floats, unsupported-value
+    markers, and cycle markers, each with an actionable metadata location. The
+    canonical graph is a finite tree, so this always terminates; shared
+    substructure is serialized independently under each path.
     """
-    if isinstance(value, _UnsupportedMetadataValue):
-        raise ArtifactMetadataSerializationError(
-            f"{where}: value of type {value.original_type} is not JSON-serializable"
-        )
-    if value is None or isinstance(value, (bool, int, str)):
-        return value
-    if isinstance(value, float):
-        if not math.isfinite(value):
-            raise ArtifactMetadataSerializationError(
-                f"{where}: non-finite float {value!r} is not valid JSON"
-            )
-        return value
-    if isinstance(value, Mapping):
-        if id(value) in _active:
-            raise ArtifactMetadataSerializationError(
-                f"{where}: metadata contains a reference cycle"
-            )
-        _active.add(id(value))
+    if isinstance(node, _MappingNode):
         out: dict[str, Any] = {}
-        for key, item in value.items():
-            if not isinstance(key, str):
+        for key, value in node.entries:
+            if isinstance(key, _UnsupportedKey):
                 raise ArtifactMetadataSerializationError(
-                    f"{where}: dict keys must be strings, got {type(key).__name__}"
+                    f"{where}: dict keys must be strings, got {key.original_type}"
                 )
-            out[key] = _strict_jsonable(item, where=f"{where}.{key}", _active=_active)
-        _active.discard(id(value))
+            out[key] = _strict_jsonable(value, where=f"{where}.{key}")
         return out
-    if isinstance(value, (list, tuple)):
-        if id(value) in _active:
+    if isinstance(node, _SequenceNode):
+        return [
+            _strict_jsonable(item, where=f"{where}[{index}]")
+            for index, item in enumerate(node.items)
+        ]
+    if isinstance(node, _UnsupportedValue):
+        raise ArtifactMetadataSerializationError(
+            f"{where}: value of type {node.original_type} is not JSON-serializable"
+        )
+    if node is _CYCLE:
+        raise ArtifactMetadataSerializationError(
+            f"{where}: metadata contains a reference cycle"
+        )
+    if node is None or isinstance(node, (bool, int, str)):
+        return node
+    if isinstance(node, float):
+        if not math.isfinite(node):
             raise ArtifactMetadataSerializationError(
-                f"{where}: metadata contains a reference cycle"
+                f"{where}: non-finite float {node!r} is not valid JSON"
             )
-        _active.add(id(value))
-        out_seq: list[Any] = []
-        for index, item in enumerate(value):
-            out_seq.append(
-                _strict_jsonable(item, where=f"{where}[{index}]", _active=_active)
-            )
-        _active.discard(id(value))
-        return out_seq
+        return node
     raise ArtifactMetadataSerializationError(
-        f"{where}: value of type {type(value).__name__} is not JSON-serializable"
+        f"{where}: value of type {type(node).__name__} is not JSON-serializable"
     )
 
 
@@ -294,9 +400,9 @@ class ArtifactRef:
     `path` strings are coerced to `Path` without resolution; `checksum_sha256`
     is validated but never computed. `consumer_stages` is a tri-state:
     `None` (unknown), `()` (explicitly no consumers), or an ordered tuple of
-    stage names. `metadata` is captured into a private backing graph and
-    exposed as a read-only, deeply immutable view; its JSON-ability is checked
-    lazily at serialization time.
+    stage names. `metadata` is canonicalized into an immutable graph and exposed
+    as a read-only, deeply immutable view; its JSON-ability is checked lazily at
+    serialization time.
     """
 
     artifact_type: str
@@ -447,18 +553,21 @@ class ArtifactRef:
                     f"{self.checksum_sha256!r}"
                 )
 
-        # 11. metadata — must be a Mapping; recursively copied into a private
-        # backing graph (fresh dicts/lists, tuples canonicalized to lists,
-        # unsupported leaves captured as immutable markers) so no caller-owned
-        # object is retained. The public field holds a read-only Mapping view
-        # over that graph; JSON-ability is verified lazily in to_dict().
+        # 11. metadata — must be a Mapping; canonicalized into an immutable
+        # graph (frozen mapping/sequence nodes, tuples -> lists, non-string keys
+        # and unencodable leaves captured as immutable markers, cycles as a
+        # marker) so no caller-owned object is retained and nothing reachable is
+        # mutable. The public field holds a read-only Mapping view over that
+        # graph; JSON-ability is verified lazily in to_dict().
         if not isinstance(self.metadata, Mapping):
             errors.append(
                 f"metadata: must be a mapping, got {type(self.metadata).__name__}"
             )
         else:
             object.__setattr__(
-                self, "metadata", _ReadOnlyMetadata(_build_backing(self.metadata, {}))
+                self,
+                "metadata",
+                _ReadOnlyMetadata(_canonicalize(self.metadata, {}, set())),
             )
 
         if errors:
@@ -497,7 +606,7 @@ class ArtifactRef:
             result["checksum_sha256"] = self.checksum_sha256
         if self.metadata:
             result["metadata"] = _strict_jsonable(
-                self.metadata._graph, where="ArtifactRef.metadata", _active=set()
+                self.metadata._root, where="ArtifactRef.metadata"
             )
         return result
 

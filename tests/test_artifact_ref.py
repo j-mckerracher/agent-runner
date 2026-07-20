@@ -824,3 +824,121 @@ def test_from_dict_round_trip_preserves_equality_after_immutability_change():
     )
     assert ArtifactRef.from_dict(ref.to_dict()) == ref
     assert ArtifactRef.from_dict(json.loads(ref.to_json())) == ref
+
+
+# --------------------------------------------------------------------------
+# 22. Stored representation is genuinely immutable (Prompt 18R-A repair)
+# --------------------------------------------------------------------------
+
+
+def test_reaching_root_attribute_cannot_replace_it():
+    ref = ArtifactRef(
+        artifact_type="plan", path="p", metadata={"nested": {"value": 1}}
+    )
+    with pytest.raises(AttributeError):
+        ref.metadata._root = {"replacement": True}  # type: ignore[attr-defined]
+    assert ref.to_dict()["metadata"] == {"nested": {"value": 1}}
+
+
+def test_reaching_root_exposes_no_mutable_container():
+    ref = ArtifactRef(
+        artifact_type="plan",
+        path="p",
+        metadata={"nested": {"value": 1}, "sequence": [1, 2]},
+    )
+    root = ref.metadata._root
+    # The root and its entries are immutable: no dict/list to edit or replace.
+    assert isinstance(root.entries, tuple)
+    with pytest.raises(AttributeError):
+        root.entries = ()  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        root.entries[0] = ("hacked", True)  # type: ignore[index]
+    # The old mutable backing-graph attribute no longer exists.
+    assert not hasattr(ref.metadata, "_graph")
+    assert ref.to_dict()["metadata"] == {
+        "nested": {"value": 1},
+        "sequence": [1, 2],
+    }
+
+
+def test_old_defect_direct_graph_mutation_is_impossible():
+    ref = ArtifactRef(
+        artifact_type="plan",
+        path="p",
+        metadata={"nested": {"value": 1}, "sequence": [1, 2]},
+    )
+    before = ref.to_dict()
+    # None of the previously-successful mutations are reachable anymore.
+    assert not hasattr(ref.metadata, "_graph")
+    with pytest.raises(AttributeError):
+        ref.metadata._root = {"replacement": True}  # type: ignore[attr-defined]
+    assert ref.to_dict() == before
+
+
+def test_mutable_non_string_key_is_not_retained_or_exposed():
+    class MutableKey:
+        __hash__ = object.__hash__
+
+    caller_key = MutableKey()
+    ref = ArtifactRef(
+        artifact_type="plan", path="p", metadata={caller_key: "value"}
+    )
+    exposed = next(iter(ref.metadata))
+    assert exposed is not caller_key
+    # Serialization still rejects the non-string key lazily.
+    with pytest.raises(ArtifactMetadataSerializationError):
+        ref.to_dict()
+
+
+def test_distinct_unsupported_values_do_not_compare_equal():
+    left = ArtifactRef(
+        artifact_type="x", path="p", metadata={"bad": bytearray(b"a")}
+    )
+    right = ArtifactRef(
+        artifact_type="x", path="p", metadata={"bad": bytearray(b"b")}
+    )
+    assert (left == right) is False
+    assert left != right
+
+
+def test_distinct_unsupported_keys_do_not_compare_equal():
+    class MutableKey:
+        __hash__ = object.__hash__
+
+    left = ArtifactRef(
+        artifact_type="x", path="p", metadata={MutableKey(): "v"}
+    )
+    right = ArtifactRef(
+        artifact_type="x", path="p", metadata={MutableKey(): "v"}
+    )
+    assert (left == right) is False
+
+
+def test_cyclic_metadata_equality_never_leaks_recursionerror():
+    c1: dict = {}
+    c1["self"] = c1
+    c2: dict = {}
+    c2["self"] = c2
+    r1 = ArtifactRef(artifact_type="x", path="p", metadata=c1)
+    r2 = ArtifactRef(artifact_type="x", path="p", metadata=c2)
+    # Must not raise RecursionError; a plain bool result is required.
+    assert isinstance(r1 == r2, bool)
+    assert isinstance(r1 == r1, bool)
+
+
+def test_mutating_caller_non_string_key_after_construction_is_isolated():
+    class MutableKey:
+        __slots__ = ("tag",)
+        __hash__ = object.__hash__
+
+        def __init__(self):
+            self.tag = 1
+
+    caller_key = MutableKey()
+    ref = ArtifactRef(
+        artifact_type="plan", path="p", metadata={caller_key: "value"}
+    )
+    caller_key.tag = 999
+    exposed = next(iter(ref.metadata))
+    assert exposed is not caller_key
+    assert not hasattr(exposed, "tag")
