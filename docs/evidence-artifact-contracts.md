@@ -51,7 +51,7 @@ Verified by `tests/test_artifact_payloads_isolation.py`.
 
 ## FinalDiffArtifact
 
-**Module**: `artifacts/evidence.py`  
+**Module**: `artifacts/evidence.py`
 **Public import**: `from artifacts import FinalDiffArtifact`
 
 ```python
@@ -79,7 +79,7 @@ ref = art.to_artifact_ref(path="evidence/final.diff")
 
 ## EvalReportArtifact
 
-**Module**: `eval/report_artifact.py`  
+**Module**: `eval/report_artifact.py`
 **Public import**: `from eval.report_artifact import EvalReportArtifact`
 
 ```python
@@ -106,7 +106,7 @@ adapter adds only the schema-version gate.
 
 ## TraceArtifact
 
-**Module**: `telemetry/trace_artifact.py`  
+**Module**: `telemetry/trace_artifact.py`
 **Public import**: `from telemetry.trace_artifact import TraceArtifact`
 
 ```python
