@@ -117,7 +117,8 @@ emits — one terminal event per supplied ref, one per missing slot:
 | Each **output** ref | `artifact.created` (ok) → `artifact.validated` / `artifact.invalid` |
 | Each **input** ref | `artifact.validated` / `artifact.invalid` (no `created`) |
 | Each unfilled **required** slot (input or output) | `artifact.missing` (no `created`) |
-| Each **unexpected** ref | `artifact.invalid` |
+| Each unexpected **output** ref | `artifact.created` (ok) → `artifact.invalid` (still produced by this stage) |
+| Each unexpected **input** ref | `artifact.invalid` (not produced here — no `created`) |
 | Optional-absent slot | (no event) |
 
 Payload rules:

@@ -14,6 +14,7 @@ from artifacts import (
     TaskPlanArtifact,
 )
 from telemetry import EventType
+from workflow import RunContext, RunSpec
 from workflow.artifact_lifecycle import emit_stage_artifact_lifecycle
 
 
@@ -157,6 +158,8 @@ def test_missing_required_emits_artifact_missing_no_created() -> None:
 
 
 def test_unexpected_ref_emits_single_invalid() -> None:
+    # Unexpected *input*: not produced by this stage, so no `created` — a
+    # single terminal `artifact.invalid` only.
     sink = _RecordingSink()
     bad = ArtifactRef(artifact_type="qa_report", path="/tmp/x.yaml")
     # intake declares no inputs; also provide the required valid story output.
@@ -169,6 +172,37 @@ def test_unexpected_ref_emits_single_invalid() -> None:
     )
     assert _types(sink) == ["artifact.created", "artifact.validated", "artifact.invalid"]
     assert sink.events[-1].metadata["artifact_type"] == "qa_report"
+    assert sink.events[-1].metadata["direction"] == "input"
+
+
+def test_unexpected_output_emits_created_then_invalid() -> None:
+    # Unexpected *output*: still produced by this stage, so it gets the same
+    # created -> terminal shape as any other output, even though its type
+    # matches no declared slot.
+    sink = _RecordingSink()
+    bad = ArtifactRef(artifact_type="qa_report", path="/tmp/x.yaml")
+    emit_stage_artifact_lifecycle(
+        run_id="run-1",
+        stage="intake",
+        sink=sink,
+        outputs=[_story_output(), bad],
+    )
+    assert _types(sink) == [
+        "artifact.created",
+        "artifact.validated",
+        "artifact.created",
+        "artifact.invalid",
+    ]
+    unexpected_created, unexpected_invalid = sink.events[2], sink.events[3]
+    assert unexpected_created.metadata["artifact_type"] == "qa_report"
+    assert unexpected_created.metadata["direction"] == "output"
+    assert unexpected_created.metadata.get("validation_status") is None  # never on created
+    assert unexpected_created.artifact_path == "/tmp/x.yaml"
+    assert unexpected_invalid.metadata["validation_status"] == "invalid"
+    assert "unexpected_artifact_type" in unexpected_invalid.metadata["issue_codes"]
+    # exactly one terminal event for the unexpected ref
+    terminals = [e for e in sink.events[2:] if e.event_type.value in {"artifact.validated", "artifact.invalid"}]
+    assert len(terminals) == 1
 
 
 def test_exactly_one_terminal_per_supplied_ref() -> None:
@@ -224,6 +258,31 @@ def test_events_carry_run_id_and_stage() -> None:
     for e in sink.events:
         assert e.run_id == "run-42"
         assert e.stage == "intake"
+
+
+def test_fixture_integration_with_run_context() -> None:
+    """Fixture-only proof that the boundary composes with the real `RunContext`
+    shell contract — canonical stage name, `RunContext.for_spec`-issued run_id,
+    a fake sink. No production orchestration wired; RunContext is not mutated
+    beyond its own public `current_stage` field."""
+    spec = RunSpec()
+    context = RunContext.for_spec(spec, run_id="run-int-1")
+    context.current_stage = "intake"
+
+    sink = _RecordingSink()
+    result = emit_stage_artifact_lifecycle(
+        run_id=context.run_id,
+        stage=context.current_stage,
+        sink=sink,
+        outputs=[_story_output()],
+    )
+
+    assert result.ok
+    assert result.stage_name == "intake"
+    assert _types(sink) == ["artifact.created", "artifact.validated"]
+    for event in sink.events:
+        assert event.run_id == context.run_id == "run-int-1"
+        assert event.stage == context.current_stage == "intake"
 
 
 def test_declaration_argument_overrides_stage_name() -> None:

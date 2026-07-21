@@ -26,8 +26,10 @@ Event mapping — one terminal event per supplied reference, one per missing slo
   ``artifact.invalid`` (no ``created`` — the stage consumes, it did not make it).
 * Each unfilled **required** slot (input or output): one ``artifact.missing``.
   A missing output never gets an ``artifact.created``.
-* Each **unexpected** reference (type matches no declared slot): one
-  ``artifact.invalid``.
+* Each **unexpected** reference (type matches no declared slot): if supplied as
+  an **output**, ``artifact.created`` followed by ``artifact.invalid`` (it was
+  still produced by this stage); if supplied as an **input**, just
+  ``artifact.invalid`` (it was not produced here).
 * Optional-absent slot: no event.
 
 Payloads carry ``run_id`` + ``stage`` and metadata (``artifact_type``,
@@ -204,8 +206,29 @@ def _emit_unexpected(
     stage: str,
     ref_outcome: ReferenceOutcome,
 ) -> None:
-    """Emit one ``artifact.invalid`` for a reference matching no declared slot."""
+    """Emit the lifecycle for a reference matching no declared slot.
+
+    An unexpected reference supplied as an **output** is still a reference this
+    stage produced, so it gets its ``artifact.created`` like any other output
+    before the terminal ``artifact.invalid``. An unexpected **input** reference
+    was not produced here, so it gets only the terminal ``artifact.invalid``
+    (mirrors ``_emit_reference``'s direction split).
+    """
     ref = ref_outcome.ref
+    direction = ref_outcome.direction
+    artifact_type = ref_outcome.artifact_type
+
+    if direction is ArtifactDirection.OUTPUT:
+        _emit(
+            sink,
+            EventType.ARTIFACT_CREATED,
+            run_id,
+            stage=stage,
+            status=EventStatus.OK,
+            artifact_path=_artifact_path(ref),
+            metadata=_ref_metadata(direction, artifact_type, ref),
+        )
+
     _emit(
         sink,
         EventType.ARTIFACT_INVALID,
@@ -214,8 +237,8 @@ def _emit_unexpected(
         status=EventStatus.ERROR,
         artifact_path=_artifact_path(ref),
         metadata=_ref_metadata(
-            ref_outcome.direction,
-            ref_outcome.artifact_type,
+            direction,
+            artifact_type,
             ref,
             validation_status=ArtifactValidationStatus.INVALID.value,
             issue_codes=[i.code for i in ref_outcome.issues],
