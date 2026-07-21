@@ -10,8 +10,14 @@ artifacts, layered on top of the P18 `ArtifactRef` reference contract:
 
 and, added in Prompt 20, the two workflow report artifacts:
 
-- `ImplementationReportPayload` — `{change_id}/execution/{uow_id}/impl_report.yaml`
-- `QAReportPayload`             — `{change_id}/qa/qa_report.yaml`
+- `ImplementationReportArtifact` — `{change_id}/execution/{uow_id}/impl_report.yaml`
+- `QAReportArtifact`             — `{change_id}/qa/qa_report.yaml`
+
+`ImplementationReportArtifact` and `QAReportArtifact` are the canonical names.
+`ImplementationReportPayload` and `QAReportPayload` are module-level aliases
+kept for compatibility with callers written against the first-pass names; both
+names are the exact same class (`ImplementationReportPayload is
+ImplementationReportArtifact`), not a subclass or wrapper.
 
 Design boundaries (kept deliberately narrow):
 
@@ -25,14 +31,22 @@ Design boundaries (kept deliberately narrow):
   `ac_coverage_matrix`, `notes`, `metacognitive_context`, …) are ignored.
   `to_dict()` is therefore a round trip of the *typed model*, not of the source
   document.
-- The two report classes instead *preserve* unmodeled top-level keys as
-  read-only extension data (see `_extract_extension`), because their generated
-  agent reports carry many evolving sections that must survive a load/serialize
-  round trip untouched.
+- The two report classes model their mandatory sections (`files_modified`,
+  `tests_written`, `commands_executed`, `risks_identified` for the
+  implementation report; `regression_risk_assessment`, `issues_found`,
+  `release_notes`, `evidence_manifest` for the QA report) as typed, validated
+  fields — they no longer bypass validation by falling into extension data.
+  Genuinely unmodeled top-level keys (`no_mistakes_gate`,
+  `worktree_management`, `engineering_scope_classification`,
+  `knowledge_summary`, `metacognitive_context`, …) are still *preserved* as
+  read-only extension data (see `_extract_extension`), because generated agent
+  reports carry many evolving sections that must survive a load/serialize round
+  trip untouched.
 - Loading is strictly read-only. Normalization of accepted legacy shapes happens
   on a defensive deep copy and is reported as WARNING issues in a
   `ValidationResult`; the caller's mapping and the on-disk file are never
-  mutated.
+  mutated. Every accepted legacy shape has its own stable warning code — no
+  shape is collapsed into a shared/generic code.
 - Structural problems are ERROR issues aggregated into `ArtifactValidationError`;
   transport failures (missing file, bad YAML/JSON, missing PyYAML) raise
   `ArtifactLoadError`.
@@ -64,7 +78,21 @@ from artifacts.validation import (
     WARNING_LEGACY_DEFINITION_OF_DONE,
     WARNING_LEGACY_ESTIMATED_COMPLEXITY,
     WARNING_LEGACY_EXECUTION_SCHEDULE,
+    WARNING_LEGACY_FILE_PATH_STRING,
+    WARNING_LEGACY_FILES_CHANGED,
+    WARNING_LEGACY_IMPL_STATUS_COMPLETED,
+    WARNING_LEGACY_IMPL_STORY_ID,
+    WARNING_LEGACY_IMPL_SUMMARY,
     WARNING_LEGACY_PARTIAL_UOW_SPEC,
+    WARNING_LEGACY_QA_AC_LIST,
+    WARNING_LEGACY_QA_CHANGE_ID,
+    WARNING_LEGACY_QA_CONDITIONAL_PASS,
+    WARNING_LEGACY_QA_EVIDENCE_LIST,
+    WARNING_LEGACY_QA_EVIDENCE_STRING,
+    WARNING_LEGACY_QA_OVERALL_STATUS,
+    WARNING_LEGACY_QA_REGRESSION_RISK,
+    WARNING_LEGACY_QA_RELEASE_NOTES_LIST,
+    WARNING_LEGACY_QA_RELEASE_NOTES_STRING,
     WARNING_LEGACY_TASK_ID,
     ArtifactLoadError,
     ValidationIssue,
@@ -76,17 +104,28 @@ __all__ = [
     "AcceptanceCriterion",
     "AssignmentArtifact",
     "BatchEntry",
+    "CommandEntry",
     "DefinitionOfDoneItem",
+    "EvidenceManifest",
+    "FileChangeEntry",
+    "ImplementationReportArtifact",
     "ImplementationReportPayload",
+    "IssueEntry",
     "load_implementation_report",
     "load_qa_report",
     "PLANNING_ARTIFACTS",
     "PlanningArtifact",
     "QAAcValidation",
+    "QAReportArtifact",
     "QAReportPayload",
+    "RegressionRiskAssessment",
+    "ReleaseNotes",
+    "REPORT_ARTIFACTS",
+    "RiskEntry",
     "StoryArtifact",
     "TaskEntry",
     "TaskPlanArtifact",
+    "TestEntry",
     "UowEntry",
     "UowSpecArtifact",
 ]
@@ -106,6 +145,10 @@ _VALID_IMPL_STATUSES = ("complete", "partial", "blocked")
 _VALID_QA_STATUSES = ("pass", "fail", "blocked")
 _VALID_AC_VALIDATION_STATUSES = ("pass", "fail", "partial")
 _VALID_FINAL_RECOMMENDATIONS = ("approve", "reject", "approve_with_conditions")
+_VALID_FILE_CHANGE_TYPES = ("modified", "created", "deleted")
+_VALID_COMMAND_RESULTS = ("pass", "fail")
+_VALID_RISK_LEVELS = ("low", "medium", "high")
+_VALID_ISSUE_SEVERITIES = ("critical", "high", "medium", "low")
 
 # The only currently supported document-embedded report schema_version. A
 # missing schema_version in a legacy report defaults to this value, and it is
@@ -345,6 +388,19 @@ def _get_str_tuple(
     return tuple(items)
 
 
+def _validate_str_list(raw: list, location: str, issues: list[ValidationIssue]) -> tuple[str, ...]:
+    """Validate an already-extracted list value (not a mapping key) as strings."""
+    items: list[str] = []
+    for idx, value in enumerate(raw):
+        if not isinstance(value, str):
+            issues.append(
+                _err(ERROR_WRONG_TYPE, f"item must be a string, got {type(value).__name__}", f"{location}[{idx}]")
+            )
+            continue
+        items.append(value)
+    return tuple(items)
+
+
 # ---------------------------------------------------------------------------
 # Extension-data preservation (P20 report contracts only).
 #
@@ -529,28 +585,180 @@ class DefinitionOfDoneItem:
 
 @dataclass(frozen=True, kw_only=True)
 class QAAcValidation:
-    """One `acceptance_criteria_validation` entry inside a QA report."""
+    """One `acceptance_criteria_validation` entry inside a QA report.
+
+    `evidence_type`/`evidence_reference` hold the canonical single-evidence
+    mapping form (`{type, reference}`). `evidence_references` holds a legacy
+    bare-list evidence form verbatim (see `WARNING_LEGACY_QA_EVIDENCE_LIST`);
+    the two representations are mutually exclusive per entry.
+    """
 
     ac_id: str
     status: str
     validation_method: str | None = None
     evidence_type: str | None = None
     evidence_reference: str | None = None
+    evidence_references: tuple[str, ...] = ()
     notes: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {"status": self.status}
         if self.validation_method is not None:
             result["validation_method"] = self.validation_method
-        evidence: dict[str, Any] = {}
-        if self.evidence_type is not None:
-            evidence["type"] = self.evidence_type
-        if self.evidence_reference is not None:
-            evidence["reference"] = self.evidence_reference
-        if evidence:
-            result["evidence"] = evidence
+        if self.evidence_references:
+            result["evidence"] = list(self.evidence_references)
+        else:
+            evidence: dict[str, Any] = {}
+            if self.evidence_type is not None:
+                evidence["type"] = self.evidence_type
+            if self.evidence_reference is not None:
+                evidence["reference"] = self.evidence_reference
+            if evidence:
+                result["evidence"] = evidence
         if self.notes is not None:
             result["notes"] = self.notes
+        return result
+
+
+@dataclass(frozen=True, kw_only=True)
+class FileChangeEntry:
+    """One `files_modified` entry inside an implementation report."""
+
+    path: str
+    change_type: str | None = None
+    change_summary: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {"path": self.path}
+        if self.change_type is not None:
+            result["change_type"] = self.change_type
+        if self.change_summary is not None:
+            result["change_summary"] = self.change_summary
+        return result
+
+
+@dataclass(frozen=True, kw_only=True)
+class TestEntry:
+    """One `tests_written` entry inside an implementation report."""
+
+    path: str
+    test_type: str | None = None
+    cases_count: int | None = None
+    harness_path: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {"path": self.path}
+        if self.test_type is not None:
+            result["type"] = self.test_type
+        if self.cases_count is not None:
+            result["cases_count"] = self.cases_count
+        if self.harness_path is not None:
+            result["harness_path"] = self.harness_path
+        return result
+
+
+@dataclass(frozen=True, kw_only=True)
+class CommandEntry:
+    """One `commands_executed` entry inside an implementation report."""
+
+    command: str
+    result: str | None = None
+    output_summary: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {"command": self.command}
+        if self.result is not None:
+            result["result"] = self.result
+        if self.output_summary is not None:
+            result["output_summary"] = self.output_summary
+        return result
+
+
+@dataclass(frozen=True, kw_only=True)
+class RiskEntry:
+    """One `risks_identified` entry inside an implementation report."""
+
+    description: str
+    risk_type: str | None = None
+    mitigation: str | None = None
+    requires_escalation: bool | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {"description": self.description}
+        if self.risk_type is not None:
+            result["type"] = self.risk_type
+        if self.mitigation is not None:
+            result["mitigation"] = self.mitigation
+        if self.requires_escalation is not None:
+            result["requires_escalation"] = self.requires_escalation
+        return result
+
+
+@dataclass(frozen=True, kw_only=True)
+class RegressionRiskAssessment:
+    """`regression_risk_assessment` inside a QA report."""
+
+    overall_risk: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"overall_risk": self.overall_risk} if self.overall_risk is not None else {}
+
+
+@dataclass(frozen=True, kw_only=True)
+class IssueEntry:
+    """One `issues_found` entry inside a QA report."""
+
+    issue_id: str | None = None
+    severity: str | None = None
+    description: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        if self.issue_id is not None:
+            result["issue_id"] = self.issue_id
+        if self.severity is not None:
+            result["severity"] = self.severity
+        if self.description is not None:
+            result["description"] = self.description
+        return result
+
+
+@dataclass(frozen=True, kw_only=True)
+class ReleaseNotes:
+    """`release_notes` inside a QA report.
+
+    `raw_items` holds a legacy bare-list form verbatim (see
+    `WARNING_LEGACY_QA_RELEASE_NOTES_LIST`) — never re-classified.
+    """
+
+    summary: str | None = None
+    raw_items: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        if self.summary is not None:
+            result["summary"] = self.summary
+        if self.raw_items:
+            result["raw_items"] = list(self.raw_items)
+        return result
+
+
+@dataclass(frozen=True, kw_only=True)
+class EvidenceManifest:
+    """`evidence_manifest` inside a QA report."""
+
+    screenshots: tuple[str, ...] = ()
+    videos: tuple[str, ...] = ()
+    logs: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        if self.screenshots:
+            result["screenshots"] = list(self.screenshots)
+        if self.videos:
+            result["videos"] = list(self.videos)
+        if self.logs:
+            result["logs"] = list(self.logs)
         return result
 
 
@@ -1272,10 +1480,16 @@ _IMPL_REPORT_RECOGNIZED_KEYS = frozenset(
         "uow_id",
         "status",
         "implementation_summary",
+        "summary",
         "definition_of_done_status",
         "definition_of_done",
         "change_id",
         "story_id",
+        "files_modified",
+        "files_changed",
+        "tests_written",
+        "commands_executed",
+        "risks_identified",
     }
 )
 
@@ -1322,17 +1536,161 @@ def _parse_dod_list(raw: Any, where: str, issues: list[ValidationIssue]) -> tupl
     return tuple(items)
 
 
+def _parse_file_change_entry(raw: Any, location: str, issues: list[ValidationIssue]) -> FileChangeEntry | None:
+    if isinstance(raw, str):
+        if not raw.strip():
+            issues.append(_err(ERROR_MISSING_FIELD, "file path must be non-empty", location))
+            return None
+        issues.append(
+            _warn(
+                WARNING_LEGACY_FILE_PATH_STRING,
+                "files_modified entry given as a bare string; change_type left unset",
+                location,
+            )
+        )
+        return FileChangeEntry(path=raw, change_type=None)
+    if not isinstance(raw, Mapping):
+        issues.append(
+            _err(
+                ERROR_NOT_A_MAPPING,
+                f"expected a mapping or string, got {type(raw).__name__}",
+                location,
+            )
+        )
+        return None
+    mapping = dict(raw)
+    path = _get_str(mapping, "path", location, issues, required=True)
+    change_type = _get_str_enum(
+        mapping, "change_type", location, issues, valid_values=_VALID_FILE_CHANGE_TYPES, required=True
+    )
+    change_summary = _get_opt_str(mapping, "change_summary", location, issues)
+    if change_type is None:
+        return None
+    return FileChangeEntry(path=path, change_type=change_type, change_summary=change_summary)
+
+
+def _parse_file_change_list(raw: Any, where: str, issues: list[ValidationIssue]) -> tuple[FileChangeEntry, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        issues.append(
+            _err(ERROR_WRONG_TYPE, f"field 'files_modified' must be a list, got {type(raw).__name__}", where)
+        )
+        return ()
+    items: list[FileChangeEntry] = []
+    for idx, entry in enumerate(raw):
+        parsed = _parse_file_change_entry(entry, f"{where}.files_modified[{idx}]", issues)
+        if parsed is not None:
+            items.append(parsed)
+    return tuple(items)
+
+
+def _parse_test_entry(raw: Any, location: str, issues: list[ValidationIssue]) -> TestEntry | None:
+    if not isinstance(raw, Mapping):
+        issues.append(
+            _err(ERROR_NOT_A_MAPPING, f"expected a mapping, got {type(raw).__name__}", location)
+        )
+        return None
+    mapping = dict(raw)
+    path = _get_str(mapping, "path", location, issues, required=True)
+    test_type = _get_opt_str(mapping, "type", location, issues)
+    cases_count = _get_opt_int(mapping, "cases_count", location, issues)
+    harness_path = _get_opt_str(mapping, "harness_path", location, issues)
+    return TestEntry(path=path, test_type=test_type, cases_count=cases_count, harness_path=harness_path)
+
+
+def _parse_test_entry_list(raw: Any, where: str, issues: list[ValidationIssue]) -> tuple[TestEntry, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        issues.append(
+            _err(ERROR_WRONG_TYPE, f"field 'tests_written' must be a list, got {type(raw).__name__}", where)
+        )
+        return ()
+    items: list[TestEntry] = []
+    for idx, entry in enumerate(raw):
+        parsed = _parse_test_entry(entry, f"{where}.tests_written[{idx}]", issues)
+        if parsed is not None:
+            items.append(parsed)
+    return tuple(items)
+
+
+def _parse_command_entry(raw: Any, location: str, issues: list[ValidationIssue]) -> CommandEntry | None:
+    if not isinstance(raw, Mapping):
+        issues.append(
+            _err(ERROR_NOT_A_MAPPING, f"expected a mapping, got {type(raw).__name__}", location)
+        )
+        return None
+    mapping = dict(raw)
+    command = _get_str(mapping, "command", location, issues, required=True)
+    result = _get_opt_str_enum(mapping, "result", location, issues, valid_values=_VALID_COMMAND_RESULTS)
+    output_summary = _get_opt_str(mapping, "output_summary", location, issues)
+    return CommandEntry(command=command, result=result, output_summary=output_summary)
+
+
+def _parse_command_entry_list(raw: Any, where: str, issues: list[ValidationIssue]) -> tuple[CommandEntry, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        issues.append(
+            _err(ERROR_WRONG_TYPE, f"field 'commands_executed' must be a list, got {type(raw).__name__}", where)
+        )
+        return ()
+    items: list[CommandEntry] = []
+    for idx, entry in enumerate(raw):
+        parsed = _parse_command_entry(entry, f"{where}.commands_executed[{idx}]", issues)
+        if parsed is not None:
+            items.append(parsed)
+    return tuple(items)
+
+
+def _parse_risk_entry(raw: Any, location: str, issues: list[ValidationIssue]) -> RiskEntry | None:
+    if not isinstance(raw, Mapping):
+        issues.append(
+            _err(ERROR_NOT_A_MAPPING, f"expected a mapping, got {type(raw).__name__}", location)
+        )
+        return None
+    mapping = dict(raw)
+    description = _get_str(mapping, "description", location, issues, required=True)
+    risk_type = _get_opt_str(mapping, "type", location, issues)
+    mitigation = _get_opt_str(mapping, "mitigation", location, issues)
+    requires_escalation = _get_bool(mapping, "requires_escalation", location, issues, required=False)
+    return RiskEntry(
+        description=description,
+        risk_type=risk_type,
+        mitigation=mitigation,
+        requires_escalation=requires_escalation,
+    )
+
+
+def _parse_risk_entry_list(raw: Any, where: str, issues: list[ValidationIssue]) -> tuple[RiskEntry, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        issues.append(
+            _err(ERROR_WRONG_TYPE, f"field 'risks_identified' must be a list, got {type(raw).__name__}", where)
+        )
+        return ()
+    items: list[RiskEntry] = []
+    for idx, entry in enumerate(raw):
+        parsed = _parse_risk_entry(entry, f"{where}.risks_identified[{idx}]", issues)
+        if parsed is not None:
+            items.append(parsed)
+    return tuple(items)
+
+
 @dataclass(frozen=True, kw_only=True)
-class ImplementationReportPayload(PlanningArtifact):
+class ImplementationReportArtifact(PlanningArtifact):
     """Implementation report (`{change_id}/execution/{uow_id}/impl_report.yaml`).
 
     Represents the stable, currently-validated fields of the legacy
     `impl_report.yaml` artifact (see `scripts/validate-artifact-schema.py` and
-    `agent-definition-source/software-engineer/v2/prompt.md`). The many
-    evolving report sections generated by the software-engineer agent
-    (`engineering_scope_classification`, `files_modified`, `tests_written`,
-    `commands_executed`, `no_mistakes_gate`, `worktree_management`,
-    `risks_identified`, `implementation_decisions`, …) are preserved as
+    `agent-definition-source/software-engineer/v2/prompt.md`), including the
+    mandatory `files_modified`, `tests_written`, `commands_executed`, and
+    `risks_identified` sections as typed, validated fields. Remaining evolving
+    report sections generated by the software-engineer agent
+    (`engineering_scope_classification`, `no_mistakes_gate`,
+    `worktree_management`, `implementation_decisions`, …) are preserved as
     `extension` data, not modeled as contract fields.
     """
 
@@ -1340,7 +1698,7 @@ class ImplementationReportPayload(PlanningArtifact):
     ARTIFACT_SCHEMA: ClassVar[str] = "agent-workbench.impl-report"
     ARTIFACT_SCHEMA_VERSION: ClassVar[str] = "1"
     PRODUCER_STAGE: ClassVar[str] = "execution"
-    CONSUMER_STAGES: ClassVar[tuple[str, ...]] = ()
+    CONSUMER_STAGES: ClassVar[tuple[str, ...]] = ("execution", "qa", "pr-review")
     PATH_SCOPE: ClassVar[str] = "agent_context"
     RELATIVE_PATH_TEMPLATE: ClassVar[str] = "{change_id}/execution/{uow_id}/impl_report.yaml"
     PATH_PARAMETERS: ClassVar[tuple[str, ...]] = ("change_id", "uow_id")
@@ -1351,12 +1709,16 @@ class ImplementationReportPayload(PlanningArtifact):
     status: str
     implementation_summary: str
     definition_of_done_status: tuple[DefinitionOfDoneItem, ...]
+    files_modified: tuple[FileChangeEntry, ...] = ()
+    tests_written: tuple[TestEntry, ...] = ()
+    commands_executed: tuple[CommandEntry, ...] = ()
+    risks_identified: tuple[RiskEntry, ...] = ()
     change_id: str | None = None
     story_id: str | None = None
     extension: Mapping[str, Any] = MappingProxyType({})
 
     @classmethod
-    def _parse(cls, data: Any) -> tuple["ImplementationReportPayload | None", ValidationResult]:
+    def _parse(cls, data: Any) -> tuple["ImplementationReportArtifact | None", ValidationResult]:
         where = cls.__name__
         issues: list[ValidationIssue] = []
         mapping = _require_mapping(data, where, issues)
@@ -1365,9 +1727,29 @@ class ImplementationReportPayload(PlanningArtifact):
 
         schema_version = _get_schema_version(mapping, where, issues)
         uow_id = _get_str(mapping, "uow_id", where, issues, required=True)
+
+        if mapping.get("status") == "completed":
+            issues.append(
+                _warn(
+                    WARNING_LEGACY_IMPL_STATUS_COMPLETED,
+                    "impl_report uses legacy status 'completed'; mapped to 'complete'",
+                    where,
+                )
+            )
+            mapping["status"] = "complete"
         status = _get_str_enum(
             mapping, "status", where, issues, valid_values=_VALID_IMPL_STATUSES, required=True
         )
+
+        if "implementation_summary" not in mapping and "summary" in mapping:
+            issues.append(
+                _warn(
+                    WARNING_LEGACY_IMPL_SUMMARY,
+                    "impl_report uses legacy 'summary'; mapped to 'implementation_summary'",
+                    where,
+                )
+            )
+            mapping["implementation_summary"] = mapping.get("summary")
         implementation_summary = _get_str(
             mapping, "implementation_summary", where, issues, required=True
         )
@@ -1384,8 +1766,33 @@ class ImplementationReportPayload(PlanningArtifact):
             raw_dod = mapping.get("definition_of_done")
         definition_of_done_status = _parse_dod_list(raw_dod, where, issues)
 
+        if "change_id" not in mapping and "story_id" in mapping:
+            issues.append(
+                _warn(
+                    WARNING_LEGACY_IMPL_STORY_ID,
+                    "impl_report uses legacy 'story_id' as identifier; mapped to 'change_id'",
+                    where,
+                )
+            )
+            mapping["change_id"] = mapping.get("story_id")
         change_id = _get_opt_str(mapping, "change_id", where, issues)
         story_id = _get_opt_str(mapping, "story_id", where, issues)
+
+        raw_files = mapping.get("files_modified")
+        if raw_files is None and "files_changed" in mapping:
+            issues.append(
+                _warn(
+                    WARNING_LEGACY_FILES_CHANGED,
+                    "impl_report uses legacy 'files_changed'; mapped to 'files_modified'",
+                    where,
+                )
+            )
+            raw_files = mapping.get("files_changed")
+        files_modified = _parse_file_change_list(raw_files, where, issues)
+
+        tests_written = _parse_test_entry_list(mapping.get("tests_written"), where, issues)
+        commands_executed = _parse_command_entry_list(mapping.get("commands_executed"), where, issues)
+        risks_identified = _parse_risk_entry_list(mapping.get("risks_identified"), where, issues)
 
         extension = _extract_extension(mapping, _IMPL_REPORT_RECOGNIZED_KEYS)
 
@@ -1399,6 +1806,10 @@ class ImplementationReportPayload(PlanningArtifact):
                 status=status,
                 implementation_summary=implementation_summary,
                 definition_of_done_status=definition_of_done_status,
+                files_modified=files_modified,
+                tests_written=tests_written,
+                commands_executed=commands_executed,
+                risks_identified=risks_identified,
                 change_id=change_id,
                 story_id=story_id,
                 extension=extension,
@@ -1414,6 +1825,14 @@ class ImplementationReportPayload(PlanningArtifact):
             "implementation_summary": self.implementation_summary,
             "definition_of_done_status": [item.to_dict() for item in self.definition_of_done_status],
         }
+        if self.files_modified:
+            result["files_modified"] = [entry.to_dict() for entry in self.files_modified]
+        if self.tests_written:
+            result["tests_written"] = [entry.to_dict() for entry in self.tests_written]
+        if self.commands_executed:
+            result["commands_executed"] = [entry.to_dict() for entry in self.commands_executed]
+        if self.risks_identified:
+            result["risks_identified"] = [entry.to_dict() for entry in self.risks_identified]
         if self.change_id is not None:
             result["change_id"] = self.change_id
         if self.story_id is not None:
@@ -1453,9 +1872,12 @@ class ImplementationReportPayload(PlanningArtifact):
         )
 
 
-def load_implementation_report(path: str | Path) -> ImplementationReportPayload:
+ImplementationReportPayload = ImplementationReportArtifact
+
+
+def load_implementation_report(path: str | Path) -> ImplementationReportArtifact:
     """Read-only load of an implementation report, discarding warnings."""
-    return ImplementationReportPayload.load(path)
+    return ImplementationReportArtifact.load(path)
 
 
 # ---------------------------------------------------------------------------
@@ -1466,12 +1888,137 @@ _QA_REPORT_RECOGNIZED_KEYS = frozenset(
     {
         "schema_version",
         "story_id",
+        "change_id",
         "qa_status",
+        "overall_result",
+        "overall_status",
         "acceptance_criteria_validation",
+        "ac_validations",
         "final_recommendation",
         "conditions",
+        "regression_risk_assessment",
+        "regression_risk",
+        "issues_found",
+        "release_notes",
+        "evidence_manifest",
     }
 )
+
+
+def _parse_regression_risk_assessment(
+    raw: Any, where: str, issues: list[ValidationIssue]
+) -> RegressionRiskAssessment | None:
+    if raw is None:
+        return None
+    location = f"{where}.regression_risk_assessment"
+    if isinstance(raw, str):
+        if raw not in _VALID_RISK_LEVELS:
+            issues.append(
+                _err(
+                    ERROR_INVALID_VALUE,
+                    f"invalid value {raw!r}, expected one of {_VALID_RISK_LEVELS}",
+                    location,
+                )
+            )
+            return None
+        return RegressionRiskAssessment(overall_risk=raw)
+    if not isinstance(raw, Mapping):
+        issues.append(
+            _err(ERROR_NOT_A_MAPPING, f"expected a mapping, got {type(raw).__name__}", location)
+        )
+        return None
+    mapping = dict(raw)
+    overall_risk = _get_opt_str_enum(
+        mapping, "overall_risk", location, issues, valid_values=_VALID_RISK_LEVELS
+    )
+    return RegressionRiskAssessment(overall_risk=overall_risk)
+
+
+def _parse_issue_entry(raw: Any, location: str, issues: list[ValidationIssue]) -> IssueEntry | None:
+    if not isinstance(raw, Mapping):
+        issues.append(
+            _err(ERROR_NOT_A_MAPPING, f"expected a mapping, got {type(raw).__name__}", location)
+        )
+        return None
+    mapping = dict(raw)
+    issue_id = _get_opt_str(mapping, "issue_id", location, issues)
+    severity = _get_opt_str_enum(
+        mapping, "severity", location, issues, valid_values=_VALID_ISSUE_SEVERITIES
+    )
+    description = _get_opt_str(mapping, "description", location, issues)
+    return IssueEntry(issue_id=issue_id, severity=severity, description=description)
+
+
+def _parse_issue_entry_list(
+    raw: Any, where: str, issues: list[ValidationIssue]
+) -> tuple[IssueEntry, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        issues.append(
+            _err(ERROR_WRONG_TYPE, f"field 'issues_found' must be a list, got {type(raw).__name__}", where)
+        )
+        return ()
+    entries: list[IssueEntry] = []
+    for idx, item in enumerate(raw):
+        entry = _parse_issue_entry(item, f"{where}.issues_found[{idx}]", issues)
+        if entry is not None:
+            entries.append(entry)
+    return tuple(entries)
+
+
+def _parse_release_notes(raw: Any, where: str, issues: list[ValidationIssue]) -> ReleaseNotes | None:
+    if raw is None:
+        return None
+    location = f"{where}.release_notes"
+    if isinstance(raw, str):
+        if not raw:
+            issues.append(_err(ERROR_MISSING_FIELD, "field 'release_notes' must be non-empty", location))
+            return None
+        issues.append(
+            _warn(
+                WARNING_LEGACY_QA_RELEASE_NOTES_STRING,
+                "qa_report uses legacy string 'release_notes'; mapped to summary",
+                location,
+            )
+        )
+        return ReleaseNotes(summary=raw)
+    if isinstance(raw, list):
+        issues.append(
+            _warn(
+                WARNING_LEGACY_QA_RELEASE_NOTES_LIST,
+                "qa_report uses legacy list 'release_notes'; preserved as raw_items",
+                location,
+            )
+        )
+        raw_items = _validate_str_list(raw, location, issues)
+        return ReleaseNotes(raw_items=raw_items)
+    if not isinstance(raw, Mapping):
+        issues.append(
+            _err(ERROR_WRONG_TYPE, f"expected a mapping, string, or list, got {type(raw).__name__}", location)
+        )
+        return None
+    mapping = dict(raw)
+    summary = _get_opt_str(mapping, "summary", location, issues)
+    return ReleaseNotes(summary=summary)
+
+
+def _parse_evidence_manifest(
+    raw: Any, where: str, issues: list[ValidationIssue]
+) -> EvidenceManifest | None:
+    if raw is None:
+        return None
+    location = f"{where}.evidence_manifest"
+    if not isinstance(raw, Mapping):
+        issues.append(
+            _err(ERROR_NOT_A_MAPPING, f"expected a mapping, got {type(raw).__name__}", location)
+        )
+        return None
+    mapping = dict(raw)
+    screenshots = _get_str_tuple(mapping, "screenshots", location, issues)
+    videos = _get_str_tuple(mapping, "videos", location, issues)
+    logs = _get_str_tuple(mapping, "logs", location, issues)
+    return EvidenceManifest(screenshots=screenshots, videos=videos, logs=logs)
 
 
 def _parse_qa_ac_entry(
@@ -1502,21 +2049,45 @@ def _parse_qa_ac_entry(
 
     evidence_type: str | None = None
     evidence_reference: str | None = None
+    evidence_references: tuple[str, ...] = ()
     raw_evidence = mapping.get("evidence")
     if raw_evidence is not None:
-        if not isinstance(raw_evidence, Mapping):
+        if isinstance(raw_evidence, str):
+            if not raw_evidence:
+                issues.append(
+                    _err(ERROR_MISSING_FIELD, "field 'evidence' must be non-empty", f"{location}.evidence")
+                )
+            else:
+                issues.append(
+                    _warn(
+                        WARNING_LEGACY_QA_EVIDENCE_STRING,
+                        "acceptance_criteria_validation entry uses legacy string 'evidence'",
+                        f"{location}.evidence",
+                    )
+                )
+                evidence_reference = raw_evidence
+        elif isinstance(raw_evidence, list):
             issues.append(
-                _err(
-                    ERROR_NOT_A_MAPPING,
-                    f"expected a mapping, got {type(raw_evidence).__name__}",
+                _warn(
+                    WARNING_LEGACY_QA_EVIDENCE_LIST,
+                    "acceptance_criteria_validation entry uses legacy list 'evidence'",
                     f"{location}.evidence",
                 )
             )
-        else:
+            evidence_references = _validate_str_list(raw_evidence, f"{location}.evidence", issues)
+        elif isinstance(raw_evidence, Mapping):
             evidence_mapping = dict(raw_evidence)
             evidence_type = _get_opt_str(evidence_mapping, "type", f"{location}.evidence", issues)
             evidence_reference = _get_opt_str(
                 evidence_mapping, "reference", f"{location}.evidence", issues
+            )
+        else:
+            issues.append(
+                _err(
+                    ERROR_WRONG_TYPE,
+                    f"expected a mapping, string, or list, got {type(raw_evidence).__name__}",
+                    f"{location}.evidence",
+                )
             )
 
     if status is None:
@@ -1527,6 +2098,7 @@ def _parse_qa_ac_entry(
         validation_method=validation_method,
         evidence_type=evidence_type,
         evidence_reference=evidence_reference,
+        evidence_references=evidence_references,
         notes=notes,
     )
 
@@ -1561,13 +2133,14 @@ def _parse_ac_validation_map(
 
 
 @dataclass(frozen=True, kw_only=True)
-class QAReportPayload(PlanningArtifact):
+class QAReportArtifact(PlanningArtifact):
     """QA report (`{change_id}/qa/qa_report.yaml`).
 
     Represents the stable, currently-validated fields of the legacy
-    `qa_report.yaml` artifact (see `agent-definition-source/qa/v2/prompt.md`).
-    Rich optional sections (`regression_risk_assessment`, `issues_found`,
-    `release_notes`, `evidence_manifest`, `knowledge_summary`,
+    `qa_report.yaml` artifact (see `agent-definition-source/qa/v2/prompt.md`),
+    including the mandatory `regression_risk_assessment`, `issues_found`,
+    `release_notes`, and `evidence_manifest` sections as typed, validated
+    fields. Remaining optional sections (`knowledge_summary`,
     `metacognitive_context`, …) are preserved as `extension` data, not modeled
     as contract fields.
     """
@@ -1576,7 +2149,7 @@ class QAReportPayload(PlanningArtifact):
     ARTIFACT_SCHEMA: ClassVar[str] = "agent-workbench.qa-report"
     ARTIFACT_SCHEMA_VERSION: ClassVar[str] = "1"
     PRODUCER_STAGE: ClassVar[str] = "qa"
-    CONSUMER_STAGES: ClassVar[tuple[str, ...]] = ()
+    CONSUMER_STAGES: ClassVar[tuple[str, ...]] = ("qa", "pr-review")
     PATH_SCOPE: ClassVar[str] = "agent_context"
     RELATIVE_PATH_TEMPLATE: ClassVar[str] = "{change_id}/qa/qa_report.yaml"
     PATH_PARAMETERS: ClassVar[tuple[str, ...]] = ("change_id",)
@@ -1588,10 +2161,14 @@ class QAReportPayload(PlanningArtifact):
     acceptance_criteria_validation: tuple[QAAcValidation, ...]
     final_recommendation: str
     conditions: tuple[str, ...] = ()
+    regression_risk_assessment: RegressionRiskAssessment | None = None
+    issues_found: tuple[IssueEntry, ...] = ()
+    release_notes: ReleaseNotes | None = None
+    evidence_manifest: EvidenceManifest | None = None
     extension: Mapping[str, Any] = MappingProxyType({})
 
     @classmethod
-    def _parse(cls, data: Any) -> tuple["QAReportPayload | None", ValidationResult]:
+    def _parse(cls, data: Any) -> tuple["QAReportArtifact | None", ValidationResult]:
         where = cls.__name__
         issues: list[ValidationIssue] = []
         mapping = _require_mapping(data, where, issues)
@@ -1599,13 +2176,81 @@ class QAReportPayload(PlanningArtifact):
             return None, ValidationResult(issues=tuple(issues))
 
         schema_version = _get_schema_version(mapping, where, issues)
+
+        if "story_id" not in mapping and "change_id" in mapping:
+            issues.append(
+                _warn(
+                    WARNING_LEGACY_QA_CHANGE_ID,
+                    "qa_report uses legacy 'change_id' as identifier; mapped to 'story_id'",
+                    where,
+                )
+            )
+            mapping["story_id"] = mapping.get("change_id")
         story_id = _get_str(mapping, "story_id", where, issues, required=True)
+
+        if "qa_status" not in mapping:
+            source_key = "overall_result" if "overall_result" in mapping else (
+                "overall_status" if "overall_status" in mapping else None
+            )
+            if source_key is not None:
+                issues.append(
+                    _warn(
+                        WARNING_LEGACY_QA_OVERALL_STATUS,
+                        f"qa_report uses legacy '{source_key}'; mapped to 'qa_status'",
+                        where,
+                    )
+                )
+                mapping["qa_status"] = mapping.get(source_key)
+
+        if mapping.get("qa_status") == "conditional_pass":
+            issues.append(
+                _warn(
+                    WARNING_LEGACY_QA_CONDITIONAL_PASS,
+                    "qa_report uses legacy status 'conditional_pass'; mapped to 'pass' with "
+                    "final_recommendation 'approve_with_conditions'",
+                    where,
+                )
+            )
+            mapping["qa_status"] = "pass"
+            if "final_recommendation" not in mapping:
+                mapping["final_recommendation"] = "approve_with_conditions"
+
         qa_status = _get_str_enum(
             mapping, "qa_status", where, issues, valid_values=_VALID_QA_STATUSES, required=True
         )
-        acceptance_criteria_validation = _parse_ac_validation_map(
-            mapping.get("acceptance_criteria_validation"), where, issues
-        )
+
+        raw_ac = mapping.get("acceptance_criteria_validation")
+        if raw_ac is None and isinstance(mapping.get("ac_validations"), list):
+            issues.append(
+                _warn(
+                    WARNING_LEGACY_QA_AC_LIST,
+                    "qa_report uses legacy list 'ac_validations'; mapped to keyed "
+                    "'acceptance_criteria_validation'",
+                    where,
+                )
+            )
+            synthesized: dict[str, Any] = {}
+            for idx, entry in enumerate(mapping.get("ac_validations") or []):
+                if isinstance(entry, Mapping) and isinstance(entry.get("ac_id"), str) and entry.get("ac_id").strip():
+                    ac_key = entry["ac_id"]
+                    entry_value: Any = {k: v for k, v in entry.items() if k != "ac_id"}
+                else:
+                    ac_key = f"AC{idx + 1}"
+                    entry_value = entry
+                if ac_key in synthesized:
+                    issues.append(
+                        _err(
+                            ERROR_INVALID_VALUE,
+                            f"duplicate acceptance criteria id {ac_key!r} after normalizing legacy "
+                            "'ac_validations' list",
+                            where,
+                        )
+                    )
+                    continue
+                synthesized[ac_key] = entry_value
+            raw_ac = synthesized
+        acceptance_criteria_validation = _parse_ac_validation_map(raw_ac, where, issues)
+
         final_recommendation = _get_str_enum(
             mapping,
             "final_recommendation",
@@ -1625,6 +2270,22 @@ class QAReportPayload(PlanningArtifact):
                 )
             )
 
+        raw_regression_risk = mapping.get("regression_risk_assessment")
+        if raw_regression_risk is None and "regression_risk" in mapping:
+            issues.append(
+                _warn(
+                    WARNING_LEGACY_QA_REGRESSION_RISK,
+                    "qa_report uses legacy 'regression_risk'; mapped to 'regression_risk_assessment'",
+                    where,
+                )
+            )
+            raw_regression_risk = mapping.get("regression_risk")
+        regression_risk_assessment = _parse_regression_risk_assessment(raw_regression_risk, where, issues)
+
+        issues_found = _parse_issue_entry_list(mapping.get("issues_found"), where, issues)
+        release_notes = _parse_release_notes(mapping.get("release_notes"), where, issues)
+        evidence_manifest = _parse_evidence_manifest(mapping.get("evidence_manifest"), where, issues)
+
         extension = _extract_extension(mapping, _QA_REPORT_RECOGNIZED_KEYS)
 
         result = ValidationResult(issues=tuple(issues))
@@ -1638,6 +2299,10 @@ class QAReportPayload(PlanningArtifact):
                 acceptance_criteria_validation=acceptance_criteria_validation,
                 final_recommendation=final_recommendation,
                 conditions=conditions,
+                regression_risk_assessment=regression_risk_assessment,
+                issues_found=issues_found,
+                release_notes=release_notes,
+                evidence_manifest=evidence_manifest,
                 extension=extension,
             ),
             result,
@@ -1655,6 +2320,14 @@ class QAReportPayload(PlanningArtifact):
         }
         if self.conditions:
             result["conditions"] = list(self.conditions)
+        if self.regression_risk_assessment is not None:
+            result["regression_risk_assessment"] = self.regression_risk_assessment.to_dict()
+        if self.issues_found:
+            result["issues_found"] = [entry.to_dict() for entry in self.issues_found]
+        if self.release_notes is not None:
+            result["release_notes"] = self.release_notes.to_dict()
+        if self.evidence_manifest is not None:
+            result["evidence_manifest"] = self.evidence_manifest.to_dict()
         result.update(_thaw_extension_value(self.extension))
         return result
 
@@ -1690,6 +2363,15 @@ class QAReportPayload(PlanningArtifact):
         )
 
 
-def load_qa_report(path: str | Path) -> QAReportPayload:
+QAReportPayload = QAReportArtifact
+
+
+def load_qa_report(path: str | Path) -> QAReportArtifact:
     """Read-only load of a QA report, discarding warnings."""
-    return QAReportPayload.load(path)
+    return QAReportArtifact.load(path)
+
+
+REPORT_ARTIFACTS: tuple[type[PlanningArtifact], ...] = (
+    ImplementationReportArtifact,
+    QAReportArtifact,
+)

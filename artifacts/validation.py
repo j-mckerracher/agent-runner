@@ -78,6 +78,25 @@ WARNING_LEGACY_ESTIMATED_COMPLEXITY = "legacy_estimated_complexity"
 WARNING_LEGACY_PARTIAL_UOW_SPEC = "legacy_partial_uow_spec"
 WARNING_LEGACY_DEFINITION_OF_DONE = "legacy_definition_of_done"
 
+# Implementation-report legacy shapes — each accepted historical variant gets
+# its own stable code; none of these are a generic catch-all.
+WARNING_LEGACY_IMPL_SUMMARY = "legacy_impl_summary"
+WARNING_LEGACY_IMPL_STATUS_COMPLETED = "legacy_impl_status_completed"
+WARNING_LEGACY_FILES_CHANGED = "legacy_files_changed"
+WARNING_LEGACY_FILE_PATH_STRING = "legacy_file_path_string"
+WARNING_LEGACY_IMPL_STORY_ID = "legacy_impl_story_id"
+
+# QA-report legacy shapes.
+WARNING_LEGACY_QA_CHANGE_ID = "legacy_qa_change_id"
+WARNING_LEGACY_QA_OVERALL_STATUS = "legacy_qa_overall_status"
+WARNING_LEGACY_QA_AC_LIST = "legacy_qa_ac_list"
+WARNING_LEGACY_QA_EVIDENCE_STRING = "legacy_qa_evidence_string"
+WARNING_LEGACY_QA_EVIDENCE_LIST = "legacy_qa_evidence_list"
+WARNING_LEGACY_QA_CONDITIONAL_PASS = "legacy_qa_conditional_pass"
+WARNING_LEGACY_QA_REGRESSION_RISK = "legacy_qa_regression_risk"
+WARNING_LEGACY_QA_RELEASE_NOTES_STRING = "legacy_qa_release_notes_string"
+WARNING_LEGACY_QA_RELEASE_NOTES_LIST = "legacy_qa_release_notes_list"
+
 WARNING_CODES = frozenset(
     {
         WARNING_LEGACY_AC_LIST,
@@ -88,6 +107,20 @@ WARNING_CODES = frozenset(
         WARNING_LEGACY_ESTIMATED_COMPLEXITY,
         WARNING_LEGACY_PARTIAL_UOW_SPEC,
         WARNING_LEGACY_DEFINITION_OF_DONE,
+        WARNING_LEGACY_IMPL_SUMMARY,
+        WARNING_LEGACY_IMPL_STATUS_COMPLETED,
+        WARNING_LEGACY_FILES_CHANGED,
+        WARNING_LEGACY_FILE_PATH_STRING,
+        WARNING_LEGACY_IMPL_STORY_ID,
+        WARNING_LEGACY_QA_CHANGE_ID,
+        WARNING_LEGACY_QA_OVERALL_STATUS,
+        WARNING_LEGACY_QA_AC_LIST,
+        WARNING_LEGACY_QA_EVIDENCE_STRING,
+        WARNING_LEGACY_QA_EVIDENCE_LIST,
+        WARNING_LEGACY_QA_CONDITIONAL_PASS,
+        WARNING_LEGACY_QA_REGRESSION_RISK,
+        WARNING_LEGACY_QA_RELEASE_NOTES_STRING,
+        WARNING_LEGACY_QA_RELEASE_NOTES_LIST,
     }
 )
 

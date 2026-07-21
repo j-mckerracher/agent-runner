@@ -3,8 +3,10 @@
 Prompt 19 adds typed, immutable, read-only **payload** contracts for the four
 planning-stage artifacts, layered on top of the Prompt 18
 [`ArtifactRef`](./artifact-ref.md) *reference* contract. Prompt 20 extends the
-same module with two more: `ImplementationReportPayload` and `QAReportPayload`,
-covering the legacy `impl_report.yaml` and `qa_report.yaml` workflow artifacts.
+same module with two more: `ImplementationReportArtifact` and
+`QAReportArtifact`, covering the legacy `impl_report.yaml` and `qa_report.yaml`
+workflow artifacts, including their mandatory sections as typed, validated
+fields (not merely extension passthrough).
 
 Where `ArtifactRef` answers *"what/where is this artifact"* (type, path, producer,
 schema identity), these contracts answer *"what is inside it"* — a validated,
@@ -17,14 +19,20 @@ typed view of the payload, plus the metadata needed to mint a matching
 from artifacts import (
     StoryArtifact, TaskPlanArtifact, AssignmentArtifact, UowSpecArtifact,
     PLANNING_ARTIFACTS,            # ordered tuple of the four planning-stage contract classes
-    ImplementationReportPayload, QAReportPayload,
+    ImplementationReportArtifact, QAReportArtifact,   # canonical P20 names
+    REPORT_ARTIFACTS,              # ordered tuple of the two report contract classes
     DefinitionOfDoneItem, QAAcValidation,
+    FileChangeEntry, TestEntry, CommandEntry, RiskEntry,               # impl-report nested models
+    RegressionRiskAssessment, IssueEntry, ReleaseNotes, EvidenceManifest,  # qa-report nested models
     load_implementation_report, load_qa_report,
     ValidationResult, ValidationIssue, ValidationSeverity,
     ArtifactValidationError,      # raised on structural (ERROR) problems
     ArtifactLoadError,            # raised on transport problems (I/O, parse, missing PyYAML)
 )
 ```
+
+See [Canonical names vs. compatibility aliases](#canonical-names-vs-compatibility-aliases)
+for the `ImplementationReportPayload`/`QAReportPayload` names.
 
 ## Contract schema version vs payload schema version
 
@@ -35,7 +43,7 @@ Independent version axes coexist:
   currently `"1"`).
 - `<Artifact>.ARTIFACT_SCHEMA` — the payload's stable, namespaced identity
   (e.g. `agent-workbench.story`).
-- `ImplementationReportPayload.schema_version` / `QAReportPayload.schema_version`
+- `ImplementationReportArtifact.schema_version` / `QAReportArtifact.schema_version`
   (P20 only) — a **document-embedded** version read from the source report
   itself, distinct from the three axes above. See
   [Report schema-version handling](#report-schema-version-handling).
@@ -87,44 +95,62 @@ projection model — see
 
 | artifact type | schema / version | producer | consumers | path scope | canonical relative path | params | format |
 |---|---|---|---|---|---|---|---|
-| `impl_report` | `agent-workbench.impl-report` / `1` | `execution` | *(none — P20 does not wire consumers)* | `agent_context` | `{change_id}/execution/{uow_id}/impl_report.yaml` | `change_id`, `uow_id` | yaml |
-| `qa_report` | `agent-workbench.qa-report` / `1` | `qa` | *(none — P20 does not wire consumers)* | `agent_context` | `{change_id}/qa/qa_report.yaml` | `change_id` | yaml |
+| `impl_report` | `agent-workbench.impl-report` / `1` | `execution` | `execution`, `qa`, `pr-review` | `agent_context` | `{change_id}/execution/{uow_id}/impl_report.yaml` | `change_id`, `uow_id` | yaml |
+| `qa_report` | `agent-workbench.qa-report` / `1` | `qa` | `qa`, `pr-review` | `agent_context` | `{change_id}/qa/qa_report.yaml` | `change_id` | yaml |
+
+`CONSUMER_STAGES` declares which stages are expected to read the artifact; as
+with the planning-stage contracts, no producer or consumer stage actually
+adopts these contracts yet (declaration only — see
+[Legacy compatibility & non-migration boundary](#legacy-compatibility--non-migration-boundary)).
 
 Required fields:
 
-- `ImplementationReportPayload`: `uow_id`, `status` ∈ `{complete, partial, blocked}`,
+- `ImplementationReportArtifact`: `uow_id`, `status` ∈ `{complete, partial, blocked}`,
   `implementation_summary`, `definition_of_done_status` (non-empty list of
   `DefinitionOfDoneItem { item: non-empty str, met: bool, evidence: str | None }`).
   A legacy top-level `definition_of_done` list is accepted as an alias when
   `definition_of_done_status` is absent, with a `legacy_definition_of_done`
-  warning; the canonical key is always what is serialized.
-- `QAReportPayload`: `story_id`, `qa_status` ∈ `{pass, fail, blocked}`,
+  warning; the canonical key is always what is serialized. Additionally modeled
+  as typed, optional (present-if-given) fields — never merely extension
+  passthrough:
+  - `files_modified: tuple[FileChangeEntry, ...]` — `FileChangeEntry { path: non-empty str, change_type: str | None ∈ {modified, created, deleted}, change_summary: str | None }`. A bare string entry is accepted as `FileChangeEntry(path=value, change_type=None)`.
+  - `tests_written: tuple[TestEntry, ...]` — `TestEntry { path: non-empty str, test_type: str | None, cases_count: int | None, harness_path: str | None }`; reads/writes the source key `type`.
+  - `commands_executed: tuple[CommandEntry, ...]` — `CommandEntry { command: non-empty str, result: str | None ∈ {pass, fail}, output_summary: str | None }`.
+  - `risks_identified: tuple[RiskEntry, ...]` — `RiskEntry { description: non-empty str, risk_type: str | None, mitigation: str | None, requires_escalation: bool | None }`; reads/writes the source key `type`.
+- `QAReportArtifact`: `story_id`, `qa_status` ∈ `{pass, fail, blocked}`,
   `acceptance_criteria_validation` (non-empty mapping of AC id →
   `QAAcValidation`, each with `status` ∈ `{pass, fail, partial}`),
   `final_recommendation` ∈ `{approve, reject, approve_with_conditions}`.
   `conditions` (non-empty list of strings) is required when
   `final_recommendation == "approve_with_conditions"`, and is an
-  `invalid_value`/`missing_field` error otherwise omitted.
+  `invalid_value`/`missing_field` error otherwise omitted. Additionally modeled
+  as typed, optional fields:
+  - `regression_risk_assessment: RegressionRiskAssessment | None` — `{ overall_risk: str | None ∈ {low, medium, high} }`; also accepts a bare risk-level string.
+  - `issues_found: tuple[IssueEntry, ...]` — `IssueEntry { issue_id: str | None, severity: str | None ∈ {critical, high, medium, low}, description: str | None }`.
+  - `release_notes: ReleaseNotes | None` — `{ summary: str | None, raw_items: tuple[str, ...] }`; also accepts a bare string (→ `summary`) or bare list (→ `raw_items`, preserved verbatim, never re-classified).
+  - `evidence_manifest: EvidenceManifest | None` — `{ screenshots: tuple[str, ...], videos: tuple[str, ...], logs: tuple[str, ...] }`.
 
 `met` is validated with an explicit `isinstance(raw, bool)` check, so integer
 truthiness (`0`/`1`) and string truthiness (`"true"`/`"false"`) are both
-rejected as `wrong_type`, never silently coerced.
+rejected as `wrong_type`, never silently coerced. The same strict-bool rule
+applies to `RiskEntry.requires_escalation`.
 
 ### Report contracts preserve extension data
 
-Unlike the four planning-stage projections, `ImplementationReportPayload` and
-`QAReportPayload` preserve every unrecognized top-level key as read-only
-`extension` data (a frozen, recursively-immutable mapping — `MappingProxyType`
-for nested mappings, `tuple` for nested lists), because generated agent reports
-carry many evolving sections (`engineering_scope_classification`,
-`files_modified`, `commands_executed`, `worktree_management`,
-`regression_risk_assessment`, `issues_found`, `metacognitive_context`, …) that
-must survive a load/serialize round trip untouched:
+Beyond the mandatory sections modeled above, `ImplementationReportArtifact` and
+`QAReportArtifact` preserve every remaining unrecognized top-level key as
+read-only `extension` data (a frozen, recursively-immutable mapping —
+`MappingProxyType` for nested mappings, `tuple` for nested lists), because
+generated agent reports carry many evolving sections that are not (yet)
+part of the modeled contract — e.g. `engineering_scope_classification`,
+`no_mistakes_gate`, `worktree_management`, `knowledge_summary`,
+`metacognitive_context`:
 
 ```python
-report = ImplementationReportPayload.from_mapping(data)
-report.extension["files_modified"]           # preserved, read-only
-ImplementationReportPayload.from_mapping(report.to_dict()) == report   # True
+report = ImplementationReportArtifact.from_mapping(data)
+report.files_modified                          # typed field — validated FileChangeEntry tuple
+report.extension.get("no_mistakes_gate")        # unmodeled — preserved verbatim, read-only
+ImplementationReportArtifact.from_mapping(report.to_dict()) == report   # True
 ```
 
 This uses a purpose-built recursive freeze/thaw (`_freeze_extension_value` /
@@ -146,6 +172,26 @@ is read from the source document itself, independent of `ARTIFACT_SCHEMA_VERSION
 
 No migration machinery exists; a second version would be added as a new entry
 in `_SUPPORTED_REPORT_SCHEMA_VERSIONS`, not by rewriting old documents.
+
+### Canonical names vs. compatibility aliases
+
+`ImplementationReportArtifact` and `QAReportArtifact` are the canonical class
+names for these two contracts. `ImplementationReportPayload` and
+`QAReportPayload` are simple module-level name bindings kept for compatibility
+with an earlier incomplete pass that introduced those names first:
+
+```python
+ImplementationReportPayload = ImplementationReportArtifact
+QAReportPayload = QAReportArtifact
+```
+
+They are not subclasses or wrappers — both names resolve to the exact same
+class object (`ImplementationReportPayload is ImplementationReportArtifact`
+and `QAReportPayload is QAReportArtifact` both hold), so every method,
+`isinstance` check, and `to_dict()`/`to_artifact_ref()` call behaves
+identically regardless of which name is used to reach the class. New code
+should prefer the canonical names; the aliases remain exported from
+`artifacts` and are not deprecated.
 
 ## Validation model
 
@@ -193,6 +239,20 @@ and reported as WARNING issues. Loading still succeeds. Warning codes:
 | `legacy_estimated_complexity` | task `estimated_complexity` → `complexity` |
 | `legacy_partial_uow_spec` | uow_spec missing canonical fields (only `uow_id` required) |
 | `legacy_definition_of_done` | impl_report top-level `definition_of_done` → `definition_of_done_status` |
+| `legacy_impl_summary` | impl_report `summary` → `implementation_summary` |
+| `legacy_impl_status_completed` | impl_report `status: completed` → `status: complete` |
+| `legacy_files_changed` | impl_report `files_changed` → `files_modified` |
+| `legacy_file_path_string` | impl_report file entry given as a bare string → `FileChangeEntry(path=value, change_type=None)` |
+| `legacy_impl_story_id` | impl_report `story_id` → `change_id` |
+| `legacy_qa_change_id` | qa_report `change_id` → `story_id` |
+| `legacy_qa_overall_status` | qa_report `overall_result`/`overall_status` → `qa_status` |
+| `legacy_qa_ac_list` | qa_report `ac_validations` list → AC-keyed mapping (by `ac_id`, else `AC{n}`) |
+| `legacy_qa_evidence_string` | qa_report AC evidence given as a bare string → single-item `evidence_references` |
+| `legacy_qa_evidence_list` | qa_report AC evidence given as a bare list → `evidence_references` |
+| `legacy_qa_conditional_pass` | qa_report `overall_status: conditional_pass` → `qa_status: pass` + `final_recommendation: approve_with_conditions` (only when absent) |
+| `legacy_qa_regression_risk` | qa_report `regression_risk` → `regression_risk_assessment` |
+| `legacy_qa_release_notes_string` | qa_report `release_notes` given as a bare string → `ReleaseNotes(summary=value)` |
+| `legacy_qa_release_notes_list` | qa_report `release_notes` given as a bare list → `ReleaseNotes(raw_items=value)` |
 
 Warnings are observable through the `*_with_validation` API (see below); the
 convenience methods discard them. Structured `ValidationResult` warnings are the
@@ -252,18 +312,20 @@ The factory does not resolve the path template, check that a file exists, comput
 a checksum, or read the payload. The caller must supply `path` and/or `uri`
 (`ArtifactRef` enforces this). `metadata` is defensively copied by `ArtifactRef`.
 
-`ImplementationReportPayload.to_artifact_ref()` and `QAReportPayload.to_artifact_ref()`
+`ImplementationReportArtifact.to_artifact_ref()` and `QAReportArtifact.to_artifact_ref()`
 override the base factory to auto-populate stable identity `metadata`
 (`uow_id`/`status`/`change_id`/`story_id` for the former;
 `story_id`/`qa_status`/`final_recommendation` for the latter). Caller-supplied
-`metadata` keys take precedence over these defaults via `dict.update()`:
+`metadata` keys take precedence over these defaults via `dict.update()`. The
+`ImplementationReportPayload`/`QAReportPayload` aliases call the identical
+method (see [Canonical names vs. compatibility aliases](#canonical-names-vs-compatibility-aliases)):
 
 ```python
-report = ImplementationReportPayload.from_mapping(impl_data)
+report = ImplementationReportArtifact.from_mapping(impl_data)
 ref = report.to_artifact_ref(path="C1/execution/U1/impl_report.yaml")
 ref.metadata["uow_id"], ref.metadata["status"]   # auto-populated
 
-qa = QAReportPayload.from_mapping(qa_data)
+qa = QAReportArtifact.from_mapping(qa_data)
 ref = qa.to_artifact_ref(path="C1/qa/qa_report.yaml", metadata={"run": "abc"})
 ref.metadata["qa_status"], ref.metadata["run"]   # both present
 ```
@@ -308,5 +370,7 @@ report contracts identically to the four planning-stage contracts. Enforced by
 - Centralized runtime-path resolution for the logical scopes.
 - Artifact lifecycle events (`artifact.created` / `.validated` / `.invalid`).
 - Stage input/output (produce/consume) declarations and production adoption.
-- Consumer-stage wiring for `impl_report` / `qa_report` (P20 sets producer
-  stages only, per design).
+- Live workflow adoption of the now-declared `impl_report` / `qa_report`
+  `CONSUMER_STAGES` — the stages are declared (see
+  [The two report contracts](#the-two-report-contracts)) but no stage actually
+  reads these contracts yet.

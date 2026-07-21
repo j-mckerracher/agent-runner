@@ -1,11 +1,16 @@
 """Prompt 20 — implementation-report and QA-report payload contracts + loaders.
 
-Covers `ImplementationReportPayload` and `QAReportPayload`: contract metadata,
-structural validation with aggregated errors, the document-embedded
-`schema_version` compatibility rules, the legacy `definition_of_done` alias,
-extension-field preservation across a load/serialize round trip, the
-`ArtifactRef` factory, non-mutating normalization, and strictly read-only
-loading (including transport errors).
+Covers `ImplementationReportArtifact` and `QAReportArtifact` (canonical names,
+with `ImplementationReportPayload`/`QAReportPayload` kept as compatibility
+aliases for the names introduced by an earlier, incomplete pass): contract
+metadata, the mandatory typed sections (`files_modified`, `tests_written`,
+`commands_executed`, `risks_identified` / `regression_risk_assessment`,
+`issues_found`, `release_notes`, `evidence_manifest`), structural validation
+with aggregated errors, the document-embedded `schema_version` compatibility
+rules, every accepted legacy shape (each with its own stable warning code),
+extension-field preservation across a load/serialize round trip for fields
+that remain genuinely unmodeled, the `ArtifactRef` factory, non-mutating
+normalization, and strictly read-only loading (including transport errors).
 """
 
 from __future__ import annotations
@@ -18,8 +23,18 @@ import pytest
 from artifacts import (
     ArtifactLoadError,
     ArtifactValidationError,
+    CommandEntry,
+    EvidenceManifest,
+    FileChangeEntry,
+    ImplementationReportArtifact,
     ImplementationReportPayload,
+    IssueEntry,
+    QAReportArtifact,
     QAReportPayload,
+    RegressionRiskAssessment,
+    ReleaseNotes,
+    RiskEntry,
+    TestEntry,
     load_implementation_report,
     load_qa_report,
 )
@@ -185,9 +200,120 @@ def test_impl_report_unknown_extension_fields_are_preserved():
     data["files_modified"] = [{"path": "a.py", "change_type": "modified"}]
     data["no_mistakes_gate"] = {"required": True, "outcome": "passed"}
     report = ImplementationReportPayload.from_mapping(data)
+    assert report.files_modified == (FileChangeEntry(path="a.py", change_type="modified"),)
     rendered = report.to_dict()
     assert rendered["files_modified"] == [{"path": "a.py", "change_type": "modified"}]
     assert rendered["no_mistakes_gate"] == {"required": True, "outcome": "passed"}
+
+
+def test_impl_report_files_modified_bare_string_entry():
+    data = valid_impl_report()
+    data["files_modified"] = ["a.py"]
+    report, result = ImplementationReportPayload.from_mapping_with_validation(data)
+    assert result.ok
+    assert [w.code for w in result.warnings] == ["legacy_file_path_string"]
+    assert report.files_modified == (FileChangeEntry(path="a.py", change_type=None),)
+    assert "change_type" not in report.to_dict()["files_modified"][0]
+
+
+def test_impl_report_legacy_status_completed():
+    data = valid_impl_report()
+    data["status"] = "completed"
+    report, result = ImplementationReportPayload.from_mapping_with_validation(data)
+    assert result.ok
+    assert report.status == "complete"
+    assert [w.code for w in result.warnings] == ["legacy_impl_status_completed"]
+
+
+def test_impl_report_legacy_summary_alias():
+    data = valid_impl_report()
+    data["summary"] = data.pop("implementation_summary")
+    report, result = ImplementationReportPayload.from_mapping_with_validation(data)
+    assert result.ok
+    assert report.implementation_summary == "Implemented the thing."
+    assert [w.code for w in result.warnings] == ["legacy_impl_summary"]
+
+
+def test_impl_report_legacy_story_id_alias_for_change_id():
+    data = valid_impl_report()
+    del data["change_id"]
+    data["story_id"] = "S1"
+    report, result = ImplementationReportPayload.from_mapping_with_validation(data)
+    assert result.ok
+    assert report.change_id == "S1"
+    assert report.story_id == "S1"
+    assert [w.code for w in result.warnings] == ["legacy_impl_story_id"]
+
+
+def test_impl_report_legacy_files_changed_alias():
+    data = valid_impl_report()
+    data["files_changed"] = [{"path": "a.py", "change_type": "created"}]
+    report, result = ImplementationReportPayload.from_mapping_with_validation(data)
+    assert result.ok
+    assert [w.code for w in result.warnings] == ["legacy_files_changed"]
+    assert report.files_modified == (FileChangeEntry(path="a.py", change_type="created"),)
+
+
+def test_impl_report_invalid_file_change_type():
+    data = valid_impl_report()
+    data["files_modified"] = [{"path": "a.py", "change_type": "renamed"}]
+    with pytest.raises(ArtifactValidationError) as exc_info:
+        ImplementationReportPayload.from_mapping(data)
+    assert any(e.code == "invalid_value" for e in exc_info.value.errors)
+
+
+def test_impl_report_tests_written_reads_legacy_type_key():
+    data = valid_impl_report()
+    data["tests_written"] = [{"path": "t.py", "type": "unit", "cases_count": 3}]
+    report = ImplementationReportPayload.from_mapping(data)
+    assert report.tests_written == (TestEntry(path="t.py", test_type="unit", cases_count=3),)
+    assert report.to_dict()["tests_written"][0]["type"] == "unit"
+
+
+def test_impl_report_tests_written_missing_path_is_error():
+    data = valid_impl_report()
+    data["tests_written"] = [{"type": "unit"}]
+    with pytest.raises(ArtifactValidationError) as exc_info:
+        ImplementationReportPayload.from_mapping(data)
+    assert any(e.code == "missing_field" for e in exc_info.value.errors)
+
+
+def test_impl_report_commands_executed_valid_and_invalid_result():
+    data = valid_impl_report()
+    data["commands_executed"] = [{"command": "pytest -q", "result": "pass"}]
+    report = ImplementationReportPayload.from_mapping(data)
+    assert report.commands_executed == (CommandEntry(command="pytest -q", result="pass"),)
+
+    data["commands_executed"] = [{"command": "pytest -q", "result": "ok"}]
+    with pytest.raises(ArtifactValidationError) as exc_info:
+        ImplementationReportPayload.from_mapping(data)
+    assert any(e.code == "invalid_value" for e in exc_info.value.errors)
+
+
+def test_impl_report_risks_identified_reads_legacy_type_key():
+    data = valid_impl_report()
+    data["risks_identified"] = [{"type": "perf", "description": "slow path", "requires_escalation": True}]
+    report = ImplementationReportPayload.from_mapping(data)
+    assert report.risks_identified == (
+        RiskEntry(risk_type="perf", description="slow path", requires_escalation=True),
+    )
+    assert report.to_dict()["risks_identified"][0]["type"] == "perf"
+
+
+def test_impl_report_risk_missing_description_is_error():
+    data = valid_impl_report()
+    data["risks_identified"] = [{"type": "perf"}]
+    with pytest.raises(ArtifactValidationError) as exc_info:
+        ImplementationReportPayload.from_mapping(data)
+    assert any(e.code == "missing_field" for e in exc_info.value.errors)
+
+
+def test_impl_report_consumer_stages():
+    assert ImplementationReportArtifact.CONSUMER_STAGES == ("execution", "qa", "pr-review")
+
+
+def test_implementation_report_alias_identity():
+    assert ImplementationReportPayload is ImplementationReportArtifact
 
 
 def test_impl_report_file_loader_success(tmp_path):
@@ -350,9 +476,202 @@ def test_qa_report_unknown_extension_fields_are_preserved():
     data["knowledge_summary"] = "learned things"
     data["evidence_manifest"] = {"screenshots": ["s1.png"]}
     report = QAReportPayload.from_mapping(data)
+    assert report.evidence_manifest == EvidenceManifest(screenshots=("s1.png",))
     rendered = report.to_dict()
     assert rendered["knowledge_summary"] == "learned things"
     assert rendered["evidence_manifest"] == {"screenshots": ["s1.png"]}
+
+
+def test_qa_report_legacy_change_id_alias_for_story_id():
+    data = valid_qa_report()
+    del data["story_id"]
+    data["change_id"] = "C1"
+    report, result = QAReportPayload.from_mapping_with_validation(data)
+    assert result.ok
+    assert report.story_id == "C1"
+    assert [w.code for w in result.warnings] == ["legacy_qa_change_id"]
+
+
+@pytest.mark.parametrize("legacy_key", ["overall_result", "overall_status"])
+def test_qa_report_legacy_overall_status_aliases(legacy_key):
+    data = valid_qa_report()
+    data[legacy_key] = data.pop("qa_status")
+    report, result = QAReportPayload.from_mapping_with_validation(data)
+    assert result.ok
+    assert report.qa_status == "pass"
+    assert [w.code for w in result.warnings] == ["legacy_qa_overall_status"]
+
+
+def test_qa_report_legacy_conditional_pass_transform():
+    data = valid_qa_report()
+    del data["qa_status"]
+    data["overall_status"] = "conditional_pass"
+    del data["final_recommendation"]
+    data["conditions"] = ["fix the docs"]
+    report, result = QAReportPayload.from_mapping_with_validation(data)
+    assert result.ok
+    assert report.qa_status == "pass"
+    assert report.final_recommendation == "approve_with_conditions"
+    assert report.conditions == ("fix the docs",)
+    codes = [w.code for w in result.warnings]
+    assert "legacy_qa_overall_status" in codes
+    assert "legacy_qa_conditional_pass" in codes
+
+
+def test_qa_report_conditional_pass_without_conditions_still_errors():
+    data = valid_qa_report()
+    del data["qa_status"]
+    data["overall_status"] = "conditional_pass"
+    del data["final_recommendation"]
+    with pytest.raises(ArtifactValidationError) as exc_info:
+        QAReportPayload.from_mapping(data)
+    assert any(e.code == "missing_field" for e in exc_info.value.errors)
+
+
+def test_qa_report_conditional_pass_does_not_overwrite_explicit_recommendation():
+    data = valid_qa_report()
+    del data["qa_status"]
+    data["overall_status"] = "conditional_pass"
+    data["final_recommendation"] = "reject"
+    report, result = QAReportPayload.from_mapping_with_validation(data)
+    assert result.ok
+    assert report.final_recommendation == "reject"
+
+
+def test_qa_report_legacy_ac_validations_list_with_ac_id():
+    data = valid_qa_report()
+    del data["acceptance_criteria_validation"]
+    data["ac_validations"] = [{"ac_id": "AC1", "status": "pass"}]
+    report, result = QAReportPayload.from_mapping_with_validation(data)
+    assert result.ok
+    assert report.acceptance_criteria_validation[0].ac_id == "AC1"
+    assert [w.code for w in result.warnings] == ["legacy_qa_ac_list"]
+
+
+def test_qa_report_legacy_ac_validations_list_auto_keyed():
+    data = valid_qa_report()
+    del data["acceptance_criteria_validation"]
+    data["ac_validations"] = [{"status": "pass"}, {"status": "fail"}]
+    report = QAReportPayload.from_mapping(data)
+    ac_ids = sorted(entry.ac_id for entry in report.acceptance_criteria_validation)
+    assert ac_ids == ["AC1", "AC2"]
+
+
+def test_qa_report_legacy_ac_validations_list_duplicate_id_is_error():
+    data = valid_qa_report()
+    del data["acceptance_criteria_validation"]
+    data["ac_validations"] = [{"ac_id": "AC1", "status": "pass"}, {"ac_id": "AC1", "status": "fail"}]
+    with pytest.raises(ArtifactValidationError) as exc_info:
+        QAReportPayload.from_mapping(data)
+    assert any(e.code == "invalid_value" for e in exc_info.value.errors)
+
+
+def test_qa_report_ac_evidence_legacy_string():
+    data = valid_qa_report()
+    data["acceptance_criteria_validation"]["AC1"]["evidence"] = "run.log"
+    report, result = QAReportPayload.from_mapping_with_validation(data)
+    assert result.ok
+    entry = report.acceptance_criteria_validation[0]
+    assert entry.evidence_reference == "run.log"
+    assert entry.evidence_references == ()
+    assert [w.code for w in result.warnings] == ["legacy_qa_evidence_string"]
+
+
+def test_qa_report_ac_evidence_legacy_list():
+    data = valid_qa_report()
+    data["acceptance_criteria_validation"]["AC1"]["evidence"] = ["run.log", "screenshot.png"]
+    report, result = QAReportPayload.from_mapping_with_validation(data)
+    assert result.ok
+    entry = report.acceptance_criteria_validation[0]
+    assert entry.evidence_references == ("run.log", "screenshot.png")
+    assert [w.code for w in result.warnings] == ["legacy_qa_evidence_list"]
+
+
+def test_qa_report_regression_risk_assessment_mapping_and_legacy_alias():
+    data = valid_qa_report()
+    data["regression_risk_assessment"] = {"overall_risk": "high"}
+    report = QAReportPayload.from_mapping(data)
+    assert report.regression_risk_assessment == RegressionRiskAssessment(overall_risk="high")
+
+    data = valid_qa_report()
+    data["regression_risk"] = "medium"
+    report, result = QAReportPayload.from_mapping_with_validation(data)
+    assert result.ok
+    assert report.regression_risk_assessment == RegressionRiskAssessment(overall_risk="medium")
+    assert [w.code for w in result.warnings] == ["legacy_qa_regression_risk"]
+
+
+def test_qa_report_regression_risk_assessment_invalid_value():
+    data = valid_qa_report()
+    data["regression_risk_assessment"] = "extreme"
+    with pytest.raises(ArtifactValidationError) as exc_info:
+        QAReportPayload.from_mapping(data)
+    assert any(e.code == "invalid_value" for e in exc_info.value.errors)
+
+
+def test_qa_report_issues_found():
+    data = valid_qa_report()
+    data["issues_found"] = [{"issue_id": "I1", "severity": "high", "description": "broken"}]
+    report = QAReportPayload.from_mapping(data)
+    assert report.issues_found == (IssueEntry(issue_id="I1", severity="high", description="broken"),)
+
+
+def test_qa_report_issues_found_invalid_severity():
+    data = valid_qa_report()
+    data["issues_found"] = [{"severity": "urgent"}]
+    with pytest.raises(ArtifactValidationError) as exc_info:
+        QAReportPayload.from_mapping(data)
+    assert any(e.code == "invalid_value" for e in exc_info.value.errors)
+
+
+def test_qa_report_release_notes_mapping_form():
+    data = valid_qa_report()
+    data["release_notes"] = {"summary": "Ships feature X."}
+    report = QAReportPayload.from_mapping(data)
+    assert report.release_notes == ReleaseNotes(summary="Ships feature X.")
+
+
+def test_qa_report_release_notes_legacy_string_form():
+    data = valid_qa_report()
+    data["release_notes"] = "Ships feature X."
+    report, result = QAReportPayload.from_mapping_with_validation(data)
+    assert result.ok
+    assert report.release_notes == ReleaseNotes(summary="Ships feature X.")
+    assert [w.code for w in result.warnings] == ["legacy_qa_release_notes_string"]
+
+
+def test_qa_report_release_notes_legacy_list_form():
+    data = valid_qa_report()
+    data["release_notes"] = ["Added X", "Fixed Y"]
+    report, result = QAReportPayload.from_mapping_with_validation(data)
+    assert result.ok
+    assert report.release_notes == ReleaseNotes(raw_items=("Added X", "Fixed Y"))
+    assert [w.code for w in result.warnings] == ["legacy_qa_release_notes_list"]
+
+
+def test_qa_report_evidence_manifest_valid():
+    data = valid_qa_report()
+    data["evidence_manifest"] = {"screenshots": ["a.png"], "videos": ["b.mp4"], "logs": ["c.log"]}
+    report = QAReportPayload.from_mapping(data)
+    assert report.evidence_manifest == EvidenceManifest(
+        screenshots=("a.png",), videos=("b.mp4",), logs=("c.log",)
+    )
+
+
+def test_qa_report_evidence_manifest_not_a_mapping_is_error():
+    data = valid_qa_report()
+    data["evidence_manifest"] = "logs.txt"
+    with pytest.raises(ArtifactValidationError) as exc_info:
+        QAReportPayload.from_mapping(data)
+    assert any(e.code == "not_a_mapping" for e in exc_info.value.errors)
+
+
+def test_qa_report_consumer_stages():
+    assert QAReportArtifact.CONSUMER_STAGES == ("qa", "pr-review")
+
+
+def test_qa_report_alias_identity():
+    assert QAReportPayload is QAReportArtifact
 
 
 def test_qa_report_file_loader_success(tmp_path):
@@ -454,10 +773,21 @@ def test_public_import_surface():
     import artifacts
 
     for name in (
+        "ImplementationReportArtifact",
         "ImplementationReportPayload",
+        "QAReportArtifact",
         "QAReportPayload",
+        "REPORT_ARTIFACTS",
         "DefinitionOfDoneItem",
         "QAAcValidation",
+        "FileChangeEntry",
+        "TestEntry",
+        "CommandEntry",
+        "RiskEntry",
+        "RegressionRiskAssessment",
+        "IssueEntry",
+        "ReleaseNotes",
+        "EvidenceManifest",
         "load_implementation_report",
         "load_qa_report",
     ):
