@@ -369,8 +369,11 @@ report contracts identically to the four planning-stage contracts. Enforced by
 - Cross-version payload migration (beyond the single currently-supported
   version each contract accepts) and multi-version schema-version negotiation.
 - Centralized runtime-path resolution for the logical scopes.
-- Artifact lifecycle events (`artifact.created` / `.validated` / `.invalid`).
-- Stage input/output (produce/consume) declarations and production adoption.
+- ~~Artifact lifecycle events (`artifact.created` / `.validated` / `.invalid`)
+  and stage input/output (produce/consume) declarations.~~ → **Declared in
+  Prompt 22** (`artifact.missing` added; see
+  [stage-artifact-contracts.md](stage-artifact-contracts.md)). Production
+  adoption still deferred (Prompt 23).
 - Live workflow adoption of the now-declared `impl_report` / `qa_report`
   `CONSUMER_STAGES` — the stages are declared (see
   [The two report contracts](#the-two-report-contracts)) but no stage actually

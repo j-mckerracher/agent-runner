@@ -208,6 +208,15 @@ assert result.status.value == "succeeded"
 assert result.output == {"intake_source": "story-123"}
 ```
 
+## Stage artifact contracts (Prompt 22)
+
+Each canonical stage's typed artifact inputs/outputs and their cardinality are
+now declared in `workflow/stage_artifacts.py` (`STAGE_ARTIFACT_REGISTRY`), with
+a telemetry-emitting validation boundary in `workflow/artifact_lifecycle.py`.
+These are reusable, fixture-proven contracts — not yet wired into production
+orchestration (deferred to Prompt 23). See
+[`docs/stage-artifact-contracts.md`](stage-artifact-contracts.md).
+
 ## Deferred to later prompts
 
 * Migrating real `run.py` stage call sites onto `CallableStage` and

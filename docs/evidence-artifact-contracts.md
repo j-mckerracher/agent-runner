@@ -192,9 +192,11 @@ from eval.evidence_artifacts import EvalReportArtifact, TraceArtifact, FinalDiff
 ## Out of Scope (deferred)
 
 - Workflow-stage adoption of payload classes.
-- Stage `consume`/`produce` declarations.
-- Artifact lifecycle events.
-- `artifact.missing` trace enum value.
+- ~~Stage `consume`/`produce` declarations.~~ → **Declared in Prompt 22**; see
+  [stage-artifact-contracts.md](stage-artifact-contracts.md).
+- ~~Artifact lifecycle events.~~ → **Added in Prompt 22** (including
+  `artifact.missing`); production wiring still deferred (Prompt 23).
+- ~~`artifact.missing` trace enum value.~~ → **Added in Prompt 22.**
 - `EvalReport` / `TraceEvent` / `JsonlEventSink` redesign.
 - Git patch parsing.
 - Checksum computation inside adapters.

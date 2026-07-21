@@ -120,6 +120,39 @@ def test_agent_invocation_timed_out_family_creation_and_round_trip() -> None:
     assert restored.to_dict() == payload
 
 
+def test_artifact_missing_family_creation_and_round_trip() -> None:
+    # Prompt 22: the fourth artifact.* family. Additive; schema stays v1.
+    event = make_event(
+        EventType.ARTIFACT_MISSING,
+        "run-1",
+        timestamp=FIXED_TS,
+        stage="task-generation",
+        status=EventStatus.ERROR,
+        metadata={
+            "artifact_type": "story",
+            "direction": "input",
+            "validation_status": "missing",
+            "issue_codes": ["artifact_missing"],
+        },
+    )
+    assert event.event_type == EventType.ARTIFACT_MISSING
+    assert event.event_schema_version == TRACE_SCHEMA_VERSION
+
+    payload = event.to_dict()
+    assert payload["event_type"] == "artifact.missing"
+    assert payload["status"] == "error"
+
+    restored = TraceEvent.from_dict(json.loads(json.dumps(payload)))
+    assert restored.event_type == EventType.ARTIFACT_MISSING
+    assert restored.to_dict() == payload
+
+
+def test_seventeen_event_families_are_representable() -> None:
+    # Guards the family count (16 -> 17 with artifact.missing).
+    assert len(list(EventType)) == 17
+    assert EventType.ARTIFACT_MISSING.value == "artifact.missing"
+
+
 def test_unknown_token_and_cost_metrics_remain_unknown_not_zero() -> None:
     event = TraceEvent(event_type=EventType.RUN_STARTED, timestamp=FIXED_TS, run_id="run-1")
     payload = event.to_dict()

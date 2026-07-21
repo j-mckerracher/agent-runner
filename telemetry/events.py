@@ -51,6 +51,7 @@ class EventType(str, Enum):
     ARTIFACT_CREATED = "artifact.created"
     ARTIFACT_VALIDATED = "artifact.validated"
     ARTIFACT_INVALID = "artifact.invalid"
+    ARTIFACT_MISSING = "artifact.missing"
     TEST_STARTED = "test.started"
     TEST_COMPLETED = "test.completed"
     TEST_FAILED = "test.failed"
@@ -339,9 +340,9 @@ def make_event(
     error_message: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> TraceEvent:
-    """Construct a `TraceEvent` for any of the 16 supported event families.
+    """Construct a `TraceEvent` for any of the 17 supported event families.
 
-    One generic helper rather than sixteen event-specific factories:
+    One generic helper rather than seventeen event-specific factories:
     `event_type` selects the family and every other field stays optional.
     `timestamp` defaults to "now" (UTC); tests should pass an explicit
     value for determinism.

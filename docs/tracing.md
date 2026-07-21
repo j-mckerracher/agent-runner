@@ -79,7 +79,12 @@ run.failed                       stage.failed                      agent.invocat
 artifact.created                 test.started
 artifact.validated                test.completed
 artifact.invalid                  test.failed
+artifact.missing
 ```
+
+`artifact.missing` (Prompt 22) was added additively for the stage-artifact
+lifecycle boundary; the schema stays v1. See
+`docs/stage-artifact-contracts.md`.
 
 None of these are required to be wired into production code by this
 prompt — the contract just makes them representable and testable.
@@ -108,7 +113,7 @@ with JsonlEventSink("path/to/trace.jsonl") as sink:
     sink.emit(make_event(EventType.RUN_COMPLETED, run_id, span_id=run_span, status=EventStatus.OK))
 ```
 
-`make_event` is the single generic factory used for all 16 event
+`make_event` is the single generic factory used for all 17 event
 families — pass the desired `EventType` and only the fields that apply.
 The `agent.invocation.*` family has four members
 (`started` / `completed` / `failed` / `timed_out`); `timed_out` was added
