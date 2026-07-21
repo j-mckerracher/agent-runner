@@ -1,0 +1,15 @@
+{
+  "change_id": "FIXTURE-EASY-001",
+  "title": "Render a final recap block in the session summary",
+  "description": "Add a final recap section to the session summary renderer so completed sessions surface a concise recap of fields while preserving the legacy summary payload.",
+  "acceptance_criteria": [
+    "AC1: The renderer emits the final recap fields when a final recap is present.",
+    "AC2: Verbose and sensitive content is omitted once a final recap exists.",
+    "AC3: Empty final-recap lists render a clear 'none' placeholder.",
+    "AC4: The legacy session summary decisions and issues are preserved unchanged."
+  ],
+  "metadata": {
+    "difficulty": "easy",
+    "critical_acceptance_criteria": ["AC1"]
+  }
+}

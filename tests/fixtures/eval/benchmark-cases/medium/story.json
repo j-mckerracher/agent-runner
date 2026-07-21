@@ -1,0 +1,15 @@
+{
+  "change_id": "FIXTURE-MEDIUM-001",
+  "title": "Validate exported formatter output through a runtime node probe",
+  "description": "Wire the exported formatter so its behavior can be validated by executing the built artifact through a node runtime, covering allowed input, rejected input, and a nearby regression that must not change.",
+  "acceptance_criteria": [
+    "AC1: Allowed input is formatted and returned through the runtime node invocation.",
+    "AC2: Rejected input is reported as an error through the runtime node invocation.",
+    "AC3: Nearby existing formatting behavior is preserved as a regression guard.",
+    "AC4: The runtime probe fails with a clear message when the node command is unavailable."
+  ],
+  "metadata": {
+    "difficulty": "medium",
+    "critical_acceptance_criteria": ["AC1", "AC2"]
+  }
+}

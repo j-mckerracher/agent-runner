@@ -1,0 +1,15 @@
+{
+  "change_id": "FIXTURE-HARD-001",
+  "title": "Classify service errors across a bounded state transition",
+  "description": "Introduce a bounded cross-cutting error-classification behavior at a service boundary, covering the new classification, two regressions that must remain unchanged, and an unknown-input edge case.",
+  "acceptance_criteria": [
+    "AC1: The service classifies the new error category at its boundary.",
+    "AC2: An existing error category regression is preserved unchanged.",
+    "AC3: A second nearby regression category is preserved unchanged.",
+    "AC4: Unknown or empty input yields a safe default classification."
+  ],
+  "metadata": {
+    "difficulty": "hard",
+    "critical_acceptance_criteria": ["AC1", "AC4"]
+  }
+}

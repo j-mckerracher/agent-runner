@@ -8,6 +8,12 @@ import json
 
 from eval import runner as eval_runner
 
+# Hermetic benchmark fixtures committed under version control. Production
+# discovery reads from eval/benchmarks/ (gitignored, bootstrap-generated); tests
+# instead point discover_benchmarks at these purpose-built fixtures so the suite
+# passes on a clean checkout without depending on untracked local data.
+FIXTURE_BENCHMARKS = Path(__file__).parent / "fixtures" / "eval" / "benchmark-cases"
+
 
 class EvalRunnerModelOverrideTests(unittest.TestCase):
     def test_inherits_compatible_env_model_for_same_runner(self):
@@ -359,13 +365,13 @@ class EvalRunnerStructuredResultTests(unittest.TestCase):
         self.assertTrue(ac_results["AC3"]["skipped"])
 
     def test_validate_official_benchmarks_enforces_ac_maps(self):
-        benchmarks = {path.name: path for path in eval_runner.discover_benchmarks(eval_runner.DEFAULT_BENCHMARKS, [])}
+        benchmarks = {path.name: path for path in eval_runner.discover_benchmarks(FIXTURE_BENCHMARKS, [])}
         for name in ("easy", "medium", "hard"):
             with self.subTest(name=name):
                 eval_runner.validate_benchmark(benchmarks[name])
 
     def test_medium_benchmark_contract_is_runtime_oriented(self):
-        medium = {path.name: path for path in eval_runner.discover_benchmarks(eval_runner.DEFAULT_BENCHMARKS, [])}["medium"]
+        medium = {path.name: path for path in eval_runner.discover_benchmarks(FIXTURE_BENCHMARKS, [])}["medium"]
         hidden_tests = (medium / "hidden_tests.py").read_text(encoding="utf-8")
         ac_map = eval_runner.benchmark_ac_test_map(medium)
 
@@ -568,7 +574,7 @@ class RunOneEndToEndTests(unittest.TestCase):
         )
 
     def test_passing_run_populates_evidence_and_emits_terminal_run_completed(self):
-        path = eval_runner.LEGACY_BENCHMARKS / "easy"
+        path = FIXTURE_BENCHMARKS / "easy"
         with tempfile.TemporaryDirectory() as tmp:
             args = self._base_args(Path(tmp))
             with patch.object(eval_runner, "prepare_workspace", return_value=None), \
@@ -601,7 +607,7 @@ class RunOneEndToEndTests(unittest.TestCase):
             self.assertEqual(eval_runner.validate_report_payload(report.to_dict()) if hasattr(eval_runner, "validate_report_payload") else [], [])
 
     def test_hidden_test_failure_leaves_unresolved_acs_unknown_not_pass(self):
-        path = eval_runner.LEGACY_BENCHMARKS / "easy"
+        path = FIXTURE_BENCHMARKS / "easy"
         with tempfile.TemporaryDirectory() as tmp:
             args = self._base_args(Path(tmp))
             with patch.object(eval_runner, "prepare_workspace", return_value=None), \
@@ -636,7 +642,7 @@ class RunOneEndToEndTests(unittest.TestCase):
         """Workflow itself fails (nonzero exit) -> hidden tests never invoked.
         Every AC must come back `unknown`, never `pass` — proving ACs are
         never inferred-pass from evidence that doesn't exist."""
-        path = eval_runner.LEGACY_BENCHMARKS / "easy"
+        path = FIXTURE_BENCHMARKS / "easy"
         with tempfile.TemporaryDirectory() as tmp:
             args = self._base_args(Path(tmp))
             hidden_tests_mock = MagicMock()
@@ -669,7 +675,7 @@ class RunOneEndToEndTests(unittest.TestCase):
         must land in a single `BenchmarkCaseResult` with 2 `trial_results` —
         multi-trial grouping exercised against `run_one`'s real output shape,
         not a hand-built stand-in."""
-        path = eval_runner.LEGACY_BENCHMARKS / "easy"
+        path = FIXTURE_BENCHMARKS / "easy"
         with tempfile.TemporaryDirectory() as tmp:
             args = self._base_args(Path(tmp))
             results = []
