@@ -1,4 +1,4 @@
-"""Prompt 19 — Versioned payload contracts for the planning artifacts.
+"""Prompt 19/20 — Versioned payload contracts for the planning and report artifacts.
 
 Typed, immutable, read-only *payload* models for the four planning-stage
 artifacts, layered on top of the P18 `ArtifactRef` reference contract:
@@ -8,6 +8,11 @@ artifacts, layered on top of the P18 `ArtifactRef` reference contract:
 - `AssignmentArtifact`     — `{change_id}/planning/assignments.json`
 - `UowSpecArtifact`        — `{change_id}/execution/{uow_id}/uow_spec.yaml`
 
+and, added in Prompt 20, the two workflow report artifacts:
+
+- `ImplementationReportPayload` — `{change_id}/execution/{uow_id}/impl_report.yaml`
+- `QAReportPayload`             — `{change_id}/qa/qa_report.yaml`
+
 Design boundaries (kept deliberately narrow):
 
 - `artifacts` stays a stdlib-only leaf: importing this module pulls in nothing
@@ -15,10 +20,15 @@ Design boundaries (kept deliberately narrow):
   **not** import PyYAML. YAML is imported lazily, at call time, only inside
   `load*()` when a caller actually reads a YAML file. `from_mapping*()` and all
   validation are pure and parser-free.
-- These classes are *core-field projections*, not lossless mirrors of the source
-  file: unmodeled top-level keys (`critical_path`, `ac_coverage_matrix`,
-  `notes`, `metacognitive_context`, …) are ignored. `to_dict()` is therefore a
-  round trip of the *typed model*, not of the source document.
+- The four planning-stage classes are *core-field projections*, not lossless
+  mirrors of the source file: unmodeled top-level keys (`critical_path`,
+  `ac_coverage_matrix`, `notes`, `metacognitive_context`, …) are ignored.
+  `to_dict()` is therefore a round trip of the *typed model*, not of the source
+  document.
+- The two report classes instead *preserve* unmodeled top-level keys as
+  read-only extension data (see `_extract_extension`), because their generated
+  agent reports carry many evolving sections that must survive a load/serialize
+  round trip untouched.
 - Loading is strictly read-only. Normalization of accepted legacy shapes happens
   on a defensive deep copy and is reported as WARNING issues in a
   `ValidationResult`; the caller's mapping and the on-disk file are never
@@ -27,9 +37,8 @@ Design boundaries (kept deliberately narrow):
   transport failures (missing file, bad YAML/JSON, missing PyYAML) raise
   `ArtifactLoadError`.
 
-This prompt introduces contracts only. No producer or consumer adopts them yet,
-and the implementation-report / QA-report (P20) and eval artifacts (P21) are out
-of scope.
+This module defines contracts and loaders only. No producer or consumer adopts
+them yet; eval artifacts (P21) remain out of scope.
 """
 
 from __future__ import annotations
@@ -39,6 +48,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, ClassVar
 
 from artifacts.models import ArtifactRef, ArtifactValidationStatus
@@ -51,6 +61,7 @@ from artifacts.validation import (
     WARNING_LEGACY_AC_LIST,
     WARNING_LEGACY_ACCEPTANCE_CRITERIA_MAPPED,
     WARNING_LEGACY_BATCH_KEY,
+    WARNING_LEGACY_DEFINITION_OF_DONE,
     WARNING_LEGACY_ESTIMATED_COMPLEXITY,
     WARNING_LEGACY_EXECUTION_SCHEDULE,
     WARNING_LEGACY_PARTIAL_UOW_SPEC,
@@ -65,8 +76,14 @@ __all__ = [
     "AcceptanceCriterion",
     "AssignmentArtifact",
     "BatchEntry",
+    "DefinitionOfDoneItem",
+    "ImplementationReportPayload",
+    "load_implementation_report",
+    "load_qa_report",
     "PLANNING_ARTIFACTS",
     "PlanningArtifact",
+    "QAAcValidation",
+    "QAReportPayload",
     "StoryArtifact",
     "TaskEntry",
     "TaskPlanArtifact",
@@ -81,6 +98,22 @@ _FORMAT_JSON = "json"
 # Enum constraints mirrored from `agent-script-source/validate-artifact-schema.py`.
 _VALID_TASK_PRIORITIES = ("high", "medium", "low")
 _VALID_TASK_COMPLEXITIES = ("simple", "moderate", "complex")
+
+# Enum constraints for the P20 report contracts, mirrored from
+# `agent-definition-source/software-engineer/v2/prompt.md` and
+# `agent-definition-source/qa/v2/prompt.md`.
+_VALID_IMPL_STATUSES = ("complete", "partial", "blocked")
+_VALID_QA_STATUSES = ("pass", "fail", "blocked")
+_VALID_AC_VALIDATION_STATUSES = ("pass", "fail", "partial")
+_VALID_FINAL_RECOMMENDATIONS = ("approve", "reject", "approve_with_conditions")
+
+# The only currently supported document-embedded report schema_version. A
+# missing schema_version in a legacy report defaults to this value, and it is
+# the canonical value emitted on serialization (mirrors the frozenset/str-type
+# validation pattern already established by
+# `artifacts.models.SUPPORTED_ARTIFACT_REF_SCHEMA_VERSIONS`).
+_REPORT_SCHEMA_VERSION = "1"
+_SUPPORTED_REPORT_SCHEMA_VERSIONS = frozenset({_REPORT_SCHEMA_VERSION})
 
 
 # ---------------------------------------------------------------------------
@@ -157,16 +190,24 @@ def _get_opt_str(
     return raw
 
 
-def _get_opt_str_enum(
+def _get_str_enum(
     mapping: Mapping[str, Any],
     key: str,
     where: str,
     issues: list[ValidationIssue],
     *,
     valid_values: tuple[str, ...],
+    required: bool = False,
 ) -> str | None:
-    raw = _get_opt_str(mapping, key, where, issues)
+    raw = mapping.get(key)
     if raw is None:
+        if required:
+            issues.append(_err(ERROR_MISSING_FIELD, f"missing required field '{key}'", where))
+        return None
+    if not isinstance(raw, str):
+        issues.append(
+            _err(ERROR_WRONG_TYPE, f"field '{key}' must be a string, got {type(raw).__name__}", where)
+        )
         return None
     if raw not in valid_values:
         issues.append(
@@ -177,6 +218,79 @@ def _get_opt_str_enum(
             )
         )
         return None
+    return raw
+
+
+def _get_opt_str_enum(
+    mapping: Mapping[str, Any],
+    key: str,
+    where: str,
+    issues: list[ValidationIssue],
+    *,
+    valid_values: tuple[str, ...],
+) -> str | None:
+    return _get_str_enum(mapping, key, where, issues, valid_values=valid_values, required=False)
+
+
+def _get_bool(
+    mapping: Mapping[str, Any],
+    key: str,
+    where: str,
+    issues: list[ValidationIssue],
+    *,
+    required: bool,
+) -> bool | None:
+    raw = mapping.get(key)
+    if raw is None:
+        if required:
+            issues.append(_err(ERROR_MISSING_FIELD, f"missing required field '{key}'", where))
+        return None
+    # Explicit isinstance(..., bool) rejects both integer truthiness (0/1) and
+    # string truthiness ("true"/"false") — only an actual bool is accepted.
+    if not isinstance(raw, bool):
+        issues.append(
+            _err(ERROR_WRONG_TYPE, f"field '{key}' must be a boolean, got {type(raw).__name__}", where)
+        )
+        return None
+    return raw
+
+
+def _get_schema_version(
+    mapping: Mapping[str, Any], where: str, issues: list[ValidationIssue]
+) -> str:
+    """Parse a document-embedded `schema_version`, defaulting/validating per P20.
+
+    A missing `schema_version` defaults to the supported legacy version. A
+    boolean or any non-string value is rejected as the wrong type (bool is an
+    int subclass, so it is rejected before any value comparison). A string
+    outside `_SUPPORTED_REPORT_SCHEMA_VERSIONS` — malformed or an unsupported
+    future version — is rejected with an actionable message naming the
+    supported set. The canonical version is emitted on serialization
+    regardless of what a caller passes here, since only one version currently
+    exists.
+    """
+    raw = mapping.get("schema_version")
+    if raw is None:
+        return _REPORT_SCHEMA_VERSION
+    if not isinstance(raw, str):
+        issues.append(
+            _err(
+                ERROR_WRONG_TYPE,
+                f"field 'schema_version' must be a string, got {type(raw).__name__}",
+                where,
+            )
+        )
+        return _REPORT_SCHEMA_VERSION
+    if raw not in _SUPPORTED_REPORT_SCHEMA_VERSIONS:
+        issues.append(
+            _err(
+                ERROR_INVALID_VALUE,
+                f"unsupported schema_version {raw!r}; supported versions: "
+                f"{sorted(_SUPPORTED_REPORT_SCHEMA_VERSIONS)}",
+                where,
+            )
+        )
+        return _REPORT_SCHEMA_VERSION
     return raw
 
 
@@ -229,6 +343,46 @@ def _get_str_tuple(
     if not items and not allow_empty:
         issues.append(_err(ERROR_EMPTY_COLLECTION, f"field '{key}' must be non-empty", where))
     return tuple(items)
+
+
+# ---------------------------------------------------------------------------
+# Extension-data preservation (P20 report contracts only).
+#
+# Unlike the four planning-stage projections above, the report contracts must
+# not silently drop unmodeled top-level keys — generated agent reports carry
+# many evolving sections that must survive a load/serialize round trip. Parsed
+# YAML/JSON data is already restricted to safe built-in types (mapping, list,
+# str, int, float, bool, None), so a simple recursive freeze/thaw is enough;
+# this deliberately does not reuse `artifacts.models`' cycle-safe
+# canonicalization graph, which exists to handle arbitrary caller-supplied
+# `ArtifactRef.metadata`, not parsed document data.
+# ---------------------------------------------------------------------------
+
+
+def _freeze_extension_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: _freeze_extension_value(item) for key, item in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_extension_value(item) for item in value)
+    return value
+
+
+def _thaw_extension_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _thaw_extension_value(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_extension_value(item) for item in value]
+    return value
+
+
+def _extract_extension(mapping: Mapping[str, Any], recognized_keys: frozenset[str]) -> Mapping[str, Any]:
+    """Return the unrecognized top-level keys of `mapping` as a frozen mapping.
+
+    `mapping` is already a defensive deep copy (from `_require_mapping`), so no
+    further copying is needed before freezing.
+    """
+    extension = {key: value for key, value in mapping.items() if key not in recognized_keys}
+    return _freeze_extension_value(extension)
 
 
 # ---------------------------------------------------------------------------
@@ -355,6 +509,48 @@ class BatchEntry:
             result["parallel_execution"] = True
         if self.batch_rationale is not None:
             result["batch_rationale"] = self.batch_rationale
+        return result
+
+
+@dataclass(frozen=True, kw_only=True)
+class DefinitionOfDoneItem:
+    """One `definition_of_done_status` entry inside an implementation report."""
+
+    item: str
+    met: bool
+    evidence: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {"item": self.item, "met": self.met}
+        if self.evidence is not None:
+            result["evidence"] = self.evidence
+        return result
+
+
+@dataclass(frozen=True, kw_only=True)
+class QAAcValidation:
+    """One `acceptance_criteria_validation` entry inside a QA report."""
+
+    ac_id: str
+    status: str
+    validation_method: str | None = None
+    evidence_type: str | None = None
+    evidence_reference: str | None = None
+    notes: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {"status": self.status}
+        if self.validation_method is not None:
+            result["validation_method"] = self.validation_method
+        evidence: dict[str, Any] = {}
+        if self.evidence_type is not None:
+            evidence["type"] = self.evidence_type
+        if self.evidence_reference is not None:
+            evidence["reference"] = self.evidence_reference
+        if evidence:
+            result["evidence"] = evidence
+        if self.notes is not None:
+            result["notes"] = self.notes
         return result
 
 
@@ -1064,3 +1260,436 @@ PLANNING_ARTIFACTS: tuple[type[PlanningArtifact], ...] = (
     AssignmentArtifact,
     UowSpecArtifact,
 )
+
+
+# ---------------------------------------------------------------------------
+# Implementation report (P20).
+# ---------------------------------------------------------------------------
+
+_IMPL_REPORT_RECOGNIZED_KEYS = frozenset(
+    {
+        "schema_version",
+        "uow_id",
+        "status",
+        "implementation_summary",
+        "definition_of_done_status",
+        "definition_of_done",
+        "change_id",
+        "story_id",
+    }
+)
+
+
+def _parse_dod_item(raw: Any, location: str, issues: list[ValidationIssue]) -> DefinitionOfDoneItem | None:
+    if not isinstance(raw, Mapping):
+        issues.append(
+            _err(ERROR_NOT_A_MAPPING, f"expected a mapping, got {type(raw).__name__}", location)
+        )
+        return None
+    mapping = dict(raw)
+    item = _get_str(mapping, "item", location, issues, required=True)
+    evidence = _get_opt_str(mapping, "evidence", location, issues)
+    met = _get_bool(mapping, "met", location, issues, required=True)
+    if met is None:
+        return None
+    return DefinitionOfDoneItem(item=item, met=met, evidence=evidence)
+
+
+def _parse_dod_list(raw: Any, where: str, issues: list[ValidationIssue]) -> tuple[DefinitionOfDoneItem, ...]:
+    if raw is None:
+        issues.append(
+            _err(ERROR_MISSING_FIELD, "missing required field 'definition_of_done_status'", where)
+        )
+        return ()
+    if not isinstance(raw, list):
+        issues.append(
+            _err(
+                ERROR_WRONG_TYPE,
+                f"field 'definition_of_done_status' must be a list, got {type(raw).__name__}",
+                where,
+            )
+        )
+        return ()
+    if not raw:
+        issues.append(
+            _err(ERROR_EMPTY_COLLECTION, "field 'definition_of_done_status' must be non-empty", where)
+        )
+    items: list[DefinitionOfDoneItem] = []
+    for index, entry in enumerate(raw):
+        parsed = _parse_dod_item(entry, f"{where}.definition_of_done_status[{index}]", issues)
+        if parsed is not None:
+            items.append(parsed)
+    return tuple(items)
+
+
+@dataclass(frozen=True, kw_only=True)
+class ImplementationReportPayload(PlanningArtifact):
+    """Implementation report (`{change_id}/execution/{uow_id}/impl_report.yaml`).
+
+    Represents the stable, currently-validated fields of the legacy
+    `impl_report.yaml` artifact (see `scripts/validate-artifact-schema.py` and
+    `agent-definition-source/software-engineer/v2/prompt.md`). The many
+    evolving report sections generated by the software-engineer agent
+    (`engineering_scope_classification`, `files_modified`, `tests_written`,
+    `commands_executed`, `no_mistakes_gate`, `worktree_management`,
+    `risks_identified`, `implementation_decisions`, …) are preserved as
+    `extension` data, not modeled as contract fields.
+    """
+
+    ARTIFACT_TYPE: ClassVar[str] = "impl_report"
+    ARTIFACT_SCHEMA: ClassVar[str] = "agent-workbench.impl-report"
+    ARTIFACT_SCHEMA_VERSION: ClassVar[str] = "1"
+    PRODUCER_STAGE: ClassVar[str] = "execution"
+    CONSUMER_STAGES: ClassVar[tuple[str, ...]] = ()
+    PATH_SCOPE: ClassVar[str] = "agent_context"
+    RELATIVE_PATH_TEMPLATE: ClassVar[str] = "{change_id}/execution/{uow_id}/impl_report.yaml"
+    PATH_PARAMETERS: ClassVar[tuple[str, ...]] = ("change_id", "uow_id")
+    CONTENT_FORMAT: ClassVar[str] = _FORMAT_YAML
+
+    schema_version: str
+    uow_id: str
+    status: str
+    implementation_summary: str
+    definition_of_done_status: tuple[DefinitionOfDoneItem, ...]
+    change_id: str | None = None
+    story_id: str | None = None
+    extension: Mapping[str, Any] = MappingProxyType({})
+
+    @classmethod
+    def _parse(cls, data: Any) -> tuple["ImplementationReportPayload | None", ValidationResult]:
+        where = cls.__name__
+        issues: list[ValidationIssue] = []
+        mapping = _require_mapping(data, where, issues)
+        if mapping is None:
+            return None, ValidationResult(issues=tuple(issues))
+
+        schema_version = _get_schema_version(mapping, where, issues)
+        uow_id = _get_str(mapping, "uow_id", where, issues, required=True)
+        status = _get_str_enum(
+            mapping, "status", where, issues, valid_values=_VALID_IMPL_STATUSES, required=True
+        )
+        implementation_summary = _get_str(
+            mapping, "implementation_summary", where, issues, required=True
+        )
+
+        raw_dod = mapping.get("definition_of_done_status")
+        if raw_dod is None and "definition_of_done" in mapping:
+            issues.append(
+                _warn(
+                    WARNING_LEGACY_DEFINITION_OF_DONE,
+                    "impl_report uses legacy 'definition_of_done'; mapped to 'definition_of_done_status'",
+                    where,
+                )
+            )
+            raw_dod = mapping.get("definition_of_done")
+        definition_of_done_status = _parse_dod_list(raw_dod, where, issues)
+
+        change_id = _get_opt_str(mapping, "change_id", where, issues)
+        story_id = _get_opt_str(mapping, "story_id", where, issues)
+
+        extension = _extract_extension(mapping, _IMPL_REPORT_RECOGNIZED_KEYS)
+
+        result = ValidationResult(issues=tuple(issues))
+        if not result.ok:
+            return None, result
+        return (
+            cls(
+                schema_version=schema_version,
+                uow_id=uow_id,
+                status=status,
+                implementation_summary=implementation_summary,
+                definition_of_done_status=definition_of_done_status,
+                change_id=change_id,
+                story_id=story_id,
+                extension=extension,
+            ),
+            result,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "schema_version": self.schema_version,
+            "uow_id": self.uow_id,
+            "status": self.status,
+            "implementation_summary": self.implementation_summary,
+            "definition_of_done_status": [item.to_dict() for item in self.definition_of_done_status],
+        }
+        if self.change_id is not None:
+            result["change_id"] = self.change_id
+        if self.story_id is not None:
+            result["story_id"] = self.story_id
+        result.update(_thaw_extension_value(self.extension))
+        return result
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), sort_keys=True)
+
+    def to_artifact_ref(
+        self,
+        *,
+        path: str | Path | None = None,
+        uri: str | None = None,
+        validation_status: ArtifactValidationStatus | str | None = None,
+        checksum_sha256: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> ArtifactRef:
+        """Populate stable identity metadata (`uow_id`/`status`/ids) automatically.
+
+        Caller-supplied `metadata` keys take precedence over these defaults.
+        """
+        combined: dict[str, Any] = {"uow_id": self.uow_id, "status": self.status}
+        if self.change_id is not None:
+            combined["change_id"] = self.change_id
+        if self.story_id is not None:
+            combined["story_id"] = self.story_id
+        if metadata is not None:
+            combined.update(metadata)
+        return super().to_artifact_ref(
+            path=path,
+            uri=uri,
+            validation_status=validation_status,
+            checksum_sha256=checksum_sha256,
+            metadata=combined,
+        )
+
+
+def load_implementation_report(path: str | Path) -> ImplementationReportPayload:
+    """Read-only load of an implementation report, discarding warnings."""
+    return ImplementationReportPayload.load(path)
+
+
+# ---------------------------------------------------------------------------
+# QA report (P20).
+# ---------------------------------------------------------------------------
+
+_QA_REPORT_RECOGNIZED_KEYS = frozenset(
+    {
+        "schema_version",
+        "story_id",
+        "qa_status",
+        "acceptance_criteria_validation",
+        "final_recommendation",
+        "conditions",
+    }
+)
+
+
+def _parse_qa_ac_entry(
+    ac_id: Any, raw: Any, where: str, issues: list[ValidationIssue]
+) -> QAAcValidation | None:
+    location = f"{where}.acceptance_criteria_validation[{ac_id!r}]"
+    if not isinstance(ac_id, str) or not ac_id.strip():
+        issues.append(
+            _err(
+                ERROR_INVALID_VALUE,
+                f"acceptance_criteria_validation key must be a non-empty string, got {ac_id!r}",
+                where,
+            )
+        )
+        return None
+    if not isinstance(raw, Mapping):
+        issues.append(
+            _err(ERROR_NOT_A_MAPPING, f"expected a mapping, got {type(raw).__name__}", location)
+        )
+        return None
+    mapping = dict(raw)
+
+    status = _get_str_enum(
+        mapping, "status", location, issues, valid_values=_VALID_AC_VALIDATION_STATUSES, required=True
+    )
+    validation_method = _get_opt_str(mapping, "validation_method", location, issues)
+    notes = _get_opt_str(mapping, "notes", location, issues)
+
+    evidence_type: str | None = None
+    evidence_reference: str | None = None
+    raw_evidence = mapping.get("evidence")
+    if raw_evidence is not None:
+        if not isinstance(raw_evidence, Mapping):
+            issues.append(
+                _err(
+                    ERROR_NOT_A_MAPPING,
+                    f"expected a mapping, got {type(raw_evidence).__name__}",
+                    f"{location}.evidence",
+                )
+            )
+        else:
+            evidence_mapping = dict(raw_evidence)
+            evidence_type = _get_opt_str(evidence_mapping, "type", f"{location}.evidence", issues)
+            evidence_reference = _get_opt_str(
+                evidence_mapping, "reference", f"{location}.evidence", issues
+            )
+
+    if status is None:
+        return None
+    return QAAcValidation(
+        ac_id=ac_id,
+        status=status,
+        validation_method=validation_method,
+        evidence_type=evidence_type,
+        evidence_reference=evidence_reference,
+        notes=notes,
+    )
+
+
+def _parse_ac_validation_map(
+    raw: Any, where: str, issues: list[ValidationIssue]
+) -> tuple[QAAcValidation, ...]:
+    if raw is None:
+        issues.append(
+            _err(ERROR_MISSING_FIELD, "missing required field 'acceptance_criteria_validation'", where)
+        )
+        return ()
+    if not isinstance(raw, Mapping):
+        issues.append(
+            _err(
+                ERROR_WRONG_TYPE,
+                f"field 'acceptance_criteria_validation' must be a mapping, got {type(raw).__name__}",
+                where,
+            )
+        )
+        return ()
+    if not raw:
+        issues.append(
+            _err(ERROR_EMPTY_COLLECTION, "field 'acceptance_criteria_validation' must be non-empty", where)
+        )
+    entries: list[QAAcValidation] = []
+    for ac_id, value in raw.items():
+        entry = _parse_qa_ac_entry(ac_id, value, where, issues)
+        if entry is not None:
+            entries.append(entry)
+    return tuple(entries)
+
+
+@dataclass(frozen=True, kw_only=True)
+class QAReportPayload(PlanningArtifact):
+    """QA report (`{change_id}/qa/qa_report.yaml`).
+
+    Represents the stable, currently-validated fields of the legacy
+    `qa_report.yaml` artifact (see `agent-definition-source/qa/v2/prompt.md`).
+    Rich optional sections (`regression_risk_assessment`, `issues_found`,
+    `release_notes`, `evidence_manifest`, `knowledge_summary`,
+    `metacognitive_context`, …) are preserved as `extension` data, not modeled
+    as contract fields.
+    """
+
+    ARTIFACT_TYPE: ClassVar[str] = "qa_report"
+    ARTIFACT_SCHEMA: ClassVar[str] = "agent-workbench.qa-report"
+    ARTIFACT_SCHEMA_VERSION: ClassVar[str] = "1"
+    PRODUCER_STAGE: ClassVar[str] = "qa"
+    CONSUMER_STAGES: ClassVar[tuple[str, ...]] = ()
+    PATH_SCOPE: ClassVar[str] = "agent_context"
+    RELATIVE_PATH_TEMPLATE: ClassVar[str] = "{change_id}/qa/qa_report.yaml"
+    PATH_PARAMETERS: ClassVar[tuple[str, ...]] = ("change_id",)
+    CONTENT_FORMAT: ClassVar[str] = _FORMAT_YAML
+
+    schema_version: str
+    story_id: str
+    qa_status: str
+    acceptance_criteria_validation: tuple[QAAcValidation, ...]
+    final_recommendation: str
+    conditions: tuple[str, ...] = ()
+    extension: Mapping[str, Any] = MappingProxyType({})
+
+    @classmethod
+    def _parse(cls, data: Any) -> tuple["QAReportPayload | None", ValidationResult]:
+        where = cls.__name__
+        issues: list[ValidationIssue] = []
+        mapping = _require_mapping(data, where, issues)
+        if mapping is None:
+            return None, ValidationResult(issues=tuple(issues))
+
+        schema_version = _get_schema_version(mapping, where, issues)
+        story_id = _get_str(mapping, "story_id", where, issues, required=True)
+        qa_status = _get_str_enum(
+            mapping, "qa_status", where, issues, valid_values=_VALID_QA_STATUSES, required=True
+        )
+        acceptance_criteria_validation = _parse_ac_validation_map(
+            mapping.get("acceptance_criteria_validation"), where, issues
+        )
+        final_recommendation = _get_str_enum(
+            mapping,
+            "final_recommendation",
+            where,
+            issues,
+            valid_values=_VALID_FINAL_RECOMMENDATIONS,
+            required=True,
+        )
+        conditions = _get_str_tuple(mapping, "conditions", where, issues)
+        if final_recommendation == "approve_with_conditions" and not conditions:
+            issues.append(
+                _err(
+                    ERROR_MISSING_FIELD,
+                    "field 'conditions' must be non-empty when final_recommendation is "
+                    "'approve_with_conditions'",
+                    where,
+                )
+            )
+
+        extension = _extract_extension(mapping, _QA_REPORT_RECOGNIZED_KEYS)
+
+        result = ValidationResult(issues=tuple(issues))
+        if not result.ok:
+            return None, result
+        return (
+            cls(
+                schema_version=schema_version,
+                story_id=story_id,
+                qa_status=qa_status,
+                acceptance_criteria_validation=acceptance_criteria_validation,
+                final_recommendation=final_recommendation,
+                conditions=conditions,
+                extension=extension,
+            ),
+            result,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "schema_version": self.schema_version,
+            "story_id": self.story_id,
+            "qa_status": self.qa_status,
+            "acceptance_criteria_validation": {
+                entry.ac_id: entry.to_dict() for entry in self.acceptance_criteria_validation
+            },
+            "final_recommendation": self.final_recommendation,
+        }
+        if self.conditions:
+            result["conditions"] = list(self.conditions)
+        result.update(_thaw_extension_value(self.extension))
+        return result
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), sort_keys=True)
+
+    def to_artifact_ref(
+        self,
+        *,
+        path: str | Path | None = None,
+        uri: str | None = None,
+        validation_status: ArtifactValidationStatus | str | None = None,
+        checksum_sha256: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> ArtifactRef:
+        """Populate stable identity metadata (`story_id`/`qa_status`/…) automatically.
+
+        Caller-supplied `metadata` keys take precedence over these defaults.
+        """
+        combined: dict[str, Any] = {
+            "story_id": self.story_id,
+            "qa_status": self.qa_status,
+            "final_recommendation": self.final_recommendation,
+        }
+        if metadata is not None:
+            combined.update(metadata)
+        return super().to_artifact_ref(
+            path=path,
+            uri=uri,
+            validation_status=validation_status,
+            checksum_sha256=checksum_sha256,
+            metadata=combined,
+        )
+
+
+def load_qa_report(path: str | Path) -> QAReportPayload:
+    """Read-only load of a QA report, discarding warnings."""
+    return QAReportPayload.load(path)

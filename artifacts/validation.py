@@ -1,8 +1,8 @@
 """Prompt 19 — Structured validation primitives for artifact payload contracts.
 
 Reusable, stdlib-only building blocks shared by the planning-artifact payload
-contracts in `artifacts.payloads` (and, later, the P20 implementation-report /
-QA-report contracts). Nothing here reads the filesystem, spawns a subprocess,
+contracts (P19) and the implementation-report / QA-report contracts (P20) in
+`artifacts.payloads`. Nothing here reads the filesystem, spawns a subprocess,
 touches the network, or imports `core`/`workflow`/`eval`/`server`/any vendor
 SDK — it stays a leaf of the `artifacts` package.
 
@@ -76,6 +76,7 @@ WARNING_LEGACY_TASK_ID = "legacy_task_id"
 WARNING_LEGACY_ACCEPTANCE_CRITERIA_MAPPED = "legacy_acceptance_criteria_mapped"
 WARNING_LEGACY_ESTIMATED_COMPLEXITY = "legacy_estimated_complexity"
 WARNING_LEGACY_PARTIAL_UOW_SPEC = "legacy_partial_uow_spec"
+WARNING_LEGACY_DEFINITION_OF_DONE = "legacy_definition_of_done"
 
 WARNING_CODES = frozenset(
     {
@@ -86,6 +87,7 @@ WARNING_CODES = frozenset(
         WARNING_LEGACY_ACCEPTANCE_CRITERIA_MAPPED,
         WARNING_LEGACY_ESTIMATED_COMPLEXITY,
         WARNING_LEGACY_PARTIAL_UOW_SPEC,
+        WARNING_LEGACY_DEFINITION_OF_DONE,
     }
 )
 

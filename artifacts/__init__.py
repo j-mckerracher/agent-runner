@@ -9,6 +9,8 @@ vendor SDK. It re-exports:
   (`artifacts.payloads`) plus their structured validation primitives
   (`artifacts.validation`). YAML parsing is imported lazily inside the loaders,
   so `import artifacts` stays parser-free.
+- Prompt 20 — the implementation-report and QA-report payload contracts and
+  loaders, extending the same `artifacts.payloads` module and conventions.
 """
 
 from __future__ import annotations
@@ -26,12 +28,18 @@ from artifacts.payloads import (
     AcceptanceCriterion,
     AssignmentArtifact,
     BatchEntry,
+    DefinitionOfDoneItem,
+    ImplementationReportPayload,
     PlanningArtifact,
+    QAAcValidation,
+    QAReportPayload,
     StoryArtifact,
     TaskEntry,
     TaskPlanArtifact,
     UowEntry,
     UowSpecArtifact,
+    load_implementation_report,
+    load_qa_report,
 )
 from artifacts.validation import (
     ArtifactLoadError,
@@ -53,8 +61,14 @@ __all__ = [
     "ArtifactValidationStatus",
     "AssignmentArtifact",
     "BatchEntry",
+    "DefinitionOfDoneItem",
+    "ImplementationReportPayload",
+    "load_implementation_report",
+    "load_qa_report",
     "PLANNING_ARTIFACTS",
     "PlanningArtifact",
+    "QAAcValidation",
+    "QAReportPayload",
     "StoryArtifact",
     "TaskEntry",
     "TaskPlanArtifact",

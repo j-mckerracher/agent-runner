@@ -1,10 +1,11 @@
-"""Prompt 19 — import-isolation + no-side-effect checks for artifact payloads.
+"""Prompt 19/20 — import-isolation + no-side-effect checks for artifact payloads.
 
 Mirrors `tests/test_artifact_ref_isolation.py`: importing `artifacts`,
 `artifacts.payloads`, or `artifacts.validation` must pull in none of the heavy /
 vendor module families — and crucially not PyYAML (loaded lazily only inside
 `load*()`). Construction, validation, serialization, and the `ArtifactRef`
-factory must touch no filesystem, subprocess, network, or environment.
+factory must touch no filesystem, subprocess, network, or environment. This
+applies equally to the Prompt 20 implementation-report / QA-report contracts.
 
 `load*()` is intentionally excluded from the no-side-effect probe: it reads a
 file by design. Its read-only guarantee is covered in `test_artifact_payloads.py`.
@@ -62,6 +63,8 @@ def test_importing_artifacts_pulls_in_no_heavy_or_vendor_modules():
             "    StoryArtifact, TaskPlanArtifact, AssignmentArtifact, UowSpecArtifact,\n"
             "    PLANNING_ARTIFACTS, ValidationResult, ValidationIssue, ValidationSeverity,\n"
             "    ArtifactLoadError, ArtifactValidationError,\n"
+            "    ImplementationReportPayload, QAReportPayload, DefinitionOfDoneItem,\n"
+            "    QAAcValidation, load_implementation_report, load_qa_report,\n"
             ")"
         )
     )
@@ -114,6 +117,45 @@ def test_payload_ops_touch_no_fs_subprocess_network_or_env():
         "ref_uri = story.to_artifact_ref(uri='s3://bucket/story.yaml')\n"
         "ref_path.to_dict(); ref_uri.to_dict()\n"
         "AssignmentArtifact.validate_payload({'batches': 'bad'})\n"
+        "print('OK')\n"
+    )
+    result = _run_probe(code)
+    assert result.returncode == 0, result.stderr
+    assert "OK" in result.stdout
+
+
+def test_report_payload_ops_touch_no_fs_subprocess_network_or_env():
+    code = (
+        "import subprocess, builtins, socket, urllib.request, os\n"
+        "from pathlib import Path\n"
+        "def _boom(*a, **k):\n"
+        "    raise AssertionError('no FS/subprocess/network/env access allowed')\n"
+        "subprocess.Popen = _boom\n"
+        "subprocess.run = _boom\n"
+        "builtins.open = _boom\n"
+        "Path.read_text = _boom\n"
+        "Path.write_text = _boom\n"
+        "Path.exists = _boom\n"
+        "socket.socket = _boom\n"
+        "socket.create_connection = _boom\n"
+        "urllib.request.urlopen = _boom\n"
+        "os.getenv = _boom\n"
+        "os.environ.get = _boom\n"
+        "from artifacts import ImplementationReportPayload, QAReportPayload\n"
+        "report = ImplementationReportPayload.from_mapping({\n"
+        "    'uow_id': 'U1', 'status': 'complete', 'implementation_summary': 's',\n"
+        "    'definition_of_done_status': [{'item': 'x', 'met': True}],\n"
+        "})\n"
+        "ImplementationReportPayload.validate_payload({'uow_id': 'U1'})\n"
+        "report.to_dict(); report.to_json()\n"
+        "ref = report.to_artifact_ref(path='C1/execution/U1/impl_report.yaml')\n"
+        "ref.to_dict()\n"
+        "qa = QAReportPayload.from_mapping({\n"
+        "    'story_id': 'C1', 'qa_status': 'pass',\n"
+        "    'acceptance_criteria_validation': {'AC1': {'status': 'pass'}},\n"
+        "    'final_recommendation': 'approve',\n"
+        "})\n"
+        "qa.to_dict(); qa.to_artifact_ref(path='C1/qa/qa_report.yaml').to_dict()\n"
         "print('OK')\n"
     )
     result = _run_probe(code)
