@@ -5,9 +5,9 @@ outputs** explicit, and adds one reusable lifecycle boundary that validates
 `ArtifactRef`s against those declarations and emits the four `artifact.*`
 telemetry events.
 
-This is a **reusable, fixture-proven contract only** — nothing is wired into
-production orchestration (`run.py`, `core/steps.py`, runners, server routes,
-eval execution). Live wiring is deferred to Prompt 23.
+Prompt 22 shipped this as a **reusable, fixture-proven contract only** —
+nothing was wired into production orchestration. Prompt 23 adopts it at the
+real `run.py` stage boundaries; see "Live wiring (Prompt 23)" below.
 
 ## Why
 
@@ -75,8 +75,9 @@ hand-copied schema strings. The registry is validated at import time:
 Issue codes: `artifact_missing`, `unexpected_artifact_type`,
 `cardinality_too_many`, `artifact_schema_mismatch`,
 `artifact_schema_version_mismatch`, `wrong_producer_stage`,
-`incompatible_consumer_stage`; warning codes `unknown_artifact_schema`,
-`unknown_producer_stage`, `unknown_consumer_stages`.
+`incompatible_consumer_stage`, `reference_invalid` (Prompt 23 — see below);
+warning codes `unknown_artifact_schema`, `unknown_producer_stage`,
+`unknown_consumer_stages`.
 
 ## Validation semantics
 
@@ -96,6 +97,13 @@ Issue codes: `artifact_missing`, `unexpected_artifact_type`,
     canonical future consumers. The producing stage is **not** required to be
     among its own consumers.
   - Both: `artifact_schema` / `artifact_schema_version` mismatch → ERROR.
+- **Supplied-ref validation status (Prompt 23):** a ref whose
+  `validation_status is ArtifactValidationStatus.INVALID` contributes an
+  additive `reference_invalid` ERROR — on top of, never instead of, any
+  schema/producer/consumer/cardinality checks above. `VALID` /
+  `NOT_VALIDATED` / `None` are neutral (no bypass of a real mismatch).
+  `MISSING` is never set on a *supplied* ref — absence is represented by
+  omitting the ref so cardinality itself produces `artifact_missing`.
 - **Absent-metadata policy:** a ref that leaves `artifact_schema` /
   `producer_stage` / `consumer_stages` as `None` yields a **WARNING**, never an
   ERROR, and is never silently upgraded to a passing compatibility claim.
@@ -167,12 +175,66 @@ Missing required input (`task-generation` given no `story`):
               "validation_status": "missing", "issue_codes": ["artifact_missing"]}}
 ```
 
+## Live wiring (Prompt 23)
+
+`workflow/live_artifacts.py::LiveArtifactCollector` adopts these contracts at
+the real `run.py` stage boundaries — no orchestration rewrite. `run.main`
+gains an optional `artifact_collector=None` parameter; every call site is
+guarded by `if artifact_collector is not None:` so existing callers are
+unaffected.
+
+- `collector.bind(change_root)` — sets the artifact root once, right after
+  the change id resolves.
+- `collector.emit_stage_inputs(stage)` — before a stage consumes, resolves
+  already-registered refs whose type is a declared input and emits them
+  (input-only declaration). Idempotent per stage (no double-emit).
+- `collector.register_stage_outputs(stage)` — after a stage produces,
+  resolves each declared output by its real `RELATIVE_PATH_TEMPLATE`, loads
+  it through the typed loader, mints a real `ArtifactRef` (or leaves it
+  absent), and emits (output-only declaration).
+
+**Per-UoW visibility (A1).** `uow_spec` (task-assignment) and `impl_report`
+(execution) are registered **one `EXACTLY_ONE` declaration per expected
+`uow_id`**, not one `ONE_OR_MORE` call for all of them. A missing sibling's
+UoW gets its own `artifact.missing`; a present UoW is validated/invalidated
+independently — one absent UoW never taints another's result. The public
+`STAGE_ARTIFACT_REGISTRY` declaration stays `ONE_OR_MORE`; the per-UoW
+`EXACTLY_ONE` declarations are built ad hoc by the collector for emission
+only and are not registered.
+
+**Invalid assignment never blinds UoW discovery (A2).** Ordered `uow_id`s
+come from a separate, non-raising permissive extractor
+(`core.artifact_utils.load_assignments_file` on the bound
+`planning/assignments.json` — the same readable-legacy shape `run.py`
+itself already trusts), decoupled from the typed `AssignmentArtifact` ref.
+A typed-INVALID assignment (e.g. a uow missing `source_task_id`) still
+yields `uow_id`s for honest downstream `uow_spec`/`impl_report` discovery.
+
+**No-throw hook boundary.** Every public collector method
+(`bind`/`emit_stage_inputs`/`register_stage_outputs`) wraps its body in a
+guard that swallows unexpected errors (distinct from the typed-loader
+exceptions already caught inside ref resolution to mint `INVALID` refs).
+Artifact instrumentation can never change the legacy workflow's result or a
+propagated exception.
+
+**Serialization (A4).** `WorkflowResult.to_dict()` maps each populated
+`ArtifactRef` through its own `to_dict()`; the in-memory
+`artifact_references` field stays real `ArtifactRef` instances — only the
+dict projection is a plain dict, so `json.dumps(result.to_dict())` always
+succeeds.
+
 ## Tests
 
 - `tests/test_stage_artifact_contracts.py` — registry/matrix, build guards,
-  cardinality, and the full validation-semantics surface.
+  cardinality, the full validation-semantics surface, and (Prompt 23) the
+  `reference_invalid` additive rule.
 - `tests/test_artifact_lifecycle.py` — event mapping, payload rules, missing /
   unexpected, `None`-sink no-op, sink-failure precedence.
 - `tests/test_stage_artifacts_isolation.py` — import-purity probes.
 - `tests/test_trace_events.py` — `artifact.missing` create + round trip and the
   17-family count guard.
+- `tests/test_live_workflow_artifacts.py` — `LiveArtifactCollector` against
+  real fixtures, `WorkflowRunner` propagation, real `run.main` hook-sequence
+  wiring (A3), and the failure-precedence guarantee.
+- `tests/test_live_workflow_artifacts_isolation.py` — import-purity probes for
+  the collector module.

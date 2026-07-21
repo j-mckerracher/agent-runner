@@ -1152,6 +1152,7 @@ def main(
     calibration_fast_mode: bool = False,
     headless: bool = False,
     log_level: str = "warning",
+    artifact_collector=None,
 ):
     load_dotenv(RUNNER_ROOT / ".env", override=False)
     configure_logging(log_level)
@@ -1202,6 +1203,9 @@ def main(
         )
         os.environ["AGENT_RUNNER_CHANGE_ID"] = resolved_change_id
         os.environ["AGENT_RUNNER_REPO"] = resolved_repo
+
+        if artifact_collector is not None:
+            artifact_collector.bind(_artifact_path(resolved_change_id))
 
         if os.environ.get("AGENT_RUNNER_EVENT_LOG"):
             logger.info("main: skipping clean_workspace; server pre-cleaned artifacts for %s", resolved_change_id)
@@ -1417,6 +1421,8 @@ def main(
                     ARTIFACT_DIR_INTAKE,
                     ARTIFACT_FILE_STORY,
                 )
+                if artifact_collector is not None:
+                    artifact_collector.register_stage_outputs(STAGE_INTAKE)
                 normalized_story = _story_payload_from_path(story_artifact_path)
                 normalized_ac_count = (
                     _acceptance_criteria_count(normalized_story.get(STORY_KEY_ACCEPTANCE_CRITERIA))
@@ -1438,6 +1444,8 @@ def main(
             task_gen_stage_name = STAGE_TASK_GENERATION
             with _Stage(task_gen_stage_name):
                 failed_stage = task_gen_stage_name
+                if artifact_collector is not None:
+                    artifact_collector.emit_stage_inputs(task_gen_stage_name)
                 # Always purge stale planning artifacts so the task-generator
                 # never picks up a task plan or assignments from a previous run.
                 _planning_artifact_dir = _stage_artifact_dir(resolved_change_id, ARTIFACT_DIR_PLANNING)
@@ -1465,11 +1473,15 @@ def main(
                 last_completed_stage = task_gen_stage_name
                 failed_stage = None
                 _require_file(resolved_change_id, task_gen_stage_name, ARTIFACT_DIR_PLANNING, ARTIFACT_FILE_TASKS)
+                if artifact_collector is not None:
+                    artifact_collector.register_stage_outputs(task_gen_stage_name)
 
             # ── Stage 3: Task Assignment (eval-optimizer loop) ───────────────
             task_assign_stage_name = STAGE_TASK_ASSIGNMENT
             with _Stage(task_assign_stage_name):
                 failed_stage = task_assign_stage_name
+                if artifact_collector is not None:
+                    artifact_collector.emit_stage_inputs(task_assign_stage_name)
 
                 assigner_input = _assignment_input(change_id=resolved_change_id, repo=resolved_repo)
                 assignment_evaluator_prompt = _assignment_evaluator_prompt(change_id=resolved_change_id)
@@ -1492,11 +1504,15 @@ def main(
                     ARTIFACT_DIR_PLANNING,
                     ARTIFACT_FILE_ASSIGNMENTS,
                 )
+                if artifact_collector is not None:
+                    artifact_collector.register_stage_outputs(task_assign_stage_name)
 
             # ── Stage 4: Execution — per-batch, parallel where safe ──────────
             execution_stage_name = STAGE_EXECUTION
             with _Stage(execution_stage_name):
                 failed_stage = execution_stage_name
+                if artifact_collector is not None:
+                    artifact_collector.emit_stage_inputs(execution_stage_name)
                 assignments = load_assignments(resolved_change_id)
                 batches = sorted(assignments.get(ASSIGNMENTS_KEY_BATCHES, []), key=lambda b: b[ASSIGNMENTS_KEY_BATCH_ID])
                 total_uows = sum(len(batch.get(ASSIGNMENTS_KEY_UOWS, [])) for batch in batches)
@@ -1580,10 +1596,14 @@ def main(
                             )
                 last_completed_stage = execution_stage_name
                 failed_stage = None
+                if artifact_collector is not None:
+                    artifact_collector.register_stage_outputs(execution_stage_name)
 
             # ── Stage 5: QA Validation (eval-optimizer loop) ─────────────────
             with _Stage(STAGE_QA):
                 failed_stage = STAGE_QA
+                if artifact_collector is not None:
+                    artifact_collector.emit_stage_inputs(STAGE_QA)
                 qa_evidence_root = _qa_evidence_root(resolved_change_id)
                 for evidence_dir in (
                     ARTIFACT_DIR_QA_TEST_OUTPUT,
@@ -1610,6 +1630,8 @@ def main(
                 )
                 last_completed_stage = STAGE_QA
                 failed_stage = None
+                if artifact_collector is not None:
+                    artifact_collector.register_stage_outputs(STAGE_QA)
 
             # ── Stage 6: No-Mistakes Gate + PR (via no-mistakes) ─────────────
             if os.environ.get("AGENT_RUNNER_EVALUATION_RUN", "").strip().lower() in {"1", "true", "yes"}:
@@ -1619,6 +1641,8 @@ def main(
             else:
                 with _Stage(STAGE_PR_REVIEW):
                     failed_stage = STAGE_PR_REVIEW
+                    if artifact_collector is not None:
+                        artifact_collector.emit_stage_inputs(STAGE_PR_REVIEW)
                     pr_review_path = steps.step_pr_review(
                         change_id=resolved_change_id,
                         repo=resolved_repo,

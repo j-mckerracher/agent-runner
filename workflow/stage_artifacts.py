@@ -66,6 +66,8 @@ ISSUE_SCHEMA_VERSION_MISMATCH = "artifact_schema_version_mismatch"
 ISSUE_WRONG_PRODUCER = "wrong_producer_stage"
 #: A reference whose ``consumer_stages`` are incompatible with the declaration.
 ISSUE_INCOMPATIBLE_CONSUMER = "incompatible_consumer_stage"
+#: A reference whose own ``validation_status`` was marked ``INVALID`` by its loader.
+ISSUE_REFERENCE_INVALID = "reference_invalid"
 
 #: Compatibility warning: reference left ``artifact_schema`` unknown (``None``).
 WARNING_UNKNOWN_SCHEMA = "unknown_artifact_schema"
@@ -488,9 +490,31 @@ def _check_ref(
     spec: StageArtifactSpec,
     ref: ArtifactRef,
 ) -> list[ValidationIssue]:
-    """Metadata-only checks for one type-matched reference. No I/O."""
+    """Metadata-only checks for one type-matched reference. No I/O.
+
+    Additive, narrow rule (Prompt 23): a reference whose own
+    ``validation_status`` was already marked ``INVALID`` by its loader (a
+    typed-loader payload failure, e.g. malformed content) contributes one more
+    ERROR issue on top of whatever the metadata checks below find. This is
+    the only ``validation_status`` value that is authoritative here — ``VALID``,
+    ``NOT_VALIDATED``, and ``None`` are neutral and never bypass a real
+    schema/producer/consumer/cardinality mismatch found below. ``MISSING`` is
+    never observed here: an absent artifact is represented by omitting the
+    reference entirely, not by supplying one with status ``MISSING``.
+    """
     issues: list[ValidationIssue] = []
     loc = f"{spec.direction.value}.{spec.artifact_type}"
+
+    if ref.validation_status is ArtifactValidationStatus.INVALID:
+        issues.append(
+            _issue(
+                ISSUE_REFERENCE_INVALID,
+                f"reference for {spec.artifact_type!r} was marked invalid by its "
+                "validator",
+                ValidationSeverity.ERROR,
+                loc,
+            )
+        )
 
     # Schema / schema version (both-or-neither on ArtifactRef).
     if ref.artifact_schema is None:

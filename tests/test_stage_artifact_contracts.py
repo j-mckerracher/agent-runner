@@ -26,6 +26,7 @@ from workflow.stage_artifacts import (
     ISSUE_CARDINALITY_TOO_MANY,
     ISSUE_INCOMPATIBLE_CONSUMER,
     ISSUE_MISSING_REQUIRED,
+    ISSUE_REFERENCE_INVALID,
     ISSUE_SCHEMA_MISMATCH,
     ISSUE_SCHEMA_VERSION_MISMATCH,
     ISSUE_UNEXPECTED_TYPE,
@@ -418,3 +419,68 @@ def test_issue_locations_are_stable() -> None:
     story_slot = next(s for s in result.slots if s.spec.artifact_type == "story")
     assert story_slot.issues[0].location == "input.story"
     assert story_slot.issues[0].severity is ValidationSeverity.ERROR
+
+
+# --------------------------------------------------------------------------- #
+# Prompt 23 -- validation_status=INVALID is additive, never a bypass         #
+# --------------------------------------------------------------------------- #
+
+
+def test_invalid_status_adds_error_without_suppressing_producer_mismatch() -> None:
+    # A ref that is both loader-INVALID *and* has the wrong producer_stage
+    # must surface both issues -- the additive rule never replaces or
+    # crowds out the pre-existing metadata checks.
+    ref = ArtifactRef(
+        artifact_type="story",
+        path="/tmp/s.yaml",
+        producer_stage="not-intake",
+        consumer_stages=tuple(StoryArtifact.CONSUMER_STAGES),
+        artifact_schema=StoryArtifact.ARTIFACT_SCHEMA,
+        artifact_schema_version=StoryArtifact.ARTIFACT_SCHEMA_VERSION,
+        validation_status=ArtifactValidationStatus.INVALID,
+    )
+    result = validate_stage_artifacts("task-generation", inputs=[ref])
+    codes = {i.code for i in result.errors}
+    assert ISSUE_REFERENCE_INVALID in codes
+    assert ISSUE_WRONG_PRODUCER in codes
+    story_slot = next(s for s in result.slots if s.spec.artifact_type == "story")
+    assert story_slot.status is ArtifactValidationStatus.INVALID
+
+
+def test_valid_status_does_not_bypass_a_real_mismatch() -> None:
+    # A ref explicitly marked VALID by its loader still fails stage-contract
+    # validation if its metadata genuinely conflicts -- VALID is neutral,
+    # not an override.
+    ref = ArtifactRef(
+        artifact_type="story",
+        path="/tmp/s.yaml",
+        producer_stage="not-intake",
+        consumer_stages=tuple(StoryArtifact.CONSUMER_STAGES),
+        artifact_schema=StoryArtifact.ARTIFACT_SCHEMA,
+        artifact_schema_version=StoryArtifact.ARTIFACT_SCHEMA_VERSION,
+        validation_status=ArtifactValidationStatus.VALID,
+    )
+    result = validate_stage_artifacts("task-generation", inputs=[ref])
+    codes = {i.code for i in result.errors}
+    assert ISSUE_REFERENCE_INVALID not in codes
+    assert ISSUE_WRONG_PRODUCER in codes
+
+
+def test_not_validated_and_none_status_are_neutral() -> None:
+    # NOT_VALIDATED and the ArtifactRef default (None) contribute no
+    # reference_invalid issue of their own -- a genuinely valid ref with
+    # either status validates clean.
+    for status in (ArtifactValidationStatus.NOT_VALIDATED, None):
+        ref = ArtifactRef(
+            artifact_type="story",
+            path="/tmp/s.yaml",
+            producer_stage=StoryArtifact.PRODUCER_STAGE,
+            consumer_stages=tuple(StoryArtifact.CONSUMER_STAGES),
+            artifact_schema=StoryArtifact.ARTIFACT_SCHEMA,
+            artifact_schema_version=StoryArtifact.ARTIFACT_SCHEMA_VERSION,
+            validation_status=status,
+        )
+        result = validate_stage_artifacts("task-generation", inputs=[ref])
+        story_slot = next(s for s in result.slots if s.spec.artifact_type == "story")
+        assert ISSUE_REFERENCE_INVALID not in {i.code for i in story_slot.issues}
+        assert story_slot.status is ArtifactValidationStatus.VALID

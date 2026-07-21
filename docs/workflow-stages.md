@@ -208,20 +208,32 @@ assert result.status.value == "succeeded"
 assert result.output == {"intake_source": "story-123"}
 ```
 
-## Stage artifact contracts (Prompt 22)
+## Stage artifact contracts (Prompt 22) and live adoption (Prompt 23)
 
 Each canonical stage's typed artifact inputs/outputs and their cardinality are
-now declared in `workflow/stage_artifacts.py` (`STAGE_ARTIFACT_REGISTRY`), with
-a telemetry-emitting validation boundary in `workflow/artifact_lifecycle.py`.
-These are reusable, fixture-proven contracts — not yet wired into production
-orchestration (deferred to Prompt 23). See
-[`docs/stage-artifact-contracts.md`](stage-artifact-contracts.md).
+declared in `workflow/stage_artifacts.py` (`STAGE_ARTIFACT_REGISTRY`), with a
+telemetry-emitting validation boundary in `workflow/artifact_lifecycle.py`.
+
+Prompt 23 adopted these contracts at the real `run.py` stage boundaries via
+`workflow/live_artifacts.py::LiveArtifactCollector` — an optional
+`artifact_collector` param on `run.main`, guarded at every call site, resolves
+each stage's real on-disk artifact by its existing path convention, loads it
+through the typed loader, and emits the Prompt-22 lifecycle events. No stage
+order, prompt, retry policy, or `CallableStage`/`_Stage` call site changed.
+`WorkflowRunner`'s default adapter (`workflow/runner.py`) binds a fresh
+collector per run and copies its references into `RunContext`/
+`WorkflowResult.artifact_references` (real `ArtifactRef`s, JSON-serialized via
+each ref's own `to_dict()`). See
+[`docs/stage-artifact-contracts.md`](stage-artifact-contracts.md) for the
+collector's per-UoW visibility, invalid-assignment, and no-throw-boundary
+guarantees.
 
 ## Deferred to later prompts
 
 * Migrating real `run.py` stage call sites onto `CallableStage` and
   reconciling with `_Stage` — still unscheduled (not part of Prompt 10).
 * `WorkflowResult.stage_results` aggregation across a full run.
-* Wiring stage contracts into the CLI/eval/server entry paths that
-  Prompt 10 routed onto `WorkflowRunner`.
+* Wiring stage-contract validation into the CLI/eval/server *entry paths*
+  themselves (Prompt 10's `WorkflowRunner` routing) — Prompt 23 wired
+  artifact collection into `run.py`/`WorkflowRunner`, not those entry paths.
 * Runner-backend and artifact-contract redesign — v0.4.

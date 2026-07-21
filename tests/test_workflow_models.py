@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
+from artifacts import ArtifactRef, ArtifactValidationStatus
 from workflow.models import FailureDetail, RunContext, RunSpec, RunStatus, WorkflowResult
 
 
@@ -228,3 +230,70 @@ def test_failure_detail_to_dict_shape():
 def test_run_status_values_match_legacy_workflow_constants():
     assert RunStatus.SUCCEEDED.value == "succeeded"
     assert RunStatus.FAILED.value == "failed"
+
+
+# --------------------------------------------------------------------------
+# Prompt 23 (A4) -- populated ArtifactRef references stay JSON-serializable
+# --------------------------------------------------------------------------
+
+
+def _sample_refs() -> tuple[ArtifactRef, ...]:
+    return (
+        ArtifactRef(
+            artifact_type="story",
+            path="/tmp/change/intake/story.yaml",
+            producer_stage="intake",
+            consumer_stages=("task-generation",),
+            validation_status=ArtifactValidationStatus.VALID,
+        ),
+        ArtifactRef(
+            artifact_type="task_plan",
+            path="/tmp/change/planning/tasks.yaml",
+            producer_stage="task-generation",
+            consumer_stages=("task-assignment",),
+            validation_status=ArtifactValidationStatus.VALID,
+        ),
+    )
+
+
+def test_workflow_result_to_dict_serializes_populated_refs_for_succeeded_result():
+    started, finished = _fixed_times()
+    result = WorkflowResult(
+        run_id="run-5",
+        status=RunStatus.SUCCEEDED,
+        started_at=started,
+        finished_at=finished,
+        final_output="ok",
+        artifact_references=_sample_refs(),
+    )
+
+    payload = result.to_dict()
+
+    # The in-memory field stays real `ArtifactRef` instances (A4 requirement).
+    assert all(isinstance(ref, ArtifactRef) for ref in result.artifact_references)
+    # ...but the dict projection is plain-dict, via each ref's own to_dict().
+    assert payload["artifact_references"] == [
+        ref.to_dict() for ref in _sample_refs()
+    ]
+    assert json.dumps(payload)  # must not raise
+
+
+def test_workflow_result_to_dict_serializes_populated_refs_for_failed_result():
+    started, finished = _fixed_times()
+    failure = FailureDetail(error_type="ValueError", message="boom", stage="execution", propagated=False)
+    result = WorkflowResult(
+        run_id="run-6",
+        status=RunStatus.FAILED,
+        started_at=started,
+        finished_at=finished,
+        failure=failure,
+        artifact_references=_sample_refs(),
+    )
+
+    payload = result.to_dict()
+
+    assert all(isinstance(ref, ArtifactRef) for ref in result.artifact_references)
+    assert payload["artifact_references"] == [
+        ref.to_dict() for ref in _sample_refs()
+    ]
+    assert json.dumps(payload)  # must not raise

@@ -23,46 +23,77 @@ Behavior preservation is the point of this module:
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from functools import partial
+from typing import TYPE_CHECKING, Any, Callable
 
 from .models import FailureDetail, RunContext, RunSpec, RunStatus, WorkflowResult, _utcnow
+
+if TYPE_CHECKING:
+    from telemetry import EventSink
 
 LegacyWorkflowCallable = Callable[[RunSpec, RunContext], Any]
 
 
-def _default_legacy_workflow(spec: RunSpec, context: RunContext) -> Any:
+def _default_legacy_workflow(
+    spec: RunSpec, context: RunContext, *, event_sink: "EventSink | None" = None
+) -> Any:
     """Adapter that delegates to `run.py::main`.
 
-    Lazily imports `run` so that importing `workflow` (or constructing a
-    `WorkflowRunner` with a fake callable, as tests do) never touches
-    `run.py`'s module-level side effects.
+    A module-level function (not a method) so `from workflow.runner import
+    _default_legacy_workflow` keeps working as the CLI adapter's own guard
+    test expects (see `tests/test_workflow_cli_adapter.py`) — it calls
+    `run.main` directly, never the CLI entry point that wraps this runner.
+
+    Lazily imports `run` and `workflow.live_artifacts` so that importing
+    `workflow` (or constructing a `WorkflowRunner` with a fake callable, as
+    tests do) never touches `run.py`'s module-level side effects. Binds a
+    fresh `LiveArtifactCollector` per call (Prompt 23) and copies its
+    collected references into `context` even when `run.py::main` raises, so
+    `run_capturing` retains any references gathered before a failure.
     """
+
+    from workflow.live_artifacts import LiveArtifactCollector  # local import: keeps `import workflow` light
 
     import run as legacy_run  # local import: preserves import isolation
 
-    return legacy_run.main(
-        repo=str(spec.repo_path) if spec.repo_path else None,
-        change_id=spec.change_id,
-        ado_url=spec.ado_url,
-        story_file=str(spec.story_path) if spec.story_path else None,
-        manual_story_file=str(spec.manual_story_path) if spec.manual_story_path else None,
-        runner=spec.runner,
-        model=spec.model,
-        agent_llm_overrides=spec.agent_llm_overrides,
-        extra_context=spec.extra_context,
-        skip_lessons_optimizer=spec.skip_lessons_optimizer,
-        skip_materialize=spec.skip_materialize,
-        calibration_fast_mode=spec.calibration_fast_mode,
-        headless=spec.headless,
-        log_level=spec.log_level,
-    )
+    collector = LiveArtifactCollector(run_id=context.run_id, sink=event_sink)
+    try:
+        return legacy_run.main(
+            repo=str(spec.repo_path) if spec.repo_path else None,
+            change_id=spec.change_id,
+            ado_url=spec.ado_url,
+            story_file=str(spec.story_path) if spec.story_path else None,
+            manual_story_file=str(spec.manual_story_path) if spec.manual_story_path else None,
+            runner=spec.runner,
+            model=spec.model,
+            agent_llm_overrides=spec.agent_llm_overrides,
+            extra_context=spec.extra_context,
+            skip_lessons_optimizer=spec.skip_lessons_optimizer,
+            skip_materialize=spec.skip_materialize,
+            calibration_fast_mode=spec.calibration_fast_mode,
+            headless=spec.headless,
+            log_level=spec.log_level,
+            artifact_collector=collector,
+        )
+    finally:
+        context.artifact_references = collector.references
 
 
 class WorkflowRunner:
     """Delegates a `RunSpec` to a legacy workflow callable exactly once."""
 
-    def __init__(self, *, legacy_workflow: LegacyWorkflowCallable | None = None) -> None:
-        self._legacy_workflow = legacy_workflow or _default_legacy_workflow
+    def __init__(
+        self,
+        *,
+        legacy_workflow: LegacyWorkflowCallable | None = None,
+        event_sink: "EventSink | None" = None,
+    ) -> None:
+        self._event_sink = event_sink
+        # Instance-bound convenience wrapper around the module-level default
+        # (so `runner._default_legacy_workflow(spec, context)` threads this
+        # instance's event_sink without making the module function a method).
+        self._default_legacy_workflow = partial(_default_legacy_workflow, event_sink=event_sink)
+        self._legacy_workflow = legacy_workflow or self._default_legacy_workflow
 
     def run(self, spec: RunSpec) -> WorkflowResult:
         """Run `spec`, propagating any exception raised by the adapter."""

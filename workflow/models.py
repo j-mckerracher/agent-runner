@@ -174,6 +174,14 @@ class WorkflowResult:
             "final_output": self.final_output,
             "failure": self.failure.to_dict() if self.failure else None,
             "trace_reference": self.trace_reference,
-            "artifact_references": list(self.artifact_references),
+            # Prompt 23 (A4): each populated reference is a real `ArtifactRef`
+            # (see `workflow.live_artifacts`); serialize it via its own
+            # `to_dict()` so `json.dumps(self.to_dict())` succeeds. The
+            # in-memory field itself stays real `ArtifactRef` instances —
+            # only this projection is a plain dict.
+            "artifact_references": [
+                ref.to_dict() if hasattr(ref, "to_dict") else ref
+                for ref in self.artifact_references
+            ],
             "runtime_metadata": dict(self.runtime_metadata),
         }

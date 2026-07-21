@@ -7,12 +7,12 @@ patches `run.main` with a recorder so no real workflow runs.
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 import pytest
 
-from workflow.models import RunSpec, RunStatus
-from workflow.runner import WorkflowRunner, _default_legacy_workflow
+from workflow.models import RunContext, RunSpec, RunStatus
+from workflow.runner import WorkflowRunner
 
 
 class _Recorder:
@@ -150,9 +150,11 @@ def test_default_adapter_maps_spec_fields_to_run_main_kwargs():
         headless=True,
         log_level="debug",
     )
+    runner = WorkflowRunner()
+    context = RunContext.for_spec(spec)
 
     with patch("run.main", return_value="intake-source") as mock_main:
-        result = _default_legacy_workflow(spec, context=None)
+        result = runner._default_legacy_workflow(spec, context)
 
     mock_main.assert_called_once_with(
         repo="some/repo",
@@ -169,19 +171,56 @@ def test_default_adapter_maps_spec_fields_to_run_main_kwargs():
         calibration_fast_mode=True,
         headless=True,
         log_level="debug",
+        # Prompt 23: default adapter always binds a fresh
+        # `LiveArtifactCollector` and passes it through; the collector
+        # instance itself is not part of this kwarg-mapping assertion.
+        artifact_collector=ANY,
     )
     assert result == "intake-source"
 
 
 def test_default_adapter_passes_none_for_unset_path_fields():
     spec = RunSpec()
+    runner = WorkflowRunner()
+    context = RunContext.for_spec(spec)
     with patch("run.main", return_value="ok") as mock_main:
-        _default_legacy_workflow(spec, context=None)
+        runner._default_legacy_workflow(spec, context)
 
     _, kwargs = mock_main.call_args
     assert kwargs["repo"] is None
     assert kwargs["story_file"] is None
     assert kwargs["manual_story_file"] is None
+
+
+def test_default_adapter_binds_collector_and_copies_references_into_context():
+    """Prompt 23: `context.artifact_references` receives the collector's
+    references (empty here — no real change_id/on-disk artifacts) even
+    though `run.main` itself never touches the collector directly."""
+
+    spec = RunSpec()
+    runner = WorkflowRunner()
+    context = RunContext.for_spec(spec)
+
+    with patch("run.main", return_value="ok"):
+        runner._default_legacy_workflow(spec, context)
+
+    assert context.artifact_references == ()
+
+
+def test_default_adapter_retains_collector_references_on_run_main_failure():
+    """Prompt 23: the `finally` block must copy `collector.references`
+    into `context` even when `run.main` raises, so `run_capturing`
+    retains any references gathered before a failure."""
+
+    spec = RunSpec()
+    runner = WorkflowRunner()
+    context = RunContext.for_spec(spec)
+
+    with patch("run.main", side_effect=ValueError("boom")):
+        with pytest.raises(ValueError, match="boom"):
+            runner._default_legacy_workflow(spec, context)
+
+    assert context.artifact_references == ()
 
 
 # --------------------------------------------------------------------------
