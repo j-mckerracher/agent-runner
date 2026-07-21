@@ -11,6 +11,7 @@ vendor SDK. It re-exports:
   so `import artifacts` stays parser-free.
 - Prompt 20 — the implementation-report and QA-report payload contracts and
   loaders, extending the same `artifacts.payloads` module and conventions.
+- Prompt 21 — `FinalDiffArtifact` evidence leaf (`artifacts.evidence`).
 """
 
 from __future__ import annotations
@@ -59,6 +60,7 @@ from artifacts.validation import (
     ValidationResult,
     ValidationSeverity,
 )
+from artifacts.evidence import FinalDiffArtifact
 
 __all__ = [
     "ARTIFACT_REF_SCHEMA_VERSION",
@@ -76,6 +78,7 @@ __all__ = [
     "DefinitionOfDoneItem",
     "EvidenceManifest",
     "FileChangeEntry",
+    "FinalDiffArtifact",
     "ImplementationReportArtifact",
     "ImplementationReportPayload",
     "IssueEntry",

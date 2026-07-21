@@ -361,8 +361,9 @@ report contracts identically to the four planning-stage contracts. Enforced by
 
 ## Deferred follow-up work
 
-- `eval_report`, `trace`, `final_diff` contracts and centralized evidence paths
-  (Prompt 21).
+- ~~`eval_report`, `trace`, `final_diff` contracts and centralized evidence paths
+  (Prompt 21).~~ → **Implemented in Prompt 21.** See
+  [evidence-artifact-contracts.md](evidence-artifact-contracts.md).
 - Live production adoption of any of the six payload contracts by a real
   producer or consumer stage.
 - Cross-version payload migration (beyond the single currently-supported

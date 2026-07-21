@@ -41,6 +41,17 @@ from core.runtime_paths import (
 load_data_dir_override_from_env_file(ROOT / ".env")
 from core.runner_models import RUNNER_MODEL_CHOICES, is_copilot_runner
 from eval.benchmark_manifest import load_manifest
+from eval.evidence_paths import (
+    FINAL_DIFF,
+    HIDDEN_TESTS_XML,
+    STORY_JSON,
+    TRACE_JSONL,
+    WORKFLOW_RESULT_JSON,
+    WORKFLOW_STDERR_LOG,
+    WORKFLOW_STDOUT_LOG,
+    TrialEvidencePaths,
+    _sanitize_path_segment,  # re-exported for callers
+)
 from eval.live_report import ReportBuildError, build_eval_report, write_eval_report
 from eval.result_schema import BenchmarkResult, EvalMetrics, TestSummary
 from eval.seed_benchmarks import (
@@ -668,29 +679,17 @@ def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
-_ID_SAFE = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_."
-
-
-def _sanitize_path_segment(raw: str) -> str:
-    """Make `raw` safe as a single filesystem path segment. Collisions between
-    two different raw ids that sanitize to the same string are disambiguated
-    with a short hash suffix so evidence from unrelated benchmarks never
-    silently overwrites each other."""
-    import hashlib
-
-    cleaned = "".join(ch if ch in _ID_SAFE else "-" for ch in (raw or "unknown")).strip("-.") or "unknown"
-    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
-    return f"{cleaned}-{digest}"
+# _sanitize_path_segment is now the canonical implementation from eval.evidence_paths;
+# it is re-imported above so existing callers of runner._sanitize_path_segment still work.
 
 
 def _evidence_dir(args: argparse.Namespace, eval_run_id: str, benchmark_id: str, trial_id: str) -> Path | None:
     reports_dir = getattr(args, "reports_dir", None)
     if not reports_dir:
         return None
-    base = Path(reports_dir) / "evidence" / _sanitize_path_segment(eval_run_id)
-    base = base / _sanitize_path_segment(benchmark_id) / _sanitize_path_segment(trial_id)
-    base.mkdir(parents=True, exist_ok=True)
-    return base
+    paths = TrialEvidencePaths.for_trial(reports_dir, eval_run_id, benchmark_id, trial_id)
+    paths.ensure_dir()
+    return paths.dir
 
 
 def _normalize_workflow_result(obj: Any) -> dict[str, Any]:
@@ -717,13 +716,13 @@ def _capture_workflow_evidence(evidence_dir: Path | None, workflow: Any, evidenc
         return
     normalized = _normalize_workflow_result(workflow)
     try:
-        stdout_path = evidence_dir / "workflow.stdout.log"
-        stderr_path = evidence_dir / "workflow.stderr.log"
+        stdout_path = evidence_dir / WORKFLOW_STDOUT_LOG
+        stderr_path = evidence_dir / WORKFLOW_STDERR_LOG
         stdout_path.write_text(normalized["stdout"], encoding="utf-8")
         stderr_path.write_text(normalized["stderr"], encoding="utf-8")
         evidence["workflow_stdout_ref"] = str(stdout_path)
         evidence["workflow_stderr_ref"] = str(stderr_path)
-        result_path = evidence_dir / "workflow_result.json"
+        result_path = evidence_dir / WORKFLOW_RESULT_JSON
         result_path.write_text(json.dumps({"returncode": normalized["returncode"]}, indent=2), encoding="utf-8")
         evidence["workflow_result_ref"] = str(result_path)
     except OSError as exc:
@@ -737,7 +736,7 @@ def _capture_hidden_test_evidence(evidence_dir: Path | None, workspace: Path, ev
     if not junit_path.exists():
         return
     try:
-        dest = evidence_dir / "hidden_tests.xml"
+        dest = evidence_dir / HIDDEN_TESTS_XML
         shutil.copyfile(junit_path, dest)
         evidence["hidden_tests_xml_ref"] = str(dest)
     except OSError as exc:
@@ -750,7 +749,7 @@ def _capture_final_diff(evidence_dir: Path | None, workspace: Path, evidence: di
     try:
         run_cmd(["git", "add", "-A", "-N"], cwd=workspace, timeout=60)
         diff = run_cmd(["git", "diff"], cwd=workspace, timeout=120)
-        dest = evidence_dir / "final.diff"
+        dest = evidence_dir / FINAL_DIFF
         dest.write_text(diff.stdout or "", encoding="utf-8")
         evidence["diff_ref"] = str(dest)
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -823,14 +822,14 @@ def run_one(path: Path, args: argparse.Namespace, *, trial_index: int = 1) -> di
     if evidence_dir is not None:
         result.evidence["dir"] = str(evidence_dir)
         try:
-            story_dest = evidence_dir / "story.json"
+            story_dest = evidence_dir / STORY_JSON
             story_dest.write_text(json.dumps(story, indent=2), encoding="utf-8")
             result.evidence["story_ref"] = str(story_dest)
         except OSError as exc:
             result.evidence["warnings"].append(f"failed to persist story evidence: {exc}")
         try:
-            sink = JsonlEventSink(evidence_dir / "trace.jsonl")
-            result.evidence["trace_ref"] = str(evidence_dir / "trace.jsonl")
+            sink = JsonlEventSink(evidence_dir / TRACE_JSONL)
+            result.evidence["trace_ref"] = str(evidence_dir / TRACE_JSONL)
             sink.emit(make_event(EventType.RUN_STARTED, eval_run_id, stage="benchmark", metadata={"benchmark_id": result.benchmark_id, "trial_id": run_id}))
         except OSError as exc:
             result.evidence["warnings"].append(f"failed to open trace sink: {exc}")

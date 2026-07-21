@@ -161,3 +161,82 @@ def test_report_payload_ops_touch_no_fs_subprocess_network_or_env():
     result = _run_probe(code)
     assert result.returncode == 0, result.stderr
     assert "OK" in result.stdout
+
+
+def test_importing_final_diff_artifact_pulls_in_no_heavy_or_vendor_modules():
+    """FinalDiffArtifact lives in the stdlib-only leaf; importing it must not
+    pull in eval, telemetry, or any vendor package."""
+    result = _run_probe(
+        _import_probe("from artifacts import FinalDiffArtifact")
+    )
+    assert result.returncode == 0, result.stderr
+    assert "OK" in result.stdout
+
+
+def test_importing_artifacts_with_final_diff_stays_clean():
+    """The combined Prompt 18/19/20/21 import must still satisfy the isolation rule."""
+    result = _run_probe(
+        _import_probe(
+            "from artifacts import (\n"
+            "    StoryArtifact, TaskPlanArtifact, AssignmentArtifact, UowSpecArtifact,\n"
+            "    PLANNING_ARTIFACTS, ValidationResult, ValidationIssue, ValidationSeverity,\n"
+            "    ArtifactLoadError, ArtifactValidationError,\n"
+            "    ImplementationReportPayload, QAReportPayload, DefinitionOfDoneItem,\n"
+            "    QAAcValidation, load_implementation_report, load_qa_report,\n"
+            "    FinalDiffArtifact,\n"
+            ")"
+        )
+    )
+    assert result.returncode == 0, result.stderr
+    assert "OK" in result.stdout
+
+
+def test_final_diff_artifact_ops_touch_no_fs_subprocess_network_or_env():
+    """Construction, metadata access, and to_artifact_ref on FinalDiffArtifact
+    must be pure (no FS/subprocess/network/env); only load() reads a file."""
+    code = (
+        "import subprocess, builtins, socket, urllib.request, os\n"
+        "from pathlib import Path\n"
+        "def _boom(*a, **k):\n"
+        "    raise AssertionError('no FS/subprocess/network/env access allowed')\n"
+        "subprocess.Popen = _boom\n"
+        "subprocess.run = _boom\n"
+        "socket.socket = _boom\n"
+        "socket.create_connection = _boom\n"
+        "urllib.request.urlopen = _boom\n"
+        "os.getenv = _boom\n"
+        "os.environ.get = _boom\n"
+        # Import is pure (no FS needed).
+        "from artifacts.evidence import FinalDiffArtifact\n"
+        # Construct directly (bypassing load()).
+        "art = FinalDiffArtifact('diff text', _byte_length=9)\n"
+        "assert art.text == 'diff text'\n"
+        "assert art.char_length == 9\n"
+        "assert art.byte_length == 9\n"
+        "assert not art.is_empty\n"
+        "ref = art.to_artifact_ref(path='evidence/final.diff')\n"
+        "ref.to_dict()\n"
+        "print('OK')\n"
+    )
+    result = _run_probe(code)
+    assert result.returncode == 0, result.stderr
+    assert "OK" in result.stdout
+
+
+def test_eval_adapters_do_not_cause_artifacts_import_cycle():
+    """eval.report_artifact and telemetry.trace_artifact both import artifacts.
+    Importing artifacts first must still work cleanly (no import cycle)."""
+    code = (
+        "import sys\n"
+        "import artifacts\n"
+        "from eval.report_artifact import EvalReportArtifact\n"
+        "from telemetry.trace_artifact import TraceArtifact\n"
+        "from artifacts.evidence import FinalDiffArtifact\n"
+        "# Importing artifacts again must return the already-loaded module.\n"
+        "import artifacts as arts2\n"
+        "assert arts2 is artifacts\n"
+        "print('OK')\n"
+    )
+    result = _run_probe(code)
+    assert result.returncode == 0, result.stderr
+    assert "OK" in result.stdout

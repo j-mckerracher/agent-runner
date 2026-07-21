@@ -13,6 +13,11 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from eval.evidence_paths import (
+    latest_report_path,
+    report_stamp,
+    timestamped_report_path,
+)
 from eval.report_schema import (
     AcStatus,
     AcceptanceCriteriaResult,
@@ -531,12 +536,12 @@ def write_eval_report(report: EvalReport, reports_dir: Path, *, difficulty: str,
         raise ReportBuildError("refusing to publish invalid report: " + "; ".join(errors))
 
     data = (report.to_json() + "\n").encode("utf-8")
-    stamp = stamp or report.created_at.replace(":", "").replace("-", "")
+    stamp = stamp or report_stamp(report.created_at)
     reports_dir = Path(reports_dir)
-    timestamped_path = reports_dir / f"{stamp}-{difficulty}.json"
+    timestamped_path = timestamped_report_path(reports_dir, stamp, difficulty)
     _atomic_write_bytes(timestamped_path, data)
 
-    latest_path = reports_dir / "latest.json"
+    latest_path = latest_report_path(reports_dir)
     try:
         _atomic_write_bytes(latest_path, data)
     except OSError as exc:
